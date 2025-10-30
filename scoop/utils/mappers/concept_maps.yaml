@@ -1,0 +1,7 @@
+sex:
+  male: 8507
+  female: 8532
+smoking_history:
+  never: 0
+  former: 1
+  current: 2

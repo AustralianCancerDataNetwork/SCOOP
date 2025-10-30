@@ -1,0 +1,34 @@
+age:
+  type: numeric
+  mean: 65
+  sd: 10
+  min_value: 0
+  max_value: 100
+  as_int: true
+
+sex:
+  type: labelled
+  probs:
+    male: 0.55
+    female: 0.45
+
+smoking_history:
+  type: labelled
+  probs:
+    never: 0.2
+    former: 0.5
+    current: 0.3
+
+weight:
+  type: numeric
+  mean: 80
+  sd: 15
+
+# ecog:
+#   type: discrete_numeric
+#   probs:
+#     0: 0.2
+#     1: 0.2
+#     2: 0.2
+#     3: 0.2
+#     4: 0.2
