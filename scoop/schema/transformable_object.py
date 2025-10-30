@@ -10,16 +10,27 @@ class TransformableBase(BaseModel):
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
+        measurements = []
+        observations = []
 
         for out_field, spec in self.__transformations__.items():
             fn: Callable = spec["transform"]
             drop: bool = spec.get("drop", False)
             # Compute new value
-            data[out_field] = fn(self)
+            val = fn(self)
+            if 'measurement' in out_field:
+                measurements.append(val)
+            elif 'observation' in out_field:
+                observations.append(val)
+            else:   
+                data[out_field] = val
             # Optionally remove inputs
             if drop:
                 for f in spec.get("inputs", []):
                     data.pop(f, None)
+
+            data['measurements'] = [m for m in measurements if m is not None]
+            data['observations'] = [o for o in observations if o is not None]
 
         return data
     

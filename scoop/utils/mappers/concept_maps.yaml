@@ -5,3 +5,15 @@ smoking_history:
   never: 45879404
   former: 45883458
   current: 45881517
+
+variant:
+  egfr: 4180182
+  erbb2: 4180183
+  alk: 4180184
+  ros1: 4180185
+  ret: 4180186
+  ntrk: 4180187
+  met: 4180188
+  braf: 4180189
+  kras: 4180190
+  none: 0

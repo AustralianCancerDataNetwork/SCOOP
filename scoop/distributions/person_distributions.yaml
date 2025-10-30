@@ -1,9 +1,9 @@
 age:
   type: numeric
-  mean: 65
-  sd: 10
-  min_value: 0
-  max_value: 100
+  mean: 70
+  sd: 7
+  min_value: 50
+  max_value: 95
   as_int: true
 
 sex:
@@ -15,9 +15,9 @@ sex:
 smoking_history:
   type: labelled
   probs:
-    never: 0.2
-    former: 0.5
-    current: 0.3
+    never: 0.4
+    former: 0.4
+    current: 0.2
 
 weight:
   type: numeric
@@ -32,3 +32,17 @@ ecog:
     2: 0.2
     3: 0.2
     4: 0.2
+
+variant:
+  type: labelled
+  probs:
+    egfr: 0.2
+    erbb2: 0.03
+    alk: 0.1 
+    ros1: 0.02
+    ret: 0.03
+    ntrk: 0.02
+    met: 0.05
+    braf: 0.05
+    kras: 0.1
+    none: 0.4

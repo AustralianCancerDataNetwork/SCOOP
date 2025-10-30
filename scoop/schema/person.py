@@ -37,6 +37,12 @@ class Person(TransformableBase):
     smoking_history: str = "never"  
     ecog: int = 2 # todo: enforce appropriate range
     weight: float = 75.0
+    variant: str = "none"
+
+    condition: str = ""
+
+    def __post_init__(self):
+        self.full_name = f"{self.first_name} {self.last_name}"
 
     model_config = {
         "from_attributes": True  # allow .from_orm(Person instance)

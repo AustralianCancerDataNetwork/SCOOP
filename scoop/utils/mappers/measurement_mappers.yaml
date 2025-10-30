@@ -8,3 +8,9 @@ ecog:
   measurement_concept_id: 36305384
   type: numeric
   drop: true
+
+variant:
+  measurement_concept_id: 4180182
+  type: categorical
+  value_map: variant                # refers to a concept_mapper domain
+  drop: true
