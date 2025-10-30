@@ -1,10 +1,10 @@
 weight:
-  measurement_concept_id: 3025315
+  measurement_concept_id: 4099154
   type: numeric
   unit_concept_id: 9529         
   drop: true
 
 ecog:
-  measurement_concept_id: 4241489
+  measurement_concept_id: 36305384
   type: numeric
   drop: true
