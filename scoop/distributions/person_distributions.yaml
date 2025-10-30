@@ -24,11 +24,11 @@ weight:
   mean: 80
   sd: 15
 
-# ecog:
-#   type: discrete_numeric
-#   probs:
-#     0: 0.2
-#     1: 0.2
-#     2: 0.2
-#     3: 0.2
-#     4: 0.2
+ecog:
+  type: discrete_numeric
+  probs:
+    0: 0.2
+    1: 0.2
+    2: 0.2
+    3: 0.2
+    4: 0.2
