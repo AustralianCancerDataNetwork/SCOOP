@@ -26,6 +26,9 @@ except FileNotFoundError as e:
 # Global singleton sequences
 person_id_seq = Sequence(1)
 measurement_id_seq = Sequence(1)
+condition_id_seq = Sequence(1)
 
 
-__all__ = ["concept_mapper", "ConceptMapper", "ConceptMap", "person_id_seq", "measurement_id_seq", "measurement_mapper", "MeasurementMapper", "observation_mapper", "ObservationMapper"]
+__all__ = ["concept_mapper", "ConceptMapper", "ConceptMap", "person_id_seq", "measurement_id_seq", 
+           "condition_id_seq", "measurement_mapper", "MeasurementMapper", "observation_mapper", 
+           "ObservationMapper"]

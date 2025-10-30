@@ -2,13 +2,18 @@
 Person class and labelled distribution logic
 """
 
-from pydantic import BaseModel, Field
-from typing import Any
-from datetime import date
+from __future__ import annotations
+from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field
+from datetime import date
 from .transformable_object import TransformableBase
 from ..configuration.object_config import ObjectConfig
 from ..utils import concept_mapper, person_id_seq
+
+if TYPE_CHECKING:
+    from .condition_occurrence import Condition_Occurrence
+
 
 def person_from_config(config: ObjectConfig, **overrides: Any) -> "Person":
     """
@@ -39,10 +44,10 @@ class Person(TransformableBase):
     weight: float = 75.0
     variant: str = "none"
 
-    condition: str = ""
+    condition: Condition_Occurrence = None
 
     def __post_init__(self):
-        self.full_name = f"{self.first_name} {self.last_name}"
+        self.condition = Condition_Occurrence(person_id=self.person_id)
 
     model_config = {
         "from_attributes": True  # allow .from_orm(Person instance)
