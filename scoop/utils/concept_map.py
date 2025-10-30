@@ -9,7 +9,7 @@ class ConceptMap:
         self.default = default
 
     def __call__(self, value: str | None) -> int:
-        if not value:
+        if not type(value) is str:
             return self.default
         return self.mapping.get(value.lower(), self.default)
 
