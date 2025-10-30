@@ -8,7 +8,7 @@ from datetime import date
 
 from .transformable_object import TransformableBase
 from ..configuration.object_config import ObjectConfig
-from ..utils import concept_mapper, person_id_seq, measurement_mapper
+from ..utils import concept_mapper, person_id_seq
 
 def person_from_config(config: ObjectConfig, **overrides: Any) -> "Person":
     """
@@ -24,11 +24,16 @@ gender_map = concept_mapper('sex')
 
 class Person(TransformableBase):
 
+    ## identifier fields
     person_id: int | None = None
-    sex: str
-    age: int
+    ## direct mapped fields (because not implemented)
     race_concept_id: int = 0
     ethnicity_concept_id: int = 0
+    ## simple transformed fields
+    sex: str
+    age: int
+
+    ## measurement transformation fields - handled in measurement_mapper config
     smoking_history: str = "never"  
     ecog: int = 2 # todo: enforce appropriate range
     weight: float = 75.0
@@ -57,16 +62,3 @@ class Person(TransformableBase):
             self.person_id = person_id_seq.next()
         return super().model_dump(*args, **kwargs)
     
-
-Person.__transformations__ = {
-    **Person.__base_transformations__,
-    **{
-        f"{name}_measurement": {
-            "inputs": [name],
-            "transform": lambda p, field=field: field.to_measurement(p, getattr(p, name)),
-            "drop": True,
-        }
-        for name, field in measurement_mapper.measurements.items()
-        if name in Person.model_fields.keys()
-    },
-}

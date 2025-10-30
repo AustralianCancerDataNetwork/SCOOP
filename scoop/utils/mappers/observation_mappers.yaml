@@ -1,0 +1,5 @@
+smoking_history:
+  observation_concept_id: 43054909
+  type: categorical
+  value_map: smoking_history           # refers to a concept_mapper domain
+  drop: true

@@ -1,13 +1,7 @@
-smoking_history:
-  measurement_concept_id: 4305497
-  type: categorical
-  value_map: smoking_history           # refers to a concept_mapper domain
-  drop: true
-
 weight:
   measurement_concept_id: 3025315
   type: numeric
-  unit_concept_id: 9529                # kg
+  unit_concept_id: 9529         
   drop: true
 
 ecog:
