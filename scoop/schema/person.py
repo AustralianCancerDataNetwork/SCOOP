@@ -5,32 +5,19 @@ Person class and labelled distribution logic
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field, model_validator
 from datetime import date
 from .transformable_object import TransformableBase
-from ..configuration.object_config import ObjectConfig
 from ..utils import concept_mapper, person_id_seq
-
 if TYPE_CHECKING:
-    from .condition_occurrence import Condition_Occurrence
-
-
-def person_from_config(config: ObjectConfig, **overrides: Any) -> "Person":
-    """
-    Sample from the configuration and return a Person instance.
-    Optional keyword args override sampled values.
-    """
-    sampled = config.sample()           # e.g. {"age": 72, "gender_concept_id": "male", ...}
-    sampled.update(overrides)           # allow explicit overrides
-
-    return Person(**sampled)
+    from .object_factories import make_condition_occurrence
 
 gender_map = concept_mapper('sex')
 
 class Person(TransformableBase):
 
     ## identifier fields
-    person_id: int | None = None
+    person_id: int = Field(default_factory=person_id_seq.next)
     ## direct mapped fields (because not implemented)
     race_concept_id: int = 0
     ethnicity_concept_id: int = 0
@@ -44,10 +31,17 @@ class Person(TransformableBase):
     weight: float = 75.0
     variant: str = "none"
 
-    condition: Condition_Occurrence = None
+    condition: 'Condition_Occurrence | None' = None
 
-    def __post_init__(self):
-        self.condition = Condition_Occurrence(person_id=self.person_id)
+    @model_validator(mode="after")
+    def _attach_condition(self):
+        """
+        Runs after Person is initialized. Automatically attach a Condition_Occurrence.
+        """
+        from .object_factories import make_condition_occurrence  
+        if self.condition is None:
+            self.condition = make_condition_occurrence(person=self)
+        return self
 
     model_config = {
         "from_attributes": True  # allow .from_orm(Person instance)
@@ -63,13 +57,10 @@ class Person(TransformableBase):
             "inputs": ["sex"],
             "transform": lambda p: gender_map(p.sex),
             "drop": True,
-        }
+        },
         # todo: consider extending with mapper for race field
     }
 
-    def model_dump(self, *args, **kwargs):
-        """Assign sequential person_id if missing, then transform and dump."""
-        if self.person_id is None:
-            self.person_id = person_id_seq.next()
-        return super().model_dump(*args, **kwargs)
     
+from .condition_occurrence import Condition_Occurrence
+Person.model_rebuild()

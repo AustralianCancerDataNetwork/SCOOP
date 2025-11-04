@@ -22,7 +22,33 @@ morphology:
         male: [0.75, 0.2, 0.05]
         female: [0.85, 0.1, 0.05]
         default: [0.8, 0.15, 0.05]
+  
+  # todo: these have just been taken directly but to use this way with normalisation,
+  #       we need to adapt to the proper conditional probabilities
 
   # Optional: specify how to combine multiple condition sources
   # (can be "multiply", "average", or "hierarchical" if you want control)
   combination: multiply
+
+# lobe and laterality conditionals are meaningless toy examples for setting up conditionals do not use as-is
+lobe:
+  type: conditional
+  labels:
+    - upper
+    - lower
+  class_probabilities:
+    person:
+      sex:
+        male: [0.75, 0.25]
+        female: [0.85, 0.15]
+laterality:
+  type: conditional
+  labels:
+    - left
+    - right
+    - bilateral
+  class_probabilities:
+    smoking_history:
+      - never: [0.45, 0.45, 0.1]
+      - former: [0.45, 0.5, 0.05]
+      - current: [0.5, 0.45, 0.05]

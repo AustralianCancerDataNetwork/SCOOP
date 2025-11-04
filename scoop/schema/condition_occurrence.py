@@ -1,63 +1,59 @@
 
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any
-from pydantic import BaseModel, Field
-from datetime import date
-
+from pydantic import Field, model_validator
 from .transformable_object import TransformableBase
-from ..configuration.object_config import ObjectConfig
 from ..utils import concept_mapper, condition_id_seq
-
 if TYPE_CHECKING:
-    from .person import Person
-
-def condition_from_config(config: ObjectConfig, person: Person, **overrides: Any) -> "Condition_Occurrence":
-    """
-    Sample from the configuration and return a Condition_Occurrence instance.
-    Optional keyword args override sampled values.
-    """
-    sampled = config.sample()           # e.g. {"age": 72, "gender_concept_id": "male", ...}
-    sampled.update(overrides)           # allow explicit overrides
-
-    return Condition_Occurrence(person_id = person.person_id, **sampled)
-
-gender_map = concept_mapper('sex')
+    from .object_factories import assign_regimen
 
 class Condition_Occurrence(TransformableBase):
 
     ## identifier fields
-    person_id: int | None = None
-
+    person_id: int 
+    condition_occurrence_id: int = Field(default_factory=condition_id_seq.next)
 
     ## measurement transformation fields - handled in measurement_mapper config
     morphology: str = "neither"  
     laterality: str = "right"
     lobe: str = "upper"
+    person: 'Person | None' = None
+    regimen: 'Treatment_Episode | None' = None
 
-    # def __post_init__(self):
-    #     self.full_name = f"{self.first_name} {self.last_name}"
+    # todo 0. create all the necessary fields to populate condition_occurrence instance + associated regimen
+    # todo 1. create conditional (?+ regular) configuration sampler entries for these fields
+    # todo 2. implement logic to assign regimen based on condition + person attributes
+    # todo 3. implement measurement transformations for condition fields
+    # todo 4. implement logic to generate drug_exposure + procedure_occurrence events from regimen
+    # todo 5. implement overarching condition episode + associated events
+    # todo 6. model dump logic to apply transforms for this and all child elements
+
+    @model_validator(mode="after")
+    def _assign_treatment(self):
+        from .object_factories import assign_regimen
+        if self.regimen is None:
+            self.regimen = assign_regimen(condition_occurrence=self)
+        return self
+
+    def __post_init__(self):
+        drug_exposures, procedures = self.regimen.roll_events()
 
     model_config = {
         "from_attributes": True  # allow .from_orm(Person instance)
     }
 
-    # __base_transformations__ = {
-    #     "year_of_birth": {
-    #         "inputs": ["age"],
-    #         "transform": lambda p: date.today().year - p.age,
-    #         "drop": True,
-    #     },
-    #     "gender_concept_id": {
-    #         "inputs": ["sex"],
-    #         "transform": lambda p: gender_map(p.sex),
-    #         "drop": True,
-    #     }
-    #     # todo: consider extending with mapper for race field
-    # }
-
-    # def model_dump(self, *args, **kwargs):
-    #     """Assign sequential person_id if missing, then transform and dump."""
-    #     if self.person_id is None:
-    #         self.person_id = person_id_seq.next()
-    #     return super().model_dump(*args, **kwargs)
+    def __init__(self, **data: Any):
+        """
+        Allow initialization with either a Person or a person_id.
+        """
+        person = data.pop("person", None)
+        super().__init__(**data)
+        if person is not None:
+            # fill person_id automatically
+            self.person = person
+            self.person_id = getattr(person, "person_id", self.person_id)
     
+
+from .person import Person
+from .treatment_episode import Treatment_Episode
+Condition_Occurrence.model_rebuild()

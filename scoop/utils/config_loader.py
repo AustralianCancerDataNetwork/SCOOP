@@ -6,6 +6,7 @@ from typing import Any, Dict
 import yaml
 
 from ..configuration.object_config import ObjectConfig
+from ..configuration.conditional_distribution import ConditionalMatrixDistribution
 from ..configuration.distribution_base import LabelledDistribution, NumericDistribution, DiscreteNumericDistribution
 
 
@@ -31,3 +32,11 @@ def load_config(config: str | dict[str, Any]) -> ObjectConfig:
             raise ValueError(f"Unknown distribution type for {key}: {kind}")
 
     return ObjectConfig(distributions=distributions)
+
+def load_conditional(config: str | dict[str, Any]) -> ConditionalMatrixDistribution:
+    """Load a YAML config file or a pre-parsed dict."""
+    if isinstance(config, (str, Path)):
+        return ConditionalMatrixDistribution.from_yaml(config)
+
+    if not isinstance(config, dict):
+        raise TypeError(f"Expected dict or YAML path, got {type(config)}")

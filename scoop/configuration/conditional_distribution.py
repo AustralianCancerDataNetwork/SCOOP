@@ -28,23 +28,38 @@ def combine_prob_vectors(vectors: List[List[float]], mode: str = "multiply") -> 
     return [v / total for v in combined]
 
 class ConditionalMatrixDistribution:
-    def __init__(self, labels: List[str], class_probs: Dict[str, Dict[str, List[float]]], combination: str = "multiply"):
-        self.labels = labels
-        self.class_probs = class_probs
-        self.combination = combination
+    def __init__(self, distributions: Dict[str, Dict[str, Any]]):
+        """
+        distributions: mapping of key → dict containing
+          - type: str
+          - labels: list[str]
+          - class_probabilities: dict
+        """
+        self.distributions = distributions
 
     @classmethod
-    def from_yaml(cls, path: str, key: str):
-        with open(path) as f:
+    def from_yaml(cls, path: str):
+        """Load all conditional distributions from YAML file."""
+        with open(path, "r") as f:
             data = yaml.safe_load(f)
-        conf = data[key]
-        return cls(conf["labels"], conf["class_probabilities"], conf.get("combination", "multiply"))
-
-    def sample(self, context_obj: Any) -> str:
+        return cls(data)
+    
+    def sample(self, key: str, context_obj: Any) -> str:
         """Combine multiple condition vectors based on context and sample from final distribution."""
+        if key not in self.distributions:
+            raise KeyError(f"Distribution '{key}' not found in config")
+
         conditional_vectors = []
            
-        for obj_name, attributes in self.class_probs.items():
+        conf = self.distributions[key]
+        if conf.get("type") != "conditional":
+            raise ValueError(f"Distribution '{key}' must have type 'conditional'")
+
+        labels = conf["labels"]
+        class_probs = conf["class_probabilities"]
+        combination = conf.get("combination", "multiply")
+
+        for obj_name, attributes in class_probs.items():
             obj = context_obj.get(obj_name, None)
             if obj is None:
                 continue
@@ -53,7 +68,7 @@ class ConditionalMatrixDistribution:
                 probs = table.get(val, table.get("default"))
                 if probs:
                     conditional_vectors.append(probs)
-        combined = combine_prob_vectors(conditional_vectors, self.combination)
+        combined = combine_prob_vectors(conditional_vectors, combination)
         # sample
-        labels, weights = zip(*zip(self.labels, combined))
-        return random.choices(labels, weights=weights, k=1)[0]
+        labels, weights = zip(*zip(labels, combined))
+        return {key: c for c in random.choices(labels, weights=weights, k=1)[0]}

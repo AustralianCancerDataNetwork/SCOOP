@@ -1,12 +1,14 @@
 from pydantic import BaseModel
-from typing import Callable
+from typing import Callable, Any
 from ..utils import measurement_mapper, observation_mapper
+from pydantic import BaseModel, Field, model_validator
 
 
 class TransformableBase(BaseModel):
     """Base class providing declarative field transformations on dump."""
     __transformations__: dict[str, dict] = {}
     __base_transformations__: dict[str, dict] = {}
+
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -69,3 +71,7 @@ class TransformableBase(BaseModel):
         }
 
         cls.__transformations__ = {**base, **measurement_transforms, **observation_transforms}
+
+    def model_dump(self, *args, **kwargs):
+        """Applies transforms and dump."""
+        return super().model_dump(*args, **kwargs)
