@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, TYPE_CHECKING
 from pydantic import Field, model_validator
 from .transformable_object import TransformableBase
-from ..utils import concept_mapper, condition_id_seq
+from ..utils.id_management import condition_id_seq
 if TYPE_CHECKING:
     from .object_factories import assign_regimen
 
@@ -12,6 +12,7 @@ class Treatment_Episode(TransformableBase):
     ## identifier fields
     person_id: int 
     condition_occurrence_id: int 
+    regimen_type: str
 
     def roll_events(self):
         """ Placeholder method to generate drug exposures and procedures for this treatment episode. """

@@ -3,7 +3,7 @@ import yaml
 from pathlib import Path
 from typing import Any, Type
 from .concept_map import ConceptMapper
-
+from ..schema.clinical_field_base import ClinicalFieldType
 
 class ClinicalMapperBase:
     """
@@ -17,12 +17,15 @@ class ClinicalMapperBase:
     field_class: Type[Any]
 
     def __init__(self, mapping: str | Path | dict[str, Any], concept_mapper: ConceptMapper):
+        
         if isinstance(mapping, (str, Path)):
             with open(mapping, "r") as f:
                 mapping = yaml.safe_load(f)
 
         self.fields: dict[str, Any] = {}
-
+        if not isinstance(mapping, dict):
+            raise ValueError("Mapping must be a dict or path to valid YAML file")
+        
         for name, entry in mapping.items():
             concept_id_key = f"{self.record_name}_concept_id" if self.record_name != "clinical_field" else "concept_id"
             concept_id = entry.get(concept_id_key)
@@ -30,6 +33,11 @@ class ClinicalMapperBase:
                 raise ValueError(f"Missing {concept_id_key} for field '{name}'")
 
             type_ = entry.get("type", "categorical")
+            try:
+                field_type = ClinicalFieldType(type_)
+            except ValueError:
+                raise ValueError(f"Unknown clinical field type '{type_}' for field {name}")
+
             unit_concept_id = entry.get("unit_concept_id")
             value_map_name = entry.get("value_map")
 
@@ -41,7 +49,7 @@ class ClinicalMapperBase:
             field = self.field_class(
                 concept_id=concept_id,
                 value_map=value_map,
-                is_numeric=(type_ == "numeric"),
+                field_type=field_type,
                 unit_concept_id=unit_concept_id,
                 source_field=name,
             )

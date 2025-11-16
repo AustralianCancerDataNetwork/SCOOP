@@ -10,7 +10,7 @@ from ..configuration.conditional_distribution import ConditionalMatrixDistributi
 from ..configuration.distribution_base import LabelledDistribution, NumericDistribution, DiscreteNumericDistribution
 
 
-def load_config(config: str | dict[str, Any]) -> ObjectConfig:
+def load_config(config: str | Path | dict[str, Any]) -> ObjectConfig:
     """Load a YAML config file or a pre-parsed dict."""
     if isinstance(config, (str, Path)):
         with open(config, "r") as f:
@@ -33,7 +33,7 @@ def load_config(config: str | dict[str, Any]) -> ObjectConfig:
 
     return ObjectConfig(distributions=distributions)
 
-def load_conditional(config: str | dict[str, Any]) -> ConditionalMatrixDistribution:
+def load_conditional(config: str | Path | dict[str, Any]) -> ConditionalMatrixDistribution | None:
     """Load a YAML config file or a pre-parsed dict."""
     if isinstance(config, (str, Path)):
         return ConditionalMatrixDistribution.from_yaml(config)

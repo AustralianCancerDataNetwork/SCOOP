@@ -1,16 +1,18 @@
 """ 
 Person class and labelled distribution logic
 """
-
 from __future__ import annotations
+import logging
 from typing import TYPE_CHECKING, Any
-
 from pydantic import Field, model_validator
 from datetime import date
-from .transformable_object import TransformableBase
-from ..utils import concept_mapper, person_id_seq
+from scoop.schema.transformable_object import TransformableBase
+from scoop.configuration import concept_mapper
+from scoop.utils.id_management import person_id_seq
 if TYPE_CHECKING:
     from .object_factories import make_condition_occurrence
+
+logger = logging.getLogger(__name__)
 
 gender_map = concept_mapper('sex')
 
@@ -38,9 +40,11 @@ class Person(TransformableBase):
         """
         Runs after Person is initialized. Automatically attach a Condition_Occurrence.
         """
+        logger.debug(f"Initialised Person[{self.person_id}] age={self.age} sex={self.sex}")
         from .object_factories import make_condition_occurrence  
         if self.condition is None:
             self.condition = make_condition_occurrence(person=self)
+            logger.debug(f"Attached Condition_Occurrence to Person[{self.person_id}]")
         return self
 
     model_config = {
@@ -62,5 +66,5 @@ class Person(TransformableBase):
     }
 
     
-from .condition_occurrence import Condition_Occurrence
+from scoop.schema.condition_occurrence import Condition_Occurrence
 Person.model_rebuild()

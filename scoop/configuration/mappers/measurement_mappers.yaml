@@ -11,6 +11,12 @@ ecog:
 
 variant:
   measurement_concept_id: 4180182
-  type: categorical
+  type: value
   value_map: variant                # refers to a concept_mapper domain
   drop: true
+
+stage:
+  measurement_concept_id: 36714116
+  type: categorical
+  value_map: cancer_stage          # refers to a concept_mapper domain
+  drop: false

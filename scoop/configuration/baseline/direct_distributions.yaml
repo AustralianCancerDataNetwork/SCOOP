@@ -6,6 +6,19 @@ age:
   max_value: 95
   as_int: true
 
+# 2020 is limit of input df for morphology selection
+year_of_diagnosis:
+  type: numeric
+  min_value: 2015
+  max_value: 2020
+  as_int: true
+
+years_since_diagnosis:
+  type: numeric
+  min_value: 0
+  max_value: 3
+  as_int: true
+
 sex:
   type: labelled
   probs:

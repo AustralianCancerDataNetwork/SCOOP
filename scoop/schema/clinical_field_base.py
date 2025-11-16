@@ -3,10 +3,25 @@ from datetime import date
 from typing import Callable, Type, Any
 from pydantic import BaseModel
 
+from enum import Enum
+
+
+class ClinicalFieldType(Enum):
+    CATEGORICAL = "categorical"  # write into value_as_concept_id
+    NUMERIC = "numeric"          # write into value_as_number
+    VALUE = "value"              # write into value_as_concept_id (EAV-style)
+
+
 class ClinicalFieldBase:
+
     """
     Base class for MeasurementField / ObservationField.
-    Handles conversion of an attribute to a clinical record (Measurement or Observation).
+
+    Supports three modes:
+        - categorical: mapped → concept code → value_as_concept_id
+        - numeric:     mapped → float → value_as_number
+        - value(EAV):  entity-level concept_id identifies "what", mapped stores the "value"
+                       → mapped → value_as_concept_id
     """
 
     record_class: Type[BaseModel]           # e.g. Measurement or Observation
@@ -19,13 +34,13 @@ class ClinicalFieldBase:
         concept_id: int,
         value_map: Callable[[Any], int | float | None],
         *,
-        is_numeric: bool = False,
+        field_type: ClinicalFieldType = ClinicalFieldType.CATEGORICAL,
         unit_concept_id: int | None = None,
         source_field: str | None = None,
     ):
         self.concept_id = concept_id
         self.value_map = value_map
-        self.is_numeric = is_numeric
+        self.field_type = field_type
         self.unit_concept_id = unit_concept_id
         self.source_field = source_field
 
@@ -43,9 +58,14 @@ class ClinicalFieldBase:
             self.value_source_field: str(value) if value is not None else None,
         }
 
-        if self.is_numeric:
+        if self.field_type == ClinicalFieldType.NUMERIC:
             base_kwargs["value_as_number"] = float(mapped)
-        else:
+
+        elif self.field_type == ClinicalFieldType.VALUE:
+            # EAV structure: entity concept stored in concept_field, mapped value stored separately
             base_kwargs["value_as_concept_id"] = int(mapped)
+
+        else:  # CATEGORICAL
+            base_kwargs[self.concept_field] = int(mapped)
 
         return self.record_class(**base_kwargs)

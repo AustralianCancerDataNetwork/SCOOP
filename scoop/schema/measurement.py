@@ -1,10 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date
 from .clinical_field_base import ClinicalFieldBase
+from ..utils.id_management import measurement_id_seq
 
 class Measurement(BaseModel):
     person_id: int
-    measurement_id: int | None = None
+    measurement_id: int = Field(default_factory=measurement_id_seq.next)
     measurement_concept_id: int
     measurement_date: date
     value_as_concept_id: int | None = None

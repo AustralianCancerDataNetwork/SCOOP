@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Callable, Any
-from ..utils import measurement_mapper, observation_mapper
+from ..configuration import measurement_mapper, observation_mapper
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -31,8 +31,8 @@ class TransformableBase(BaseModel):
                 for f in spec.get("inputs", []):
                     data.pop(f, None)
 
-            data['measurements'] = [m for m in measurements if m is not None]
-            data['observations'] = [o for o in observations if o is not None]
+            data['measurements'] = [m.model_dump() for m in measurements if m is not None]
+            data['observations'] = [o.model_dump() for o in observations if o is not None]
 
         return data
     
@@ -72,6 +72,6 @@ class TransformableBase(BaseModel):
 
         cls.__transformations__ = {**base, **measurement_transforms, **observation_transforms}
 
-    def model_dump(self, *args, **kwargs):
-        """Applies transforms and dump."""
-        return super().model_dump(*args, **kwargs)
+    # def model_dump(self, *args, **kwargs):
+    #     """Applies transforms and dump."""
+    #     return super().model_dump(*args, **kwargs)

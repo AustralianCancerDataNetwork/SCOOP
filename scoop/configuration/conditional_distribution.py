@@ -1,6 +1,7 @@
 import random, yaml
 from typing import Dict, List, Any
 from functools import reduce
+from pathlib import Path
 
 def normalize(d: Dict[str, float]) -> Dict[str, float]:
     total = sum(d.values())
@@ -38,13 +39,13 @@ class ConditionalMatrixDistribution:
         self.distributions = distributions
 
     @classmethod
-    def from_yaml(cls, path: str):
+    def from_yaml(cls, path: str | Path) -> "ConditionalMatrixDistribution":
         """Load all conditional distributions from YAML file."""
         with open(path, "r") as f:
             data = yaml.safe_load(f)
         return cls(data)
-    
-    def sample(self, key: str, context_obj: Any) -> str:
+
+    def sample(self, key: str, context_obj: Any) -> dict[str, Any]:
         """Combine multiple condition vectors based on context and sample from final distribution."""
         if key not in self.distributions:
             raise KeyError(f"Distribution '{key}' not found in config")

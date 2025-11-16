@@ -15,3 +15,8 @@ class Sequence:
         with self._lock:
             self._counter = count(start)
 
+# Global singleton sequences & configurations
+person_id_seq = Sequence(1)
+measurement_id_seq = Sequence(1)
+condition_id_seq = Sequence(1)
+observation_id_seq = Sequence(1)

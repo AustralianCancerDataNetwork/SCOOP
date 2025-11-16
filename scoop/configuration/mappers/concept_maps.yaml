@@ -5,7 +5,6 @@ smoking_history:
   never: 45879404
   former: 45883458
   current: 45881517
-
 variant:
   egfr: 4180182
   erbb2: 4180183
@@ -17,3 +16,9 @@ variant:
   braf: 4180189
   kras: 4180190
   none: 0
+cancer_stage:
+  stage_0: 1633754
+  stage_i: 1633306
+  stage_ii: 1634209
+  stage_iii: 1633650
+  stage_iv: 1633308

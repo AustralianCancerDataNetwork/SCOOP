@@ -46,8 +46,8 @@ class NumericDistribution(BaseDistribution):
     Subclasses define parameterisation and sampling logic.
     """
 
-    mean: float = Field(..., description="Mean or central tendency parameter")
-    sd: float = Field(..., gt=0, description="Standard deviation or scale parameter")
+    mean: float = Field(0, description="Mean or central tendency parameter")
+    sd: float | None = Field(None, gt=0, description="Standard deviation or scale parameter")
     min_value: float | None = Field(None, description="Lower bound (optional)")
     max_value: float | None = Field(None, description="Upper bound (optional)")
     as_int: bool = Field(False, description="Return as int if True")
@@ -61,8 +61,19 @@ class NumericDistribution(BaseDistribution):
         return x
 
     def sample(self) -> float | int:
-        """Default Gaussian sampling."""
-        val = random.gauss(self.mean, self.sd)
+        """
+        Default Sampling logic:
+        - If sd is provided → Gaussian(mean, sd) + clipping
+        - If sd is missing or zero → Uniform(min_value, max_value)
+        """
+        if not self.sd:  # sd is None or zero
+            if self.min_value is None or self.max_value is None:
+                raise ValueError(
+                    "Uniform sampling requires min_value and max_value when sd is not provided."
+                )
+            val = random.uniform(self.min_value, self.max_value)
+        else:       
+            val = random.gauss(self.mean, self.sd)
         val = self._clip(val)
         return int(val) if self.as_int else val
 
