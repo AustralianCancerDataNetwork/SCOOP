@@ -4,7 +4,7 @@ import logging
 import os
 from dotenv import load_dotenv
 
-__all__ = ["Person"]
+__all__ = ["Person", "Condition_Occurrence", "Treatment_Episode"]
 __version__ = importlib_metadata.version(__name__)
 THIS_PATH = Path(__file__).parent
 
@@ -38,3 +38,5 @@ logger.addHandler(file_handler)
 logger.debug("SCOOP logging initialized")
 
 from .schema.person import Person  # noqa: E402
+from .schema.condition_occurrence import Condition_Occurrence  # noqa: E402
+from .schema.treatment_episode import Treatment_Episode  # noqa: E402

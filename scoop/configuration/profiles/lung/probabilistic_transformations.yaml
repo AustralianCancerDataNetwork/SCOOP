@@ -1,0 +1,225 @@
+graph:
+  nodes:
+    person.age:
+      type: numeric
+      mean: 70
+      sd: 7
+      min_value: 50
+      max_value: 95
+      as_int: true
+
+    person.year_of_diagnosis:
+      type: numeric
+      min_value: 2015
+      max_value: 2020
+      as_int: true
+
+    person.years_since_diagnosis:
+      type: numeric
+      min_value: 0
+      max_value: 3
+      as_int: true
+
+    person.sex:
+      type: categorical
+      distribution:
+        male: 0.55
+        female: 0.45
+
+    person.smoking_history:
+      type: categorical
+      distribution:
+        never: 0.4
+        former: 0.4
+        current: 0.2
+
+    person.performance_status:
+      type: categorical
+      labels: [ps0, ps1, ps2, ps3, ps4]
+
+    person.variant:
+      type: categorical
+      distribution:
+        egfr: 0.2
+        erbb2: 0.03
+        alk: 0.1 
+        ros1: 0.02
+        ret: 0.03
+        ntrk: 0.02
+        met: 0.05
+        braf: 0.05
+        kras: 0.1
+        none: 0.4
+
+    # if there are distributions that have no connections upstream or downstream, consider
+    # load-time notification of disconnected nodes
+    person.weight:
+      type: numeric
+      mean: 80
+      sd: 15
+
+    # only including morph categories that matter to treatment decisions
+    condition_occurrence.morphology:
+      type: categorical
+      labels: [adenocarcinoma, squamous, none]
+
+    # if categorical with a distribution, this will be used directly and should not be connected to any edges
+    # with parent probabilities
+    # todo: validate on load that this is specified correctly so that there are no runtime errors
+    condition_occurrence.laterality:
+      type: categorical
+      distribution:
+        left: 0.4
+        right: 0.6
+
+    # if categorical and no distribution provided, this must be connected to an edge that provides probabilities
+    # todo: validate on load that this is specified correctly so that there are no runtime errors
+    condition_occurrence.lobe:
+      type: categorical
+      labels: [upper, middle, lower]
+
+    condition_occurrence.cancer_stage:
+      type: categorical
+      labels: [stage_0, stage_i, stage_ii, stage_iii, stage_iv]
+
+    # nb we are not using t/f or yes/no because they load as booleans and cause issues
+    treatment_episode.operability:
+      type: categorical
+      labels: [operable, inoperable]
+
+    treatment_episode.radiotherapy_eligibility:
+      type: categorical
+      labels: [rt_yes, rt_no]
+
+    # need to classify the regimen groups into top level categories for this to work - once 
+    # categories are assigned, select appropriately from there with other parameters that are
+    # not profile specific (e.g. performance status, comorbidities)
+    treatment_episode.regimen_selection:
+      type: categorical
+      labels: [targeted_therapy, chemo_immunotherapy, chemo_only, supportive_care]
+
+  edges:
+    # todo load time validation that from/to nodes have the right number of classes to match the probability tables
+    - from: person.variant
+      to: condition_occurrence.morphology
+      using: probability_table
+      table:
+        egfr:    [0.9, 0.08, 0.02]
+        kras:    [0.7, 0.25, 0.05]
+        alk:     [0.85, 0.1,  0.05]
+        default: [0.5, 0.4,  0.1]
+
+    - from: person.sex
+      to: condition_occurrence.morphology
+      using: probability_table
+      table:
+        male:    [0.75, 0.20, 0.05]
+        female:  [0.85, 0.10, 0.05]
+        default: [0.80, 0.15, 0.05]
+
+    - from: condition_occurrence.laterality
+      to: condition_occurrence.lobe
+      using: probability_table
+      table:
+        left:  [0.63, 0.00, 0.37]
+        right: [0.55, 0.20, 0.25]
+
+    - from: condition_occurrence.morphology
+      to: treatment_episode.operability
+      using: probability_table
+      table:
+        adenocarcinoma: [0.5, 0.5]
+        squamous:      [0.1, 0.9]
+        none:          [0.4, 0.6]
+
+    - from: condition_occurrence.morphology
+      to: treatment_episode.radiotherapy_eligibility
+      using: probability_table
+      table:
+        adenocarcinoma: [0.4, 0.6]
+        squamous:      [0.1, 0.9]
+        none:          [0.5, 0.5]
+
+    - from: condition_occurrence.lobe
+      to: treatment_episode.operability
+      using: probability_table
+      table:
+        upper:  [0.3, 0.7]
+        middle: [0.4, 0.6]
+        lower:  [0.5, 0.5]
+
+    - from: person.years_since_diagnosis
+      to: condition_occurrence.cancer_stage
+      using: probability_table
+      table:
+        0: [0.6, 0.2, 0.1, 0.05, 0.05]
+        1: [0.4, 0.3, 0.15, 0.1, 0.05]
+        2: [0.3, 0.3, 0.2, 0.15, 0.05]
+        3: [0.2, 0.25, 0.25, 0.2, 0.1]
+
+    - from: person.year_of_diagnosis
+      to: treatment_episode.regimen_selection
+      using: probability_table
+      table:
+        2015: [0.2, 0.5, 0.2, 0.1]
+        2016: [0.25, 0.45, 0.2, 0.1]
+        2017: [0.3, 0.4, 0.2, 0.1]
+        2018: [0.35, 0.35, 0.2, 0.1]
+        2019: [0.4, 0.3, 0.2, 0.1]
+        2020: [0.45, 0.25, 0.2, 0.1]
+
+    - from: treatment_episode.operability
+      to: treatment_episode.regimen_selection
+      using: probability_table
+      table:
+        operable:     [0.5, 0.4, 0.1, 0.0]
+        inoperable:   [0.1, 0.4, 0.3, 0.2]
+
+    - from: treatment_episode.radiotherapy_eligibility
+      to: treatment_episode.regimen_selection
+      using: probability_table
+      table:
+        rt_yes:  [0.2, 0.5, 0.2, 0.1]
+        rt_no:   [0.3, 0.3, 0.3, 0.1]
+
+    - from: condition_occurrence.cancer_stage
+      to: treatment_episode.regimen_selection
+      using: probability_table
+      table:
+        stage_0:   [0.6, 0.3, 0.1, 0.0]
+        stage_i:   [0.5, 0.35, 0.1, 0.05]
+        stage_ii:  [0.4, 0.4, 0.15,0.05]
+        stage_iii: [0.3, 0.4, 0.2, 0.1]
+        stage_iv:  [0.1, 0.3, 0.4, 0.2]
+
+    # todo: can we support numeric distributions as the upstream element or do we have to 
+    # add in labelled transformation e.g. age at diagnosis -> ecog?
+    # this won't work without some fudging at the moment
+    - from: person.age
+      to: person.performance_status
+      using: probability_table
+      table:
+        50: [0.5, 0.3, 0.1, 0.05, 0.05]
+        55: [0.45, 0.3, 0.15, 0.05, 0.05]
+
+    - from: person.smoking_history
+      to: condition_occurrence.cancer_stage
+      using: probability_table
+      table:
+        current: [0.2, 0.4, 0.2, 0.05, 0.05]
+        never:   [0.5, 0.3, 0.1, 0.05, 0.05]
+        former:  [0.4, 0.35, 0.15, 0.05, 0.05]
+
+    - from: person.performance_status
+      to: treatment_episode.regimen_selection
+      using: probability_table
+      table:
+        ps0: [0.5, 0.4, 0.1, 0.0]
+        ps1: [0.4, 0.4, 0.15,0.05]
+        ps2: [0.3, 0.4, 0.2, 0.1]
+        ps3: [0.2, 0.3, 0.3, 0.2]
+        ps4: [0.1, 0.2, 0.4, 0.3]
+      
+
+    # todo: can we support deterministic mappings here like t, n, m stage to group stage?
+    
