@@ -1,6 +1,6 @@
 from typing import Dict, Any
 from pydantic import BaseModel, field_validator
-from .distribution_base import BaseDistribution
+from .transformation_graph import BaseDistribution
 
 class ObjectConfig(BaseModel):
     """

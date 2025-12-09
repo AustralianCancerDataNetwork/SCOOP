@@ -8,9 +8,6 @@ __all__ = ["Person", "Condition_Occurrence", "Treatment_Episode"]
 __version__ = importlib_metadata.version(__name__)
 THIS_PATH = Path(__file__).parent
 
-# -------------------------------
-# LOGGING SETUP (package-level)
-# -------------------------------
 load_dotenv(dotenv_path=THIS_PATH / '.env')
 
 _LOGLEVEL = os.getenv("SCOOP_LOGLEVEL", "INFO").upper()
