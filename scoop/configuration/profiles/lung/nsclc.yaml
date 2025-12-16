@@ -129,9 +129,9 @@ graph:
           then: tm_yes
       default: tm_no
 
-    treatment_episode.neoadjuvant_targeted:
+    treatment_episode.adjuvant_targeted:
       type: categorical
-      labels: [neo_targ]
+      labels: [adj_targ]
       active_when:
         condition_episode.resectability: operable
         condition_episode.group_stage: early
