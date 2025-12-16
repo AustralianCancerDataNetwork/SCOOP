@@ -5,7 +5,9 @@ from scoop.configuration.transformation_graph import (
     NumericNode, 
     CategoricalNode,
     ConditionalDiscreteDistribution, 
-    DiscreteDistribution
+    DiscreteDistribution,
+    NumericRangeNode,
+    BranchNode
 )
 
 def make_mermaid(graph: TransformationGraph) -> str:
@@ -22,8 +24,86 @@ def make_mermaid(graph: TransformationGraph) -> str:
     """
 
     nodes = graph.nodes
-    edges = graph.edges
+    explicit_edges = graph.edges
 
+
+    implicit_edges = []
+    for name, node in nodes.items():
+        if isinstance(node, NumericRangeNode):
+            if node.from_ not in nodes:
+                raise ValueError(
+                    f"Range node '{name}' refers to unknown upstream node '{node.from_}'"
+                )
+            implicit_edges.append(
+                (
+                    node.from_,
+                    name,
+                    "range",        # label in graph
+                    None,            # no CPT summary
+                    "transform", # edge type
+                )
+            )
+    branch_edges = []
+
+    for name, node in nodes.items():
+        if isinstance(node, BranchNode):
+            upstreams = set()
+
+            for rule in node.rules:
+                cond = rule.get("if", {})
+                for upstream in cond.keys():
+                    if upstream not in nodes:
+                        raise ValueError(
+                            f"Branch node '{name}' refers to unknown node '{upstream}'"
+                        )
+                    upstreams.add(upstream)
+
+            for upstream in upstreams:
+                branch_edges.append(
+                    (
+                        upstream,
+                        name,
+                        "branch",
+                        None,
+                        "branch",   # edge kind
+                    )
+                )
+
+    activation_edges = []
+
+    for name, node in nodes.items():
+        active_when = getattr(node, "active_when", None)
+        if not active_when:
+            continue
+
+        for upstream in active_when.keys():
+            if upstream not in nodes:
+                raise ValueError(
+                    f"Node '{name}' has active_when dependency on unknown node '{upstream}'"
+                )
+
+            activation_edges.append(
+                (
+                    upstream,
+                    name,
+                    "active",
+                    None,
+                    "activation",   # edge kind
+                )
+            )
+
+    full_edges = []
+    for edge in explicit_edges:
+        keys = list(edge.table.keys())
+        if len(keys) > 3:
+            tooltip = f"{len(keys)} rows"
+        else:
+            tooltip = ", ".join(map(str, keys))
+        label = edge.using
+        full_edges.append((edge.from_, edge.to, edge.using, label, tooltip))
+
+    combined_edges = full_edges + implicit_edges + branch_edges + activation_edges
+    
     def mermaid_id(name: str) -> str:
         return name.replace(".", "_").replace("-", "_")
 
@@ -32,9 +112,9 @@ def make_mermaid(graph: TransformationGraph) -> str:
 
     # Determine connected vs disconnected
     connected = set()
-    for e in edges:
-        connected.add(e.from_)
-        connected.add(e.to)
+    for src, dst, *_ in combined_edges:
+        connected.add(src)
+        connected.add(dst)
 
     all_nodes = set(nodes.keys())
     disconnected = sorted(all_nodes - connected)
@@ -65,6 +145,10 @@ def make_mermaid(graph: TransformationGraph) -> str:
 
             # Node summary + color
             summary = ""
+            shape_open = "["
+            shape_close = "]"
+            color = "#EEE"
+
             if isinstance(node, NumericNode):
                 summary = f"<br/>N({node.mean}, {node.sd})"
                 color = "#A3C4FF"  # soft blue
@@ -80,14 +164,31 @@ def make_mermaid(graph: TransformationGraph) -> str:
                 else:
                     summary = ""
                 color = "#C3F9C3"  # soft green
+            elif isinstance(node, NumericRangeNode):
+                # Show ranges
+                rngs = ", ".join(node.ranges)
+                summary = f"<br/>{rngs}"
+                color = "#E6C3F9"  # soft purple for derived buckets
+            elif isinstance(node, BranchNode):
+                shape_open = "{{"
+                shape_close = "}}"
+                summary = "<br/>branch"
+                color = "#FFD966"
             else:
                 color = "#EEE"
+            
+            if getattr(node, "active_when", None):
+                conds = ", ".join(
+                    f"{k}={v}" for k, v in node.active_when.items()
+                )
+                summary += f"<br/><i>active if:</i> {conds}"
+
 
             lines.append(
-                f'        {node_id}["{name}{summary}"]:::coloredNode_{node_id}'
+                f'        {node_id}{shape_open}"{name}{summary}"{shape_close}:::node_{node_id}'
             )
             lines.append(
-                f'        classDef coloredNode_{node_id} fill:{color},stroke:#333,stroke-width:1px;'
+                f'        classDef node_{node_id} fill:{color},stroke:#333,stroke-width:1px;'
             )
 
         if group_name != "root":
@@ -95,22 +196,28 @@ def make_mermaid(graph: TransformationGraph) -> str:
         else:
             lines.append("")
 
-    # Render edges
-    for edge in edges:
-        src = mermaid_id(edge.from_)
-        dst = mermaid_id(edge.to)
+    for src, dst, label, tooltip, kind in combined_edges:
+        src_id = mermaid_id(src)
+        dst_id = mermaid_id(dst)
 
-        # Compact tooltip for CPT
-        keys = list(edge.table.keys())
-        if len(keys) > 3:
-            tooltip = f"{len(keys)} rows"
-        else:
-            tooltip = ", ".join(map(str, keys))
-
-        label = edge.using
         if tooltip:
-            label += f" #40;{tooltip}#41;"
+            edge_label = f"{label} #40;{tooltip}#41;"
+        else:
+            edge_label = label
 
-        lines.append(f'    {src} -->|{label}| {dst}')
+        
+        if kind == "probabilistic":
+            arrow = "-->"
+        elif kind == "transform":
+            arrow = "-.->"
+        elif kind == "activation":
+            arrow = "--o"
+        else:
+            arrow = "==>"
+
+        lines.append(
+            f"    {src_id} {arrow}|{edge_label}| {dst_id}"
+        )
+
 
     return "\n".join(lines)

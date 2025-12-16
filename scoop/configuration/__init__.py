@@ -6,7 +6,7 @@ from ..utils.field_mapper import MeasurementMapper, ObservationMapper
 from ..utils.config_loader import load_transformation_graph
 
 _DISTRIBUTION_HOME = Path(__file__).resolve().parent / "profiles" / "lung"
-_DISTRIBUTION_PATH = _DISTRIBUTION_HOME / "probabilistic_transformations.yaml"
+_DISTRIBUTION_PATH = _DISTRIBUTION_HOME / "nsclc.yaml"
 
 _MAPPER_HOME = Path(__file__).resolve().parent / "mappers"
 _CONCEPT_MAP_PATH = _MAPPER_HOME / "concept_maps.yaml"

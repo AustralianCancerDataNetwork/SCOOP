@@ -10,7 +10,6 @@ from pathlib import Path
 class BaseDistribution(BaseModel):
     """Base class for all distribution types."""
     name: Optional[str] = None
-
     def sample(self) -> Any:
         raise NotImplementedError
     
@@ -87,7 +86,14 @@ class ConditionalDiscreteDistribution(BaseDistribution):
         n = len(self.labels)
         probs = [1.0] * n  # neutral element for multiplicative fusion
 
-        for edge in self.incoming_edges:
+        active_edges = [e for e in self.incoming_edges if e.is_active(parent_values)]
+        if not active_edges:
+            raise ValueError(
+                f"No active parent edges for conditional distribution {self.name} "
+                f"given parent values {parent_values}"
+            )
+
+        for edge in active_edges:
             parent_value = parent_values.get(edge.from_)
 
             row = edge.table.get(parent_value, edge.table.get("default"))
@@ -123,12 +129,20 @@ class ConditionalDiscreteDistribution(BaseDistribution):
         raise RuntimeError("Use sample_given(parent_values) for conditional distributions.")
 
 
-
 class GraphEdge(BaseModel):
     from_: str = Field(..., alias="from")
     to: str
     using: str
     table: Dict[Any, List[float]]
+    when: Optional[Dict[str, Any]] = None  # e.g. {"path": "surgery"}
+
+    def is_active(self, parent_values: Dict[str, Any]) -> bool:
+        if not self.when:
+            return True
+        for k, v in self.when.items():
+            if parent_values.get(k) != v:
+                return False
+        return True
 
 class BaseGraphNode(BaseModel):
     """Base class for all graph nodes."""
@@ -136,6 +150,13 @@ class BaseGraphNode(BaseModel):
     name: Optional[str] = None
     type: str
     built_distribution: Optional[BaseDistribution] = None
+    active_when: Optional[Dict[str, Any]] = None
+
+    def node_is_active(self, sampled: Dict[str, Any]) -> bool:
+        if not getattr(self, "active_when", None):
+            return True
+        return all(sampled.get(k) == v for k, v in self.active_when.items())
+
 
     def sample(self, parent_values: Optional[Dict[str, Any]] = None) -> Any:
         if not self.built_distribution:
@@ -271,8 +292,23 @@ class NumericRangeNode(BaseGraphNode):
 
         raise ValueError(f"Unsupported numeric range syntax: '{spec}'")
 
+class BranchNode(BaseGraphNode):
+    type: Literal["branch"]
+    from_: List[str] = Field(default_factory=list)   # which upstream vars it reads
+    rules: List[Dict[str, Any]]                      # ordered rules
+    default: str
+
+    def sample(self, parent_values: Dict[str, Any]) -> Any:
+        # Simple rule language: [{"if": {"operable": True}, "then": "surgery"}, ...]
+        for r in self.rules:
+            cond = r["if"]
+            if all(parent_values.get(k) == v for k, v in cond.items()):
+                return r["then"]
+        return self.default
+
+
 GraphNode = Annotated[
-    Union[NumericNode, CategoricalNode, NumericRangeNode],
+    Union[NumericNode, CategoricalNode, NumericRangeNode, BranchNode],
     Field(discriminator="type"),
 ]
 
@@ -317,11 +353,15 @@ class TransformationGraph(BaseModel):
             if isinstance(node, NumericNode):
                 continue
 
-            elif isinstance(node, NumericRangeNode):
+            if isinstance(node, NumericRangeNode):
                 incoming = [node.from_]
                 self.graph.setdefault(node.from_, []).append(name)
                 continue
 
+            # Branch nodes use deterministic routing instead of probabilistic sampling
+            if isinstance(node, BranchNode):
+                continue
+            
             if isinstance(node, CategoricalNode):
                 if incoming:
                     # Conditional categorical node
@@ -397,7 +437,13 @@ class TransformationGraph(BaseModel):
         for name in self.order:
             node = self.nodes[name]
 
-            if isinstance(node.built_distribution, ConditionalDiscreteDistribution):
+            if not node.node_is_active(sampled):
+                sampled[name] = None
+                continue
+
+            if isinstance(node, BranchNode):
+                sampled[name] = node.sample(parent_values=sampled)
+            elif isinstance(node.built_distribution, ConditionalDiscreteDistribution):
                 sampled[name] = node.sample(parent_values=sampled)
             elif isinstance(node, NumericRangeNode):
                 sampled[name] = node.sample(parent_values=sampled)
@@ -409,3 +455,7 @@ class TransformationGraph(BaseModel):
     def sample_many(self, n: int) -> List[Dict[str, Any]]:
         """Convenience: draw n independent samples."""
         return [self.sample_one() for _ in range(n)]
+
+
+
+
