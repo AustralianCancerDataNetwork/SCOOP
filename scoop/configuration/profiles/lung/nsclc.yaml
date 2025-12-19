@@ -112,6 +112,7 @@ graph:
       default: other
 
     # nb we are not using t/f or yes/no because they load as booleans and cause issues
+    # Note: Operable should always imply surgery occurence
     condition_episode.resectability:
       type: categorical
       labels: [operable, inoperable]
@@ -119,6 +120,10 @@ graph:
     condition_episode.radiotherapy_eligibility:
       type: categorical
       labels: [rt_yes, rt_no]
+
+    condition_episode.chemotherapy_eligibility:
+      type: categorical
+      labels: [chemo_yes, chemo_no]
 
     condition_episode.targetable_mutation:
       type: branch
@@ -129,6 +134,11 @@ graph:
           then: tm_yes
       default: tm_no
 
+
+    # Early - See ESMO fig 1
+
+    # TODO: This should also apply to patients who are all of:
+    # chemo_no locally_advanced operable tm_yes
     treatment_episode.adjuvant_targeted:
       type: categorical
       labels: [adj_targ]
@@ -139,18 +149,47 @@ graph:
 
     treatment_episode.definitive_sbrt:
         type: categorical
-        labels: [sbrt_yes]
+        labels: [sbrt]
         active_when:
           condition_episode.group_stage: early
           condition_episode.resectability: inoperable
     
     treatment_episode.surgery_port:
       type: categorical
-      labels: [port_yes]
+      labels: [port]
       active_when:
         condition_episode.resectability: operable
         condition_episode.group_stage: early
         condition_episode.targetable_mutation: tm_no
+
+  # ESMO has refer to MDT for R2 however NCCN lists either reresection or RT
+  
+  # Locally advanced - see ESMO fig 2
+    treatment_episode.adjuvant_chemotherapy:
+      type: categorical
+      labels: [adj_chemo]
+      active_when:
+        condition_episode.resectability: operable
+        condition_episode.group_stage: locally_advanced
+        condition_episode.targetable_mutation: tm_no
+        condition_episode.chemotherapy_eligibility: chemo_yes
+
+    # TODO: How to add req for N2a - person will need TNM staging
+    treatment_episode.neoadjuvant_chemotherapy_w_ici:
+      type: categorical
+      labels: [neoadj_chemo_ici]
+      active_when:
+        condition_episode.resectability: operable
+        condition_episode.group_stage: locally_advanced
+        condition_episode.targetable_mutation: tm_no
+    
+    treatment_episode.adjuvant_targeted_w_chemotherapy:
+      type: categorical
+      labels: [adj_targ_chemo]
+      active_when:
+        condition_episode.resectability: operable
+        condition_episode.group_stage: locally_advanced
+        condition_episode.targetable_mutation: tm_yes
 
   edges:
     # todo load time validation that from/to nodes have the right number of classes to match the probability tables
