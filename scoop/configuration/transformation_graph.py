@@ -423,6 +423,10 @@ class TransformationGraph(BaseModel):
                     q.append(nxt)
 
         if len(result) != len(self.nodes):
+            # Note: This can trigger in circumstances where the issue is NOT
+            # the presence of a cycle but rather issues in graph incompleteness
+            # E.g. had dependencies on biomarker node, no edge leading to
+            # biomarker node. Triggered this. 
             raise ValueError("Graph contains a cycle")
 
         return result
