@@ -12,7 +12,7 @@
 graph:
   nodes:
 
-    # sex -> morphology -> egfr probabilitiess
+    # sex -> morphology -> egfr probabilities
     person.sex:
       type: categorical
       distribution:
