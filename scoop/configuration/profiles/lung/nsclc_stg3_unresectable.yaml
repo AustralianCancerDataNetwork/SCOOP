@@ -1,12 +1,11 @@
 # YAML for NSCLC stage 3 and unresectable
 # Drafted by Brianna 
 # Last updated: 13/01/2025
-# Based on: https://www.annalsofoncology.org/action/showPdf?pii=S0923-7534%2825%2900923-8 
 #
 # Assumptions/simplifications:
 # - RT / sequential CRT / concurrent CRT is assumed to be based solely on PS
 #
-# See: [link diagram/documentation]
+# See: https://unsw-my.sharepoint.com/:w:/g/personal/z5555108_ad_unsw_edu_au/IQDpV-P_V4tTQrLPpd4lvfd9AdQ92LkMGJh-mN9tmD3y-K4?e=60mgM8
 
 
 graph:

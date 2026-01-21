@@ -1,9 +1,7 @@
 # YAML for NSCLC stage 4 with no oncogenic drivers identified
 # Drafted by Brianna 
-# Last updated: 14/01/2025
-# Based on: ESMO living guidelines
-# https://www.esmo.org/guidelines/living-guidelines/esmo-living-guideline-non-oncogene-addicted-metastatic-non-small-cell-lung-cancer/management-with-systemic-therapy
-#
+# Last updated: 21/01/2025
+
 # Assumptions/simplifications:
 # - Suitiblity for ICIs is based on an arbitrary probability and not
 # linked to patient or tumour characteristics.
@@ -17,8 +15,7 @@
     # Prev lung radiation
     # Some other diseases
 
-# See: [link diagram/documentation]
-
+# See: https://unsw-my.sharepoint.com/:w:/g/personal/z5555108_ad_unsw_edu_au/IQAgmrNOK1dzQp4eLGpCZaw0ASFXSN1BjAQtoPSMYh5cKws?e=coefGW
 
 
 graph:
@@ -81,6 +78,11 @@ graph:
     condition_occurrence.pdl1_binary:
       type: categorical
       labels: ["present", "absent"]
+
+    # Refers to tumour PD-L1
+    condition_occurrence.pdl1_binary_50:
+      type: categorical
+      labels: ["gte50", "lt50"]
 
     treatment_episode.best_supportive_care:
       type: categorical
@@ -151,6 +153,7 @@ graph:
       active_when:
         person.performance_status: ps2
         person.ici_eligible: eligible
+        condition_occurrence.pdl1: high
 
     # Options:
     # Atezolizumab monotherapy
@@ -163,6 +166,7 @@ graph:
         person.performance_status: ps2
         person.ici_eligible: eligible
         condition_occurrence.morphology: squamous
+        condition_occurrence.pdl1_binary_50: lt50
 
     # Options:
     # Atezolizumab monotherapy
@@ -176,6 +180,7 @@ graph:
         person.performance_status: ps2
         person.ici_eligible: eligible
         condition_occurrence.morphology: nonsquamous
+        condition_occurrence.pdl1_binary_50: lt50
 
     # ? assign smokers to monotherapy and no smoking hx to w chemo ?
     # options:
@@ -209,7 +214,6 @@ graph:
         condition_occurrence.morphology: nonsquamous
 
 
-
   edges:
     - from: condition_occurrence.pdl1
       to: condition_occurrence.pdl1_binary
@@ -220,17 +224,23 @@ graph:
         low:    [1, 0]
         absent: [0, 1]
 
+    - from: condition_occurrence.pdl1
+      to: condition_occurrence.pdl1_binary_50
+      using: probability_table
+      table:
+        high:   [1, 0]
+        low:    [0, 1]
+        absent: [0, 1]
+
     # PD-L1 proportions
     # https://doi.org/10.1016/j.pathol.2023.08.008
-    # The 50 distinction is used in metastatic
-    # Just positive (i.e. >1%) is req for earlier
-    # So split into the 3 categories
+    # Split into the 3 categories
     - from: condition_occurrence.morphology
       to: condition_occurrence.pdl1
       using: probability_table
       table:
                    # ["high", "low", "absent"]
-              # i.e. [  >=50,  1-50, >1] 
+              # i.e. [  >=50,  1-50, <1] 
         nonsquamous: [  0.30,  0.31, 0.39]
         squamous:    [  0.26,  0.38, 0.36]
 
