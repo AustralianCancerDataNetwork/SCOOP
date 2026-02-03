@@ -699,9 +699,17 @@ class TransformationGraph(BaseModel):
     def _repr_html_(self) -> str:
         return f"""
         <style>
-          .tg-container {{
-            font-family: sans-serif;
-          }}
+            .tg-container {{
+                font-family: sans-serif;
+                background: white !important;
+                color: #111 !important;
+                padding: 0.75em;
+                border-radius: 6px;
+            }}
+
+            .tg-container * {{
+                color: inherit;
+            }}
           .tg-section {{
             margin-top: 1em;
           }}
@@ -732,11 +740,38 @@ class TransformationGraph(BaseModel):
           {self._nodes_html()}
           {self._edges_html()}
         </div>
-        """
-    
+        """     
+    # def mermaid_html(mermaid_source: str) -> str:
+
 
     def to_mermaid(self) -> str:
-        return make_mermaid(self)
+        mmd = make_mermaid(self)
+
+        return f"""
+<style>
+    .mermaid {{
+        font-family: sans-serif;
+        background: white !important;
+        color: #111 !important;
+        padding: 0.75em;
+        border-radius: 6px;
+    }}
+</style>
+
+<div class="mermaid">
+{mmd}
+</div>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+mermaid.initialize({{
+    startOnLoad: false,
+    theme: "default",
+    securityLevel: "loose"
+}});
+mermaid.run();
+</script>
+"""
     
     def show(self) -> None:
         from IPython.display import HTML, display # type: ignore
