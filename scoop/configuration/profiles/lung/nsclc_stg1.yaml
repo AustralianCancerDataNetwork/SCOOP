@@ -72,7 +72,7 @@ graph:
       type: branch
       rules: 
       - if: { person.performance_status_binary: not_v_frail }
-          then: operable
+        then: operable
       - if: { person.performance_status_binary: v_frail }
         then: inoperable
       default: operable

@@ -1,9 +1,11 @@
 # clinical_mapper_base.py
 import yaml
 from pathlib import Path
-from typing import Any, Type
+from typing import Any, Type, Callable, TypeAlias
 from .concept_map import ConceptMapper
 from ..schema.clinical_field_base import ClinicalFieldType
+
+ValueMap: TypeAlias = Callable[[Any], Any]
 
 class ClinicalMapperBase:
     """
@@ -40,7 +42,8 @@ class ClinicalMapperBase:
 
             unit_concept_id = entry.get("unit_concept_id")
             value_map_name = entry.get("value_map")
-
+            value_map: ValueMap
+            
             if value_map_name:
                 value_map = concept_mapper(value_map_name)
             else:

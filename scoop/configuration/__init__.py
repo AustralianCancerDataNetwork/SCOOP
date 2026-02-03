@@ -1,9 +1,9 @@
+from pathlib import Path
 from .transformation_graph import ConditionalDiscreteDistribution
 from .object_config import ObjectConfig
-from pathlib import Path
 from ..utils.concept_map import ConceptMapper
 from ..utils.field_mapper import MeasurementMapper, ObservationMapper
-from ..utils.config_loader import load_transformation_graph
+from .config_loader import load_transformation_graph
 
 _DISTRIBUTION_HOME = Path(__file__).resolve().parent / "profiles" / "lung"
 _DISTRIBUTION_PATH = _DISTRIBUTION_HOME / "nsclc.yaml"
@@ -27,8 +27,15 @@ except FileNotFoundError as e:
     raise RuntimeError(f"Observation map file not found: {_OBSERVATION_MAP_PATH}") from e
 
 try: 
-    transformation_graph = load_transformation_graph(_DISTRIBUTION_PATH)
+    transformation_graph = load_transformation_graph(f'{_DISTRIBUTION_PATH}')
 except FileNotFoundError as e:
     raise RuntimeError(f"Probabilistic distribution config file not found: {_DISTRIBUTION_PATH}") from e
 
-__all__ = ["concept_mapper", "measurement_mapper", "observation_mapper", "transformation_graph"]
+__all__ = [
+    "concept_mapper", 
+    "measurement_mapper", 
+    "observation_mapper", 
+    "transformation_graph", 
+    "ConditionalDiscreteDistribution", 
+    "ObjectConfig"
+]

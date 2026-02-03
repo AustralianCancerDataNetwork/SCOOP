@@ -9,12 +9,19 @@ class ObjectConfig(BaseModel):
     """
     distributions: Dict[str, BaseDistribution]
 
-    @field_validator("distributions", mode="before")
+    # @field_validator("distributions", mode="before")
+    # @classmethod
+    # def _coerce_dict(cls, v: Any) -> Dict[str, Any]:
+    #     # Allow plain dicts to be loaded and auto-validated later
+    #     if not isinstance(v, dict):
+    #         raise TypeError("distributions must be a mapping")
+    #     return v
+
+    @field_validator("distributions", mode="after")
     @classmethod
-    def _coerce_dict(cls, v: Any):
-        # Allow plain dicts to be loaded and auto-validated later
-        if not isinstance(v, dict):
-            raise TypeError("distributions must be a mapping")
+    def _validate_distributions(
+        cls, v: Dict[str, BaseDistribution]
+    ) -> Dict[str, BaseDistribution]:
         return v
 
     def sample(self) -> dict[str, Any]:

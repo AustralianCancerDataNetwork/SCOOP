@@ -1,10 +1,20 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Dict, List, Optional, Any, Union, Annotated, Literal
+from typing import Dict, List, Optional, Any, Union, Annotated, Literal, DefaultDict
 import random
-import yaml
 from collections import defaultdict, deque
-from pathlib import Path
+from dataclasses import dataclass
+from ..utils.document_generation import mermaid_html, make_mermaid
+
+@dataclass
+class GraphValidationIssue:
+    level: str          # "error" | "warning"
+    message: str
+    context: str | None = None
+
+    def __repr__(self) -> str:
+        ctx = f" ({self.context})" if self.context else ""
+        return f"[{self.level.upper()}] {self.message}{ctx}"
 
 
 class BaseDistribution(BaseModel):
@@ -12,6 +22,11 @@ class BaseDistribution(BaseModel):
     name: Optional[str] = None
     def sample(self) -> Any:
         raise NotImplementedError
+    
+    def __repr__(self) -> str:
+        cls = self.__class__.__name__
+        name = f"name={self.name!r}" if self.name else ""
+        return f"<{cls}({name})>"
     
 
 class NumericDistribution(BaseDistribution):
@@ -27,6 +42,7 @@ class NumericDistribution(BaseDistribution):
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     as_int: bool = False
+    kind: Literal["numeric"] = "numeric"
 
     def sample(self):
         # Uniform if no sd
@@ -44,6 +60,20 @@ class NumericDistribution(BaseDistribution):
             val = min(self.max_value, val)
 
         return int(val) if self.as_int else val
+    
+
+    def __repr__(self) -> str:
+        parts = [f"mean={self.mean}"]
+        if self.sd is not None:
+            parts.append(f"sd={self.sd}")
+        if self.min_value is not None or self.max_value is not None:
+            parts.append(f"range=[{self.min_value},{self.max_value}]")
+        if self.as_int:
+            parts.append("int")
+
+        name = f"{self.name}: " if self.name else ""
+        return f"<NumericDistribution {name}{', '.join(parts)}>"
+
 
 class DiscreteDistribution(BaseDistribution):
     """Discrete labelled or numeric distribution - simple lookup"""
@@ -51,6 +81,7 @@ class DiscreteDistribution(BaseDistribution):
     probs: Dict[Union[int, float, str], float] = Field(
         ..., description="Mapping of label → probability (must sum to 1.0)"
     )
+    kind: Literal["discrete"] = "discrete"
 
     @field_validator("probs")
     @classmethod
@@ -63,6 +94,15 @@ class DiscreteDistribution(BaseDistribution):
     def sample(self) -> Union[int, float, str]:
         vals, weights = zip(*self.probs.items())
         return random.choices(vals, weights=weights, k=1)[0] 
+    
+
+    def __repr__(self) -> str:
+        n = len(self.probs)
+        preview = list(self.probs.keys())[:3]
+        suffix = "…" if n > 3 else ""
+        name = f"{self.name}: " if self.name else ""
+        return f"<DiscreteDistribution {name}{n} cats [{', '.join(map(str, preview))}{suffix}]>"
+
 
 class ConditionalDiscreteDistribution(BaseDistribution):
     """
@@ -81,6 +121,7 @@ class ConditionalDiscreteDistribution(BaseDistribution):
 
     labels: List[str]
     incoming_edges: List[GraphEdge]
+    kind: Literal["conditional_discrete"] = "conditional_discrete"
 
     def get_probs(self, parent_values: Dict[str, Any]) -> Dict[str, float]:
         n = len(self.labels)
@@ -127,6 +168,15 @@ class ConditionalDiscreteDistribution(BaseDistribution):
     def sample(self) -> Any:
         # Not meaningful without parent values
         raise RuntimeError("Use sample_given(parent_values) for conditional distributions.")
+    
+
+    def __repr__(self) -> str:
+        parents = sorted({e.from_ for e in self.incoming_edges})
+        name = f"{self.name}: " if self.name else ""
+        return (
+            f"<ConditionalDiscreteDistribution {name}"
+            f"labels={len(self.labels)}, parents={parents}>"
+        )
 
 
 class GraphEdge(BaseModel):
@@ -144,19 +194,47 @@ class GraphEdge(BaseModel):
                 return False
         return True
 
+    def __repr__(self) -> str:
+        cond = f", when={self.when}" if self.when else ""
+        return f"<Edge {self.from_} -> {self.to} using={self.using}{cond}>"
+
+    def to_html(self) -> str:
+        when = (
+            f"<br><i>when:</i> {self.when}"
+            if self.when else ""
+        )
+
+        return f"""
+        <div class="tg-edge">
+          <b>{self.from_}</b> → <b>{self.to}</b><br>
+          using: {self.using}
+          {when}
+        </div>
+        """
+    
+
+Distribution = Annotated[
+    Union[
+        NumericDistribution,
+        DiscreteDistribution,
+        ConditionalDiscreteDistribution,
+    ],
+    Field(discriminator="kind"),
+]
+
+
 class BaseGraphNode(BaseModel):
     """Base class for all graph nodes."""
 
     name: Optional[str] = None
-    type: str
-    built_distribution: Optional[BaseDistribution] = None
+    built_distribution: Optional[Distribution] = None
     active_when: Optional[Dict[str, Any]] = None
 
     def node_is_active(self, sampled: Dict[str, Any]) -> bool:
-        if not getattr(self, "active_when", None):
+        active_when = self.active_when
+        if not active_when:
             return True
-        return all(sampled.get(k) == v for k, v in self.active_when.items())
-
+        return all(sampled.get(k) == v for k, v in active_when.items())
 
     def sample(self, parent_values: Optional[Dict[str, Any]] = None) -> Any:
         if not self.built_distribution:
@@ -170,6 +248,43 @@ class BaseGraphNode(BaseModel):
             return self.built_distribution.sample_given(parent_values)
         else:
             return self.built_distribution.sample()
+    
+    def to_html(self) -> str:
+        name = self.name or "<?>"
+        cls = self.__class__.__name__.lower()
+        active = (
+            f"<span style='color:#666'>(active_when)</span>"
+            if self.active_when else
+            "<span style='color:#666'>(always active)</span>"
+        )
+
+        dist = (
+            self.built_distribution.__class__.__name__
+            if self.built_distribution else
+            "unbuilt"
+        )
+
+        return f"""
+        <div class="tg-node tg-node-{cls}">
+          <b>{name}</b>
+          <div class="tg-node-meta">
+            type: {self.__class__.__name__}<br>
+            distribution: {dist}<br>
+            {active}
+          </div>
+        </div>
+        """
+    
+    def __repr__(self) -> str:
+        cls = self.__class__.__name__
+        name = self.name or "<?>"
+        active = "active_when" if self.active_when else "always_active"
+        dist = (
+            repr(self.built_distribution)
+            if self.built_distribution
+            else "unbuilt"
+        )
+        return f"<{cls} {name} ({active}) {dist}>"
 
 
 class NumericNode(BaseGraphNode):
@@ -183,7 +298,7 @@ class NumericNode(BaseGraphNode):
 
     @field_validator("sd")
     @classmethod
-    def sd_positive(cls, v):
+    def sd_positive(cls, v: float | None) -> Optional[float]:
         if v is not None and v <= 0:
             raise ValueError("'sd' must be positive.")
         return v
@@ -198,15 +313,42 @@ class NumericNode(BaseGraphNode):
             as_int=self.as_int,
         )
         return self
+    
 
+    def __repr__(self) -> str:
+        name = self.name or "<?>"
+        return (
+            f"<NumericNode {name} "
+            f"mean={self.mean}, sd={self.sd}, "
+            f"range=[{self.min_value},{self.max_value}], int={self.as_int}>"
+        )
+
+Label = Union[str, float, int]
+
+def empty_distribution() -> Dict[Label, float]:
+    return {}
 
 class CategoricalNode(BaseGraphNode):
     type: Literal["categorical"]
 
     # For unconditional nodes: user can specify distribution explicitly
     # For conditional nodes: distribution may be empty and labels provided instead
-    distribution: Dict[Union[str, float, int], float] = Field(default_factory=dict)
+    distribution: Dict[Label, float] = Field(default_factory=empty_distribution)
     labels: Optional[List[str]] = None
+
+    def __repr__(self) -> str:
+        name = self.name or "<?>"
+        if self.built_distribution:
+            dist = repr(self.built_distribution)
+        elif self.distribution:
+            dist = f"explicit {len(self.distribution)} cats"
+        elif self.labels:
+            dist = f"labels={self.labels}"
+        else:
+            dist = "unconfigured"
+
+        active = f", active_when={self.active_when}" if self.active_when else ""
+        return f"<CategoricalNode {name} {dist}{active}>"
 
 
 class NumericRangeNode(BaseGraphNode):
@@ -214,9 +356,9 @@ class NumericRangeNode(BaseGraphNode):
     from_: str = Field(..., alias="from")
     ranges: List[str]
 
-    def sample(self, parent_values: Dict[str, Any]) -> Any:
-        value = parent_values[self.from_]
-        return self.assign_bucket(value)
+    # def sample(self, parent_values: Dict[str, Any]) -> Any:
+    #     value = parent_values[self.from_]
+    #     return self.assign_bucket(value)
 
     def assign_bucket(self, x: float) -> str:
         # parse each range like "<60", "60-69", "80+"
@@ -224,15 +366,24 @@ class NumericRangeNode(BaseGraphNode):
             if self._matches_range(x, r):
                 return r
         raise ValueError(f"{x} not in any defined range for {self.name}")
+    
+
+    def __repr__(self) -> str:
+        name = self.name or "<?>"
+        return (
+            f"<NumericRangeNode {name} from={self.from_} "
+            f"ranges={self.ranges}>"
+        )
 
 
-    def sample(self, parent_values: Dict[str, Any]) -> Any:
+    def sample(self, parent_values: Optional[Dict[str, Any]] = None) -> Any:
+        if parent_values is None:
+            raise ValueError("NumericRangeNode requires parent_values to sample.")
         if self.from_ not in parent_values:
             raise ValueError(
                 f"NumericRangeNode '{self.name}' requires upstream value '{self.from_}'. "
                 f"Parent values provided: {list(parent_values.keys())}"
             )
-
         x = parent_values[self.from_]
         bucket = self.assign_bucket(x)
         return bucket
@@ -298,7 +449,10 @@ class BranchNode(BaseGraphNode):
     rules: List[Dict[str, Any]]                      # ordered rules
     default: str
 
-    def sample(self, parent_values: Dict[str, Any]) -> Any:
+
+    def sample(self, parent_values: Optional[Dict[str, Any]] = None) -> Any:
+        if parent_values is None:
+            raise ValueError("BranchNode requires parent_values to sample.")        
         # Simple rule language: [{"if": {"operable": True}, "then": "surgery"}, ...]
         for r in self.rules:
             cond = r["if"]
@@ -306,6 +460,13 @@ class BranchNode(BaseGraphNode):
                 return r["then"]
         return self.default
 
+    def __repr__(self) -> str:
+        name = self.name or "<?>"
+        rules_n = len(self.rules)
+        return (
+            f"<BranchNode {name} "
+            f"inputs={self.from_}, rules={rules_n}, default={self.default}>"
+        )
 
 GraphNode = Annotated[
     Union[NumericNode, CategoricalNode, NumericRangeNode, BranchNode],
@@ -337,7 +498,7 @@ class TransformationGraph(BaseModel):
                 node.built_distribution.name = name 
 
         # 2. Build adjacency map
-        g = defaultdict(list)
+        g: DefaultDict[str, list[str]] = defaultdict(list)
         for edge in self.edges:
             g[edge.from_].append(edge.to)
         self.graph = dict(g)
@@ -362,7 +523,7 @@ class TransformationGraph(BaseModel):
             if isinstance(node, BranchNode):
                 continue
             
-            if isinstance(node, CategoricalNode):
+            else: # CategoricalNode
                 if incoming:
                     # Conditional categorical node
                     # Decide label order: prefer explicit labels, else from any CPT row length
@@ -383,9 +544,9 @@ class TransformationGraph(BaseModel):
                         else:
                             # create dummy labels if absolutely necessary
                             labels = [f"cat_{i}" for i in range(len(some_row))]
-
+                    label_str: list[str] = [str(l) for l in labels]
                     node.built_distribution = ConditionalDiscreteDistribution(
-                        labels=labels,
+                        labels=label_str,
                         incoming_edges=incoming,
                     )
                 else:
@@ -459,7 +620,192 @@ class TransformationGraph(BaseModel):
     def sample_many(self, n: int) -> List[Dict[str, Any]]:
         """Convenience: draw n independent samples."""
         return [self.sample_one() for _ in range(n)]
+    
+
+    def describe(self) -> str:
+        """
+        Return a human-readable multi-line summary of the graph.
+        """
+        lines: list[str] = []
+
+        lines.append(repr(self))
+        lines.append("")
+
+        # Node summary
+        lines.append("Nodes:")
+        for name in self.order:
+            node = self.nodes[name]
+            lines.append(f"  - {repr(node)}")
+
+        # Edge summary
+        if self.edges:
+            lines.append("")
+            lines.append("Edges:")
+            for edge in self.edges:
+                lines.append(f"  - {repr(edge)}")
+
+        return "\n".join(lines)
+    
+
+    def __repr__(self) -> str:
+        node_types: Dict[str, int] = {}
+        for n in self.nodes.values():
+            t = n.__class__.__name__
+            node_types[t] = node_types.get(t, 0) + 1
+
+        parts = ", ".join(f"{k}={v}" for k, v in sorted(node_types.items()))
+
+        return (
+            f"<TransformationGraph "
+            f"nodes={len(self.nodes)}, "
+            f"edges={len(self.edges)}, "
+            f"order_len={len(self.order)}, "
+            f"{parts}>"
+        )
+    
+    def __str__(self) -> str:
+        return f"TransformationGraph({len(self.nodes)} nodes, {len(self.edges)} edges)"
 
 
 
+    def _nodes_html(self) -> str:
+        items = "\n".join(
+            node.to_html()
+            for node in self.nodes.values()
+        )
+        return f"""
+        <div class="tg-section">
+          <h4>Nodes</h4>
+          {items}
+        </div>
+        """
+    
 
+    def _edges_html(self) -> str:
+        if not self.edges:
+            return "<i>No edges</i>"
+
+        items = "\n".join(
+            edge.to_html()
+            for edge in self.edges
+        )
+        return f"""
+        <div class="tg-section">
+          <h4>Edges</h4>
+          {items}
+        </div>
+        """
+
+    def _repr_html_(self) -> str:
+        return f"""
+        <style>
+          .tg-container {{
+            font-family: sans-serif;
+          }}
+          .tg-section {{
+            margin-top: 1em;
+          }}
+          .tg-node, .tg-edge {{
+            padding: 0.4em 0.6em;
+            margin: 0.3em 0;
+            border-left: 3px solid #ccc;
+            background: #fafafa;
+          }}
+          .tg-node-meta {{
+            font-size: 0.9em;
+            color: #444;
+          }}
+        .tg-node {{ padding: 0.4em 0.6em; margin: 0.3em 0; background: #fafafa; }}
+        .tg-node-numericnode {{ border-left: 4px solid #6baed6; }}
+        .tg-node-categoricalnode {{ border-left: 4px solid #74c476; }}
+        .tg-node-numericrangenode {{ border-left: 4px solid #9e9ac8; }}
+        .tg-node-branchnode {{ border-left: 4px solid #fd8d3c; }}
+        </style>
+
+        <div class="tg-container">
+          <h3>TransformationGraph</h3>
+          <div>
+            <b>Nodes:</b> {len(self.nodes)}<br>
+            <b>Edges:</b> {len(self.edges)}
+          </div>
+
+          {self._nodes_html()}
+          {self._edges_html()}
+        </div>
+        """
+    
+
+    def to_mermaid(self) -> str:
+        return make_mermaid(self)
+    
+    def show(self) -> None:
+        from IPython.display import HTML, display # type: ignore
+        display(HTML(mermaid_html(self.to_mermaid())))
+
+
+    def validate_graph(self, *, strict: bool = False) -> list[GraphValidationIssue]:
+        issues: list[GraphValidationIssue] = []
+
+        # 1. Check all nodes in order
+        for name in self.order:
+            node = self.nodes[name]
+
+            if node.built_distribution is None and not isinstance(node, BranchNode):
+                issues.append(
+                    GraphValidationIssue(
+                        "error",
+                        "Node has no built distribution",
+                        context=repr(node),
+                    )
+                )
+
+        # 2. Check edges reference valid nodes
+        for edge in self.edges:
+            if edge.from_ not in self.nodes:
+                issues.append(
+                    GraphValidationIssue(
+                        "error",
+                        f"Edge references missing source node '{edge.from_}'",
+                        context=repr(edge),
+                    )
+                )
+            if edge.to not in self.nodes:
+                issues.append(
+                    GraphValidationIssue(
+                        "error",
+                        f"Edge references missing target node '{edge.to}'",
+                        context=repr(edge),
+                    )
+                )
+
+        # 3. Conditional distributions sanity check
+        for node in self.nodes.values():
+            dist = node.built_distribution
+            if isinstance(dist, ConditionalDiscreteDistribution):
+                if not dist.incoming_edges:
+                    issues.append(
+                        GraphValidationIssue(
+                            "error",
+                            "Conditional distribution has no incoming edges",
+                            context=repr(node),
+                        )
+                    )
+
+        # 4. Active_when references
+        for node in self.nodes.values():
+            if node.active_when:
+                for k in node.active_when:
+                    if k not in self.nodes:
+                        issues.append(
+                            GraphValidationIssue(
+                                "error",
+                                f"active_when references unknown node '{k}'",
+                                context=repr(node),
+                            )
+                        )
+
+        if strict and any(i.level == "error" for i in issues):
+            msg = "\n".join(repr(i) for i in issues)
+            raise ValueError(f"Graph validation failed:\n{msg}")
+
+        return issues

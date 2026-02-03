@@ -1,16 +1,60 @@
-import yaml
-from typing import Dict, List
-from scoop.configuration.transformation_graph import (
-    TransformationGraph, 
-    NumericNode, 
-    CategoricalNode,
-    ConditionalDiscreteDistribution, 
-    DiscreteDistribution,
-    NumericRangeNode,
-    BranchNode
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from scoop.configuration.transformation_graph import (
+        TransformationGraph, 
+        # NumericNode, 
+        # CategoricalNode,
+        # ConditionalDiscreteDistribution, 
+        # DiscreteDistribution,
+        # NumericRangeNode,
+        # BranchNode,
+        GraphNode,
+        GraphEdge
+    )
+from typing import (
+    Any,
+    Dict,
+    List,
+    Tuple,
+    Optional,
+    Literal,
 )
 
-def make_mermaid(graph: TransformationGraph) -> str:
+def mermaid_html(mermaid_source: str) -> str:
+    return f"""
+<div class="mermaid">
+{mermaid_source}
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({{
+    startOnLoad: true,
+    theme: "default",
+    securityLevel: "loose"
+  }});
+</script>
+"""
+
+MermaidEdgeKind = Literal[
+    "probabilistic",
+    "transform",
+    "branch",
+    "activation",
+]
+
+MermaidEdge = Tuple[
+    str,              # src
+    str,              # dst
+    str,              # label
+    Optional[str],    # tooltip
+    MermaidEdgeKind,  # kind
+]
+
+
+def make_mermaid(graph: "TransformationGraph") -> str:
     """
     Generate a Mermaid flowchart from a TransformationGraph.
 
@@ -23,13 +67,13 @@ def make_mermaid(graph: TransformationGraph) -> str:
     - Edge labels show 'using' and a compact CPT summary
     """
 
-    nodes = graph.nodes
-    explicit_edges = graph.edges
+    nodes: Dict[str, "GraphNode"] = graph.nodes
+    explicit_edges: List["GraphEdge"] = graph.edges
 
 
-    implicit_edges = []
+    implicit_edges: List[MermaidEdge] = []
     for name, node in nodes.items():
-        if isinstance(node, NumericRangeNode):
+        if node.type=="numeric_range":
             if node.from_ not in nodes:
                 raise ValueError(
                     f"Range node '{name}' refers to unknown upstream node '{node.from_}'"
@@ -39,18 +83,18 @@ def make_mermaid(graph: TransformationGraph) -> str:
                     node.from_,
                     name,
                     "range",        # label in graph
-                    None,            # no CPT summary
-                    "transform", # edge type
+                    None,           # no CPT summary
+                    "transform",    # edge type
                 )
             )
-    branch_edges = []
+    branch_edges: List[MermaidEdge] = []
 
     for name, node in nodes.items():
-        if isinstance(node, BranchNode):
-            upstreams = set()
+        if node.type == "branch":
+            upstreams: set[str] = set()
 
             for rule in node.rules:
-                cond = rule.get("if", {})
+                cond: Dict[str, Any] = rule.get("if", {})
                 for upstream in cond.keys():
                     if upstream not in nodes:
                         raise ValueError(
@@ -69,7 +113,7 @@ def make_mermaid(graph: TransformationGraph) -> str:
                     )
                 )
 
-    activation_edges = []
+    activation_edges: List[MermaidEdge] = []
 
     for name, node in nodes.items():
         active_when = getattr(node, "active_when", None)
@@ -92,15 +136,16 @@ def make_mermaid(graph: TransformationGraph) -> str:
                 )
             )
 
-    full_edges = []
+    full_edges: List[MermaidEdge] = []
     for edge in explicit_edges:
         keys = list(edge.table.keys())
+        tooltip: Optional[str]
         if len(keys) > 3:
             tooltip = f"{len(keys)} rows"
         else:
             tooltip = ", ".join(map(str, keys))
         label = edge.using
-        full_edges.append((edge.from_, edge.to, edge.using, label, tooltip))
+        full_edges.append((edge.from_, edge.to, edge.using, tooltip, "probabilistic"))
 
     combined_edges = full_edges + implicit_edges + branch_edges + activation_edges
     
@@ -111,7 +156,7 @@ def make_mermaid(graph: TransformationGraph) -> str:
         return name.split(".")[0] if "." in name else "root"
 
     # Determine connected vs disconnected
-    connected = set()
+    connected: set[str] = set()
     for src, dst, *_ in combined_edges:
         connected.add(src)
         connected.add(dst)
@@ -149,37 +194,36 @@ def make_mermaid(graph: TransformationGraph) -> str:
             shape_close = "]"
             color = "#EEE"
 
-            if isinstance(node, NumericNode):
+            if node.type=="numeric":
                 summary = f"<br/>N({node.mean}, {node.sd})"
                 color = "#A3C4FF"  # soft blue
-            elif isinstance(node, CategoricalNode):
-                if isinstance(node.built_distribution, DiscreteDistribution):
-                    cats = list(node.built_distribution.probs.keys())
+            elif node.type=="categorical":
+                if node.built_distribution.kind == 'discrete': #type: ignore
+                    cats = list(node.built_distribution.probs.keys()) #type: ignore
                     if len(cats) <= 4:
                         summary = "<br/>" + ", ".join(map(str, cats))
                     else:
                         summary = f"<br/>{len(cats)} categories"
-                elif isinstance(node.built_distribution, ConditionalDiscreteDistribution):
+                elif node.built_distribution.kind == 'conditional_discrete': #type: ignore
                     summary = "<br/>conditional"
                 else:
                     summary = ""
                 color = "#C3F9C3"  # soft green
-            elif isinstance(node, NumericRangeNode):
+            elif node.type=="numeric_range":
                 # Show ranges
                 rngs = ", ".join(node.ranges)
                 summary = f"<br/>{rngs}"
                 color = "#E6C3F9"  # soft purple for derived buckets
-            elif isinstance(node, BranchNode):
+            else: # BranchNode or other
                 shape_open = "{{"
                 shape_close = "}}"
                 summary = "<br/>branch"
                 color = "#FFD966"
-            else:
-                color = "#EEE"
             
-            if getattr(node, "active_when", None):
+            active = getattr(node, "active_when")
+            if active:
                 conds = ", ".join(
-                    f"{k}={v}" for k, v in node.active_when.items()
+                    f"{k}={v}" for k, v in active.items()
                 )
                 summary += f"<br/><i>active if:</i> {conds}"
 
