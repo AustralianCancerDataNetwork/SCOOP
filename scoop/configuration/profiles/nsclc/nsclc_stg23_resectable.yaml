@@ -1,0 +1,96 @@
+# YAML for NSCLC stage 2-3 and resectable
+# Drafted by Brianna 
+# Last updated: 21/01/2025
+# Assumptions/simplifications:
+# - It is assumed that all surgeries have R0 result
+# - ChT-ICI eligibility is not based on patient or tumour characteristics
+# - ChT eligibility is assumed to be solely based on PS, PS > 2 -> ineligible
+#
+# See: https://unsw-my.sharepoint.com/:w:/g/personal/z5555108_ad_unsw_edu_au/IQDtUWN7HN5wSbKZkeOgfz26AZiQSZeCz8RC386BOZRXGhs?e=LLNxV3
+
+graph:
+  nodes:
+    # Tail graph: this pathway assumes biomarker status, PD-L1, morphology, and
+    # performance status have already been established by the shared NSCLC entry
+    # graph and inherited as upstream state.
+
+    person.chemo_ici_eligible:
+      type: categorical
+      distribution:
+        eligible: 0.5
+        ineligible: 0.5
+
+    condition_episode.chemo_eligible:
+      type: branch
+      rules: 
+      - if: { person.performance_status: ps0 }
+        then: eligible
+      - if: { person.performance_status: ps1 }
+        then: eligible
+      - if: { person.performance_status: ps2 }
+        then: eligible
+      - if: { person.performance_status: ps3 }
+        then: ineligible
+      - if: { person.performance_status: ps4 }
+        then: ineligible
+      default: eligible
+
+    # options:
+    # neoadjuvant nivolumab + chemotherapy
+    # neoadjuvant pembrolizumab + chemotherapy, adj pembrolizumab
+    # neoadjuvant durvalumab + chemotherapy, adj durvalumab
+    # neoadjuvant nivolumab + chemotherapy, adj nivolumab
+    # neoadjuvant tislelizumab + chemotherapy, adj tislelizumab
+    treatment_episode.neoadjuvant_chemo_ici:
+      type: categorical
+      labels: ["neoadj_chemo_ici"]
+      active_when:
+        person.chemo_ici_eligible: eligible
+        condition_occurrence.biomarker: none
+
+    # pembrolizumab for one year
+    treatment_episode.adjuvant_pembrolizumab:
+      type: categorical
+      labels: ["adj_pembro"]
+      active_when:
+        person.chemo_ici_eligible: ineligible
+        condition_occurrence.pdl1_binary: absent
+        condition_occurrence.biomarker: none
+
+    # both for one year
+    treatment_episode.adjuvant_atezolizumab_pembrolizumab:
+      type: categorical
+      labels: ["adj_atezo_pembro"]
+      active_when:
+        person.chemo_ici_eligible: ineligible
+        condition_occurrence.pdl1_binary: present
+        condition_occurrence.biomarker: none
+
+    treatment_episode.adjuvant_osimertinib:
+      type: categorical
+      labels: ["adj_osimertinib"]
+      active_when:
+        condition_occurrence.biomarker: egfr
+        condition_episode.chemo_eligible: ineligible
+
+    # cisplatin as in cisplatin-BASED regimen
+    # but carboplatin is fine if patient is cisplatin ineligible
+    # osimertinib for 3 years
+    # appears to be sequential
+    treatment_episode.adjuvant_cisplatin_osimertinib:
+      type: categorical
+      labels: ["adj_cisplatin_osimertinib"]
+      active_when:
+        condition_occurrence.biomarker: egfr
+        condition_episode.chemo_eligible: eligible
+
+    # I have no idea why this one unlike egfr wasn't separated by chemo eligibility
+    # but I thought I should represent as flowchart did
+    # as with egfr, appears to be chemo THEN TKI
+    treatment_episode.adjuvant_optchemo_alectinib:
+      type: categorical
+      labels: ["adj_optchemo_alectinib"]
+      active_when:
+        condition_occurrence.biomarker: alk
+
+  edges: []

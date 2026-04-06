@@ -1,0 +1,105 @@
+# SCLC tail graph: extensive-stage pathway
+# Expects inherited state from sclc.yaml.
+
+graph:
+  nodes:
+    condition_episode.extensive_stage_strategy:
+      type: branch
+      rules:
+        - if:
+            person.performance_status: ps3_plus
+          then: best_supportive_care
+        - if:
+            person.performance_status: ps2
+          then: ps2_systemic
+      default: standard_systemic
+
+    # placeholder distribution
+    condition_episode.io_eligibility:
+      type: categorical
+      distribution:
+        eligible: 0.5
+        ineligible: 0.5
+      active_when:
+        condition_episode.extensive_stage_strategy: standard_systemic
+
+    # placeholder distribution
+    condition_episode.io_choice:
+      type: categorical
+      distribution:
+        atezolizumab: 0.5
+        durvalumab: 0.5
+      active_when:
+        condition_episode.io_eligibility: eligible
+
+    # placeholder distribution
+    condition_episode.standard_non_io_choice:
+      type: categorical
+      distribution:
+        platinum_etoposide: 0.5
+        alternative_non_io: 0.5
+      active_when:
+        condition_episode.io_eligibility: ineligible
+
+    # placeholder distribution
+    condition_episode.ps2_systemic_choice:
+      type: categorical
+      distribution:
+        platinum_etoposide_ps2: 0.5
+        carboplatin_gemcitabine: 0.5
+      active_when:
+        condition_episode.extensive_stage_strategy: ps2_systemic
+
+    treatment_episode.platinum_etoposide_atezolizumab:
+      type: categorical
+      labels: ["platinum_etoposide_atezolizumab"]
+      active_when:
+        condition_episode.extensive_stage_strategy: standard_systemic
+        condition_episode.io_eligibility: eligible
+        condition_episode.io_choice: atezolizumab
+
+    treatment_episode.platinum_etoposide_durvalumab:
+      type: categorical
+      labels: ["platinum_etoposide_durvalumab"]
+      active_when:
+        condition_episode.extensive_stage_strategy: standard_systemic
+        condition_episode.io_eligibility: eligible
+        condition_episode.io_choice: durvalumab
+
+    treatment_episode.platinum_etoposide:
+      type: categorical
+      labels: ["platinum_etoposide"]
+      active_when:
+        condition_episode.extensive_stage_strategy: standard_systemic
+        condition_episode.io_eligibility: ineligible
+        condition_episode.standard_non_io_choice: platinum_etoposide
+
+    treatment_episode.cisplatin_irinotecan_or_topotecan:
+      type: categorical
+      labels: ["alternative_non_io"]
+      active_when:
+        condition_episode.extensive_stage_strategy: standard_systemic
+        condition_episode.io_eligibility: ineligible
+        condition_episode.standard_non_io_choice: alternative_non_io
+
+    treatment_episode.platinum_etoposide_ps2:
+      type: categorical
+      labels: ["platinum_etoposide_ps2"]
+      active_when:
+        condition_episode.extensive_stage_strategy: ps2_systemic
+        condition_episode.ps2_systemic_choice: platinum_etoposide_ps2
+
+    treatment_episode.carboplatin_gemcitabine:
+      type: categorical
+      labels: ["carboplatin_gemcitabine"]
+      active_when:
+        condition_episode.extensive_stage_strategy: ps2_systemic
+        condition_episode.ps2_systemic_choice: carboplatin_gemcitabine
+
+    treatment_episode.best_supportive_care:
+      type: categorical
+      labels: ["bsc"]
+      active_when:
+        condition_episode.extensive_stage_strategy: best_supportive_care
+
+  edges: []

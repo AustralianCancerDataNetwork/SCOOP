@@ -1,14 +1,24 @@
-from pydantic import BaseModel
-from typing import Callable, Any
+from typing import Any, Callable
+
 from ..configuration import measurement_mapper, observation_mapper
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
 
 
 class TransformableBase(BaseModel):
     """Base class providing declarative field transformations on dump."""
     __transformations__: dict[str, dict] = {}
+    __persisted_transforms__: dict[str, dict] = {}
     __base_transformations__: dict[str, dict] = {}
 
+    def model_post_init(self, __context: Any) -> None:
+        self._apply_persisted_transforms()
+
+    def _apply_persisted_transforms(self) -> None:
+        for out_field, spec in self.__persisted_transforms__.items():
+            if spec.get("when_missing", True) and getattr(self, out_field, None) is not None:
+                continue
+            value = spec["transform"](self)
+            setattr(self, out_field, value)
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -46,32 +56,26 @@ class TransformableBase(BaseModel):
         base = getattr(cls, "__base_transformations__", {}) or {}
 
         # Build measurement and observation transforms for declared fields
-
         measurement_transforms = {
             f"{name}_measurement": {
                 "inputs": [name],
                 "transform": (lambda p, field=field, src=name:
                               field.to_measurement(p, getattr(p, src, None))),
-                "drop": True,
+                "drop": field.drop,
             }
             for name, field in measurement_mapper.fields.items()
             if name in cls.model_fields  
         }
-
 
         observation_transforms = {
             f"{name}_observation": {
                 "inputs": [name],
                 "transform": (lambda p, field=field, src=name:
                               field.to_observation(p, getattr(p, src, None))),
-                "drop": True,
+                "drop": field.drop,
             }
             for name, field in observation_mapper.fields.items()
             if name in cls.model_fields  
         }
 
         cls.__transformations__ = {**base, **measurement_transforms, **observation_transforms}
-
-    # def model_dump(self, *args, **kwargs):
-    #     """Applies transforms and dump."""
-    #     return super().model_dump(*args, **kwargs)

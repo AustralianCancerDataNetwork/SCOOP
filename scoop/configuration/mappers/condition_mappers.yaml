@@ -1,0 +1,26 @@
+lung:
+  vocabulary_id: ICDO3
+  domain_id: Condition
+  concept_class_id: ICDO Condition
+  default_morphology_code: 8000/3
+  default_topography_code: C34.9
+  morphology_codes:
+    squamous: 8070/3
+    nonsquamous: 8140/3
+    adenocarcinoma: 8140/3
+    small_cell: 8041/3
+    combined_small_cell: 8045/3
+    large_cell: 8012/3
+    large_cell_neuroendocrine: 8013/3
+    nsclc_nos: 8046/3
+    none: 8000/3
+    neither: 8000/3
+    unknown: 8000/3
+  topography_codes:
+    main_bronchus: C34.0
+    upper: C34.1
+    middle: C34.2
+    lower: C34.3
+    overlapping: C34.8
+    nos: C34.9
+    unknown: C34.9

@@ -1,0 +1,14 @@
+overarching_condition_episode:
+  episode_concept_id: 32528 # episode of care
+  episode_type_concept_id: 32533 # episode algorithmically derived
+  episode_source_value: eposode_of_care
+  episode_event_field_concept_id: 1147127 # condition_occurrence_id
+  episode_concept_field: condition_concept_id
+  episode_start_date_field: condition_start_date
+treatment_episode:
+  episode_concept_id: 32531 # treatment regimen
+  episode_type_concept_id: 32545 # episode algorithmically derived
+  episode_source_value: treatment_episode
+  episode_event_field_concept_id: 1147082 # procedure_occurrence_id
+  episode_concept_field: procedure_concept_id
+  episode_start_date_field: procedure_start_date

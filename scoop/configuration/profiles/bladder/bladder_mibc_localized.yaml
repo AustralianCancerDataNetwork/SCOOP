@@ -1,0 +1,63 @@
+# Bladder cancer tail graph: localized muscle-invasive disease
+# Expects inherited state from bladder.yaml.
+
+graph:
+  nodes:
+    # placeholder distribution
+    condition_episode.local_therapy_strategy:
+      type: categorical
+      distribution:
+        cystectomy: 0.5
+        trimodality: 0.5
+
+    condition_episode.cisplatin_eligibility:
+      type: branch
+      rules:
+        - if:
+            person.performance_status: ps0_1
+            person.age_group: lt75
+            person.frailty: fit
+          then: eligible
+      default: ineligible
+      active_when:
+        condition_episode.local_therapy_strategy: cystectomy
+
+    # placeholder distribution
+    condition_episode.post_cystectomy_high_risk:
+      type: categorical
+      distribution:
+        "yes": 0.5
+        "no": 0.5
+      active_when:
+        condition_episode.local_therapy_strategy: cystectomy
+
+    treatment_episode.adjuvant_nivolumab:
+      type: categorical
+      labels: ["adjuvant_nivolumab"]
+      active_when:
+        condition_episode.local_therapy_strategy: cystectomy
+        condition_episode.post_cystectomy_high_risk: "yes"
+
+    treatment_episode.neoadjuvant_cisplatin_radical_cystectomy:
+      type: categorical
+      labels: ["neoadjuvant_cisplatin_cystectomy"]
+      active_when:
+        condition_episode.local_therapy_strategy: cystectomy
+        condition_episode.post_cystectomy_high_risk: "no"
+        condition_episode.cisplatin_eligibility: eligible
+
+    treatment_episode.radical_cystectomy_only:
+      type: categorical
+      labels: ["radical_cystectomy_only"]
+      active_when:
+        condition_episode.local_therapy_strategy: cystectomy
+        condition_episode.post_cystectomy_high_risk: "no"
+        condition_episode.cisplatin_eligibility: ineligible
+
+    treatment_episode.trimodality_bladder_preservation:
+      type: categorical
+      labels: ["trimodality_bladder_preservation"]
+      active_when:
+        condition_episode.local_therapy_strategy: trimodality
+
+  edges: []

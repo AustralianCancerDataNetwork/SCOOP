@@ -497,11 +497,8 @@ class TransformationGraph(BaseModel):
             if node.built_distribution:
                 node.built_distribution.name = name 
 
-        # 2. Build adjacency map
-        g: DefaultDict[str, list[str]] = defaultdict(list)
-        for edge in self.edges:
-            g[edge.from_].append(edge.to)
-        self.graph = dict(g)
+        # 2. Build dependency graph used for ordering.
+        self.graph = self._build_dependency_graph()
 
         # 3. Topological sort
         self.order = self._topological_sort()
@@ -515,8 +512,6 @@ class TransformationGraph(BaseModel):
                 continue
 
             if isinstance(node, NumericRangeNode):
-                incoming = [node.from_]
-                self.graph.setdefault(node.from_, []).append(name)
                 continue
 
             # Branch nodes use deterministic routing instead of probabilistic sampling
@@ -567,10 +562,76 @@ class TransformationGraph(BaseModel):
                     )
         return self
 
+    def _build_dependency_graph(self) -> Dict[str, List[str]]:
+        graph_sets: DefaultDict[str, set[str]] = defaultdict(set)
+
+        def add_dependency(
+            source: str,
+            target: str,
+            reason: str,
+            *,
+            allow_external_source: bool = False,
+        ) -> None:
+            if source not in self.nodes:
+                if allow_external_source:
+                    return
+                raise ValueError(
+                    f"{reason} references unknown node '{source}' for '{target}'"
+                )
+            if target not in self.nodes:
+                raise ValueError(
+                    f"{reason} references unknown node '{target}'"
+                )
+            graph_sets[source].add(target)
+
+        for edge in self.edges:
+            add_dependency(edge.from_, edge.to, "Edge")
+            if edge.when:
+                for source in edge.when:
+                    add_dependency(
+                        source,
+                        edge.to,
+                        "Edge condition",
+                        allow_external_source=True,
+                    )
+
+        for name, node in self.nodes.items():
+            if isinstance(node, NumericRangeNode):
+                add_dependency(node.from_, name, "Numeric range")
+
+            if node.active_when:
+                for source in node.active_when:
+                    add_dependency(
+                        source,
+                        name,
+                        "active_when",
+                        allow_external_source=True,
+                    )
+
+            if isinstance(node, BranchNode):
+                branch_inputs: list[str] = []
+                branch_inputs.extend(node.from_)
+                for rule in node.rules:
+                    branch_inputs.extend(rule.get("if", {}).keys())
+
+                # Preserve first-seen order for display/debugging.
+                deduped_inputs = list(dict.fromkeys(branch_inputs))
+                node.from_ = deduped_inputs
+                for source in deduped_inputs:
+                    add_dependency(
+                        source,
+                        name,
+                        "Branch rule",
+                        allow_external_source=True,
+                    )
+
+        return {source: sorted(targets) for source, targets in graph_sets.items()}
+
     def _topological_sort(self) -> List[str]:
         indegree = {n: 0 for n in self.nodes}
-        for e in self.edges:
-            indegree[e.to] += 1
+        for _, targets in self.graph.items():
+            for target in targets:
+                indegree[target] += 1
 
         q = deque([n for n, d in indegree.items() if d == 0])
         result: List[str] = []
@@ -588,18 +649,31 @@ class TransformationGraph(BaseModel):
             # the presence of a cycle but rather issues in graph incompleteness
             # E.g. had dependencies on biomarker node, no edge leading to
             # biomarker node. Triggered this. 
-            raise ValueError("Graph contains a cycle")
+            remaining = sorted(n for n, d in indegree.items() if d > 0)
+            raise ValueError(
+                "Graph contains a cycle in explicit or implicit dependencies. "
+                f"Unresolved nodes: {remaining}"
+            )
 
         return result
 
-    def sample_one(self) -> Dict[str, Any]:
+    def sample_one(
+        self,
+        initial_state: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Sample a single joint assignment for all nodes,
         respecting dependency order and conditional distributions.
+
+        If ``initial_state`` provides values for some nodes, those values are
+        treated as inherited upstream state and are not resampled.
         """
-        sampled: Dict[str, Any] = {}
+        sampled: Dict[str, Any] = dict(initial_state or {})
 
         for name in self.order:
+            if name in sampled:
+                continue
+
             node = self.nodes[name]
 
             if not node.node_is_active(sampled):
@@ -617,9 +691,13 @@ class TransformationGraph(BaseModel):
             
         return sampled
 
-    def sample_many(self, n: int) -> List[Dict[str, Any]]:
+    def sample_many(
+        self,
+        n: int,
+        initial_state: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         """Convenience: draw n independent samples."""
-        return [self.sample_one() for _ in range(n)]
+        return [self.sample_one(initial_state=initial_state) for _ in range(n)]
     
 
     def describe(self) -> str:
@@ -833,8 +911,21 @@ mermaid.run();
                     if k not in self.nodes:
                         issues.append(
                             GraphValidationIssue(
-                                "error",
-                                f"active_when references unknown node '{k}'",
+                                "warning",
+                                f"active_when references inherited node '{k}'",
+                                context=repr(node),
+                            )
+                        )
+
+        # 5. Branch rule references
+        for node in self.nodes.values():
+            if isinstance(node, BranchNode):
+                for k in node.from_:
+                    if k not in self.nodes:
+                        issues.append(
+                            GraphValidationIssue(
+                                "warning",
+                                f"branch rule references inherited node '{k}'",
                                 context=repr(node),
                             )
                         )

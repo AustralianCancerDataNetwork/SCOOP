@@ -5,6 +5,10 @@ smoking_history:
   never: 45879404
   former: 45883458
   current: 45881517
+laterality:
+  bilateral: 21498852
+  left: 45883143
+  right: 45881626
 variant:
   egfr: 4180182
   erbb2: 4180183
@@ -16,9 +20,14 @@ variant:
   braf: 4180189
   kras: 4180190
   none: 0
-cancer_stage:
-  stage_0: 1633754
-  stage_i: 1633306
-  stage_ii: 1634209
-  stage_iii: 1633650
-  stage_iv: 1633308
+genomic_modifier:
+  alk: 35963763
+  egfr: 35962802
+  ros1: 35957723
+  braf: 35948173
+  ret: 35952943
+  met: 35961878
+  erbb2: 35955862
+  kras: 35948791
+  ntrk: 35951557
+  none: 0

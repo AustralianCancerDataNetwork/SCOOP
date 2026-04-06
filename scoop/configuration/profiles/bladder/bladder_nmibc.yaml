@@ -1,0 +1,51 @@
+# Bladder cancer tail graph: non-muscle-invasive disease
+# Expects inherited state from bladder.yaml.
+
+graph:
+  nodes:
+    # placeholder distribution
+    condition_episode.nmibc_risk_group:
+      type: categorical
+      distribution:
+        low_intermediate_risk: 0.34
+        high_risk_bcg_naive: 0.33
+        bcg_unresponsive: 0.33
+
+    condition_episode.cystectomy_eligibility:
+      type: branch
+      rules:
+        - if:
+            person.performance_status: ps0_1
+            person.frailty: fit
+          then: eligible
+      default: ineligible
+      active_when:
+        condition_episode.nmibc_risk_group: bcg_unresponsive
+
+    treatment_episode.turbt_intravesical_therapy:
+      type: categorical
+      labels: ["turbt_intravesical"]
+      active_when:
+        condition_episode.nmibc_risk_group: low_intermediate_risk
+
+    treatment_episode.bcg_induction_maintenance:
+      type: categorical
+      labels: ["bcg_induction_maintenance"]
+      active_when:
+        condition_episode.nmibc_risk_group: high_risk_bcg_naive
+
+    treatment_episode.radical_cystectomy_nmibc:
+      type: categorical
+      labels: ["radical_cystectomy_nmibc"]
+      active_when:
+        condition_episode.nmibc_risk_group: bcg_unresponsive
+        condition_episode.cystectomy_eligibility: eligible
+
+    treatment_episode.pembrolizumab_bcg_unresponsive:
+      type: categorical
+      labels: ["pembro_bcg_unresponsive"]
+      active_when:
+        condition_episode.nmibc_risk_group: bcg_unresponsive
+        condition_episode.cystectomy_eligibility: ineligible
+
+  edges: []

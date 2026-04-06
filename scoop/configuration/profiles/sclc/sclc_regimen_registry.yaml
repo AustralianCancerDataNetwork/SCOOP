@@ -1,0 +1,249 @@
+registry:
+  disease: sclc
+  version: 1
+  entries:
+    surgery_adjuvant_platinum_etoposide:
+      public: true
+      stage_scope: [limited_stage, stage_i_ii]
+      clinical_group: limited_stage
+      aliases: []
+      graph_sources: [sclc_limited_surgical]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.limited_stage_path
+        - condition_episode.resection_pathology
+      resolver:
+        type: none
+      notes: Starter registry entry. Resolver not yet defined.
+
+    surgery_adjuvant_platinum_etoposide_rt:
+      public: true
+      stage_scope: [limited_stage, stage_i_ii]
+      clinical_group: limited_stage
+      aliases: []
+      graph_sources: [sclc_limited_surgical]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.limited_stage_path
+        - condition_episode.resection_pathology
+      resolver:
+        type: none
+      notes: Starter registry entry for post-operative chemo-radiotherapy. Resolver not yet defined.
+
+    concurrent_crt:
+      public: true
+      stage_scope: [limited_stage, stage_i_iii]
+      clinical_group: limited_stage
+      aliases: []
+      graph_sources: [sclc_limited_nonsurgical]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.concurrent_crt_eligibility
+      resolver:
+        type: none
+      notes: Starter registry entry. PCI is not modeled as a separate category yet.
+
+    sequential_crt:
+      public: true
+      stage_scope: [limited_stage, stage_i_iii]
+      clinical_group: limited_stage
+      aliases: []
+      graph_sources: [sclc_limited_nonsurgical]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.concurrent_crt_eligibility
+      resolver:
+        type: none
+      notes: Starter registry entry for patients not eligible for concurrent CRT.
+
+    platinum_etoposide_atezolizumab:
+      public: true
+      stage_scope: [extensive_stage, first_line]
+      clinical_group: extensive_stage
+      aliases: []
+      graph_sources: [sclc_extensive]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.io_eligibility
+        - condition_episode.io_choice
+      resolver:
+        type: none
+      notes: Starter registry entry. Maintenance atezolizumab is implied but not separately modeled.
+
+    platinum_etoposide_durvalumab:
+      public: true
+      stage_scope: [extensive_stage, first_line]
+      clinical_group: extensive_stage
+      aliases: []
+      graph_sources: [sclc_extensive]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.io_eligibility
+        - condition_episode.io_choice
+      resolver:
+        type: none
+      notes: Starter registry entry. Maintenance durvalumab is implied but not separately modeled.
+
+    platinum_etoposide:
+      public: true
+      stage_scope: [extensive_stage, first_line]
+      clinical_group: extensive_stage
+      aliases: []
+      graph_sources: [sclc_extensive]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.standard_non_io_choice
+      resolver:
+        type: none
+      notes: Starter registry entry for standard non-immunotherapy first-line treatment.
+
+    cisplatin_irinotecan_or_topotecan:
+      public: true
+      stage_scope: [extensive_stage, first_line]
+      clinical_group: extensive_stage
+      aliases: []
+      graph_sources: [sclc_extensive]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.standard_non_io_choice
+      resolver:
+        type: none
+      notes: Placeholder grouped alternative first-line non-IO pathway from the guideline.
+
+    platinum_etoposide_ps2:
+      public: true
+      stage_scope: [extensive_stage, first_line]
+      clinical_group: extensive_stage
+      aliases: []
+      graph_sources: [sclc_extensive]
+      exploratory_sources: []
+      required_modifiers:
+        - person.performance_status
+        - condition_episode.ps2_systemic_choice
+      resolver:
+        type: none
+      notes: Placeholder entry for PS2 systemic treatment where PS2 is still treated as disease-related.
+
+    carboplatin_gemcitabine:
+      public: true
+      stage_scope: [extensive_stage, first_line]
+      clinical_group: extensive_stage
+      aliases: []
+      graph_sources: [sclc_extensive]
+      exploratory_sources: []
+      required_modifiers:
+        - person.performance_status
+        - condition_episode.ps2_systemic_choice
+      resolver:
+        type: none
+      notes: Starter poor-prognosis extensive-stage option from the guideline.
+
+    best_supportive_care:
+      public: true
+      stage_scope: [extensive_stage]
+      clinical_group: extensive_stage
+      aliases: []
+      graph_sources: [sclc_extensive]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.extensive_stage_strategy
+      resolver:
+        type: none
+      notes: Starter supportive-care entry.
+
+    platinum_etoposide_rechallenge:
+      public: true
+      stage_scope: [recurrent]
+      clinical_group: recurrent_disease
+      aliases: []
+      graph_sources: [sclc_recurrent]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.recurrent_strategy
+        - condition_episode.recurrent_sensitive_choice
+      resolver:
+        type: none
+      notes: Starter recurrent-disease entry for platinum-sensitive rechallenge.
+
+    topotecan_sensitive:
+      public: true
+      stage_scope: [recurrent]
+      clinical_group: recurrent_disease
+      aliases: []
+      graph_sources: [sclc_recurrent]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.recurrent_strategy
+        - condition_episode.recurrent_sensitive_choice
+      resolver:
+        type: none
+      notes: Starter recurrent-disease entry.
+
+    cav_sensitive:
+      public: true
+      stage_scope: [recurrent]
+      clinical_group: recurrent_disease
+      aliases: []
+      graph_sources: [sclc_recurrent]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.recurrent_strategy
+        - condition_episode.recurrent_sensitive_choice
+      resolver:
+        type: none
+      notes: Starter recurrent-disease entry.
+
+    topotecan_resistant:
+      public: true
+      stage_scope: [recurrent]
+      clinical_group: recurrent_disease
+      aliases: []
+      graph_sources: [sclc_recurrent]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.recurrent_strategy
+        - condition_episode.recurrent_resistant_choice
+      resolver:
+        type: none
+      notes: Starter recurrent-disease entry.
+
+    cav_resistant:
+      public: true
+      stage_scope: [recurrent]
+      clinical_group: recurrent_disease
+      aliases: []
+      graph_sources: [sclc_recurrent]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.recurrent_strategy
+        - condition_episode.recurrent_resistant_choice
+      resolver:
+        type: none
+      notes: Starter recurrent-disease entry.
+
+    lurbinectedin:
+      public: true
+      stage_scope: [recurrent]
+      clinical_group: recurrent_disease
+      aliases: []
+      graph_sources: [sclc_recurrent]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.recurrent_strategy
+        - condition_episode.recurrent_resistant_choice
+      resolver:
+        type: none
+      notes: Starter recurrent-disease entry.
+
+    best_supportive_care_recurrent:
+      public: true
+      stage_scope: [recurrent]
+      clinical_group: recurrent_disease
+      aliases: []
+      graph_sources: [sclc_recurrent]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.recurrent_strategy
+      resolver:
+        type: none
+      notes: Starter recurrent-disease supportive-care entry.

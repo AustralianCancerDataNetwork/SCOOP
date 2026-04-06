@@ -1,0 +1,20 @@
+profile:
+  profile_id: sclc
+  default_graph: sclc
+  entry_graph: sclc
+  regimen_registry: sclc_regimen_registry.yaml
+  graphs:
+    sclc: sclc.yaml
+    sclc_limited_surgical: sclc_limited_surgical.yaml
+    sclc_limited_nonsurgical: sclc_limited_nonsurgical.yaml
+    sclc_extensive: sclc_extensive.yaml
+    sclc_recurrent: sclc_recurrent.yaml
+  pathways:
+    sclc_limited_surgical: sclc_limited_surgical
+    sclc_limited_nonsurgical: sclc_limited_nonsurgical
+    sclc_extensive: sclc_extensive
+    sclc_recurrent: sclc_recurrent
+  mappers:
+    concept_map: ../../mappers/concept_maps.yaml
+    measurement_map: ../../mappers/measurement_mappers.yaml
+    observation_map: ../../mappers/observation_mappers.yaml

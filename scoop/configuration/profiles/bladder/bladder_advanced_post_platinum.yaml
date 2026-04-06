@@ -1,0 +1,60 @@
+# Bladder cancer tail graph: advanced/metastatic disease after platinum
+# Expects inherited state from bladder.yaml.
+
+graph:
+  nodes:
+    # placeholder distribution
+    condition_episode.post_platinum_choice_fgfr_altered:
+      type: categorical
+      distribution:
+        erdafitinib: 0.34
+        pembrolizumab_post_platinum: 0.33
+        enfortumab_vedotin: 0.33
+      active_when:
+        condition_occurrence.fgfr2_3_alteration: altered
+
+    # placeholder distribution
+    condition_episode.post_platinum_choice_standard:
+      type: categorical
+      distribution:
+        pembrolizumab_post_platinum: 0.5
+        enfortumab_vedotin: 0.5
+      active_when:
+        condition_occurrence.fgfr2_3_alteration: wildtype
+
+    treatment_episode.erdafitinib:
+      type: categorical
+      labels: ["erdafitinib"]
+      active_when:
+        condition_occurrence.fgfr2_3_alteration: altered
+        condition_episode.post_platinum_choice_fgfr_altered: erdafitinib
+
+    treatment_episode.pembrolizumab_post_platinum:
+      type: categorical
+      labels: ["pembrolizumab_post_platinum"]
+      active_when:
+        condition_occurrence.fgfr2_3_alteration: altered
+        condition_episode.post_platinum_choice_fgfr_altered: pembrolizumab_post_platinum
+
+    treatment_episode.enfortumab_vedotin:
+      type: categorical
+      labels: ["enfortumab_vedotin"]
+      active_when:
+        condition_occurrence.fgfr2_3_alteration: altered
+        condition_episode.post_platinum_choice_fgfr_altered: enfortumab_vedotin
+
+    treatment_episode.pembrolizumab_post_platinum_wildtype:
+      type: categorical
+      labels: ["pembrolizumab_post_platinum"]
+      active_when:
+        condition_occurrence.fgfr2_3_alteration: wildtype
+        condition_episode.post_platinum_choice_standard: pembrolizumab_post_platinum
+
+    treatment_episode.enfortumab_vedotin_wildtype:
+      type: categorical
+      labels: ["enfortumab_vedotin"]
+      active_when:
+        condition_occurrence.fgfr2_3_alteration: wildtype
+        condition_episode.post_platinum_choice_standard: enfortumab_vedotin
+
+  edges: []

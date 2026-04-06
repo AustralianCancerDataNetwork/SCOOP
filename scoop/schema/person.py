@@ -32,18 +32,20 @@ class Person(TransformableBase):
     ecog: int = 2 # todo: enforce appropriate range
     weight: float = 75.0
     variant: str = "none"
+    graph_sample: dict[str, Any] | None = Field(default=None, exclude=True, repr=False)
+    auto_create_condition: bool = Field(default=True, exclude=True, repr=False)
 
     condition: 'Condition_Occurrence | None' = None
 
     @model_validator(mode="after")
     def _attach_condition(self):
         """
-        Runs after Person is initialized. Automatically attach a Condition_Occurrence.
+        Runs after Person is initialised. Automatically attach a Condition_Occurrence.
         """
         logger.debug(f"Initialised Person[{self.person_id}] age={self.age} sex={self.sex}")
         from .object_factories import make_condition_occurrence  
-        if self.condition is None:
-            self.condition = make_condition_occurrence(person=self)
+        if self.condition is None and self.auto_create_condition:
+            self.condition = make_condition_occurrence(person=self, graph_sample=self.graph_sample)
             logger.debug(f"Attached Condition_Occurrence to Person[{self.person_id}]")
         return self
 

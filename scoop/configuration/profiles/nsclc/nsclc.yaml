@@ -48,7 +48,15 @@ graph:
 
     person.performance_status_binary:
       type: categorical
-      labels: [not_v_poor, v_poor]
+      labels: [not_v_frail, v_frail]
+
+    person.performance_status_frail:
+      type: categorical
+      labels: [not_frail, frail]
+
+    person.performance_status_v_frail:
+      type: categorical
+      labels: [not_v_frail, v_frail]
 
     # Replaced by condition_occurrence.biomarker
     # person.variant:
@@ -89,9 +97,9 @@ graph:
 
     # if categorical and no distribution provided, this must be connected to an edge that provides probabilities
     # todo: validate on load that this is specified correctly so that there are no runtime errors
-    condition_occurrence.lobe:
+    condition_occurrence.topog:
       type: categorical
-      labels: [upper, middle, lower]
+      labels: [main_bronchus, upper, middle, lower, overlapping, nos]
 
     condition_occurrence.biomarker:
       type: categorical
@@ -136,6 +144,10 @@ graph:
       type: categorical
       labels: ["present", "absent"]
 
+    condition_occurrence.pdl1_binary_50:
+      type: categorical
+      labels: ["gte50", "lt50"]
+
     # DECISION: Remove any references to sclc, this doc is only for nsclc
     # condition_episode.classification::
     #   type: branch
@@ -149,11 +161,13 @@ graph:
     condition_episode.group_stage:
       type: branch
       rules:
-        - if: { condition_occurrence.cancer_stage: [stage_i]}
+        - if: { condition_occurrence.cancer_stage: stage_i}
           then: early
-        - if: { condition_occurrence.cancer_stage: [stage_ii, stage_iii] }
+        - if: { condition_occurrence.cancer_stage: stage_ii }
           then: locally_advanced
-        - if: { condition_occurrence.cancer_stage: [stage_iv] }
+        - if: { condition_occurrence.cancer_stage: stage_iii }
+          then: locally_advanced
+        - if: { condition_occurrence.cancer_stage: stage_iv }
           then: metastatic
       default: other
 
@@ -164,12 +178,28 @@ graph:
       labels: [operable, inoperable]
 
     condition_episode.radiotherapy_eligibility:
-      type: categorical
-      labels: [rt_yes, rt_no]
+      type: branch
+      rules:
+        - if: { person.performance_status_v_frail: not_v_frail }
+          then: rt_yes
+        - if: { person.performance_status_v_frail: v_frail }
+          then: rt_no
+      default: rt_yes
 
     condition_episode.chemotherapy_eligibility:
-      type: categorical
-      labels: [chemo_yes, chemo_no]
+      type: branch
+      rules:
+        - if: { person.performance_status: ps0 }
+          then: chemo_yes
+        - if: { person.performance_status: ps1 }
+          then: chemo_yes
+        - if: { person.performance_status: ps2 }
+          then: chemo_yes
+        - if: { person.performance_status: ps3 }
+          then: chemo_no
+        - if: { person.performance_status: ps4 }
+          then: chemo_no
+      default: chemo_yes
 
     # Changed from targetable mutation to key mutation
     # because what is considered a targetable mutation is broader
@@ -205,155 +235,36 @@ graph:
           then: erbb2
       default: tm_no
 
-
-    # Early - See ESMO fig 1
-    # adj without preceding specified should be understand as following surgery
-
-    # TODO: This should also apply to patients who are all of:
-    # chemo_no locally_advanced operable km_yes
-    treatment_episode.adjuvant_targeted:
-      type: categorical
-      labels: [adj_targ]
-      active_when:
-        condition_episode.resectability: operable
-        condition_episode.group_stage: early
-        condition_episode.key_mutation: km_yes
-
-    treatment_episode.definitive_sbrt:
-        type: categorical
-        labels: [sbrt]
-        active_when:
-          condition_episode.group_stage: early
-          condition_episode.resectability: inoperable
-    
-    # Req subset by resection margin
-    treatment_episode.surgery_port:
-      type: categorical
-      labels: [port]
-      active_when:
-        condition_episode.resectability: operable
-        condition_episode.group_stage: early
-        condition_episode.key_mutation: km_no
-
-  # ESMO has refer to MDT for R2 however NCCN lists either reresection or RT
-  
-  # Locally advanced - see ESMO fig 2
-    treatment_episode.adjuvant_chemotherapy:
-      type: categorical
-      labels: [adj_chemo]
-      active_when:
-        condition_episode.resectability: operable
-        condition_episode.group_stage: locally_advanced
-        condition_episode.key_mutation: km_no
-        condition_episode.chemotherapy_eligibility: chemo_yes
-
-    # TODO: How to add req for N2a - person will need TNM staging
-    treatment_episode.neoadjuvant_chemotherapy_w_ici:
-      type: categorical
-      labels: [neoadj_chemo_ici]
-      active_when:
-        condition_episode.resectability: operable
-        condition_episode.group_stage: locally_advanced
-        condition_episode.key_mutation: km_no
-    
-    treatment_episode.adjuvant_targeted_w_chemotherapy:
-      type: categorical
-      labels: [adj_targ_chemo]
-      active_when:
-        condition_episode.resectability: operable
-        condition_episode.group_stage: locally_advanced
-        condition_episode.key_mutation: km_yes
-
-    # TODO: split into crt, crt_adj_egfr, crt_adj_pdl1
-    treatment_episode.chemoradiotherapy:
-      type: categorical
-      labels: [crt]
-      active_when:
-        condition_episode.resectability: inoperable
-        condition_episode.group_stage: locally_advanced
-        person.performance_status_binary: not_v_frail
-
-    treatment_episode.radiotherapy:
-      type: categorical
-      labels: [rt]
-      active_when:
-        condition_episode.resectability: inoperable
-        condition_episode.group_stage: locally_advanced
-        person.performance_status_binary: v_frail
-
-    # Intentionally not restricted on resectability
-    treatment_episode.adjuvant_anti_pdl1:
-      type: categorical
-      labels: [adj_anti_pdl1]
-      active_when:
-        condition_episode.group_stage: locally_advanced
-        condition_episode.key_mutation: km_no
-        condition_occurrence.pdl1_binary: present
-        condition_episode.resectability: operable
-
-    treatment_episode.adjuvant_anti_pd1:
-      type: categorical
-      labels: [adj_anti_pd1]
-      active_when:
-        condition_episode.group_stage: locally_advanced
-        condition_episode.key_mutation: km_no
-        condition_occurrence.pdl1_binary: present
-        condition_episode.resectability: operable
-
-    treatment_episode.supportive_care_only:
-      type: categorical
-      labels: [bsc_only]
-      active_when:
-        condition_episode.targetable_mutation: tm_no
-        person.performance_status_binary: v_poor
-        condition_episode.group_stage: metastatic
-
-    # add req for not never smoker?
-    treatment_episode.ici_monotherapy:
-      type: categorical
-      labels: [ici_mono]
-      active_when:
-        condition_episode.group_stage: metastatic
-        person.performance_status_binary: not_v_frail # ps2
-        condition_occurrence.pdl1: high
-    
-    treatment_episode.chemo_nonsquamous:
-      type: categorical
-      labels: [chemo_nonsqcc]
-      active_when:
-        condition_episode.group_stage: metastatic
-        person.performance_status_binary: not_v_frail # ps2
-        condition_occurrence.morphology: nonsquamous
-        condition_occurrence.pdl1: absent # or low
-
-    treatment_episode.chemo_nonsquamous:
-      type: categorical
-      labels: [chemo_sqcc]
-      active_when:
-        condition_episode.group_stage: metastatic
-        person.performance_status_binary: not_v_frail # ps2
-        condition_occurrence.morphology: squamous
-        condition_occurrence.pdl1: absent # or low
-
-    # ??? could be improved
-    treatment_episode.ici_w_chemo_nonsquamous:
-      type: categorical
-      labels: [ici_chemo_nonsqcc]
-      active_when:
-        condition_episode.group_stage: metastatic
-        person.performance_status: ps0 # ps1 should be included for pdl1 <1%
-        condition_occurrence.morphology: nonsquamous
-        # condition_occurrence.pdl1: # low or absent
-
-    # ??? could be improved
-    treatment_episode.ici_w_chemo_squamous:
-      type: categorical
-      labels: [ici_chem_sqcc]
-      active_when:
-        condition_episode.group_stage: metastatic
-        person.performance_status: ps0 # ps1 should be included for pdl1 <1%
-        condition_occurrence.morphology: squamous
-        # condition_occurrence.pdl1: # low or absent
+    # Shared NSCLC entry graph stops at pathway routing. Treatment decisions are
+    # handled in the stage-specific tail graphs.
+    condition_episode.pathway:
+      type: branch
+      rules:
+        - if: { condition_episode.group_stage: early }
+          then: nsclc_stage1
+        - if: { condition_episode.group_stage: locally_advanced, condition_episode.resectability: operable }
+          then: nsclc_stage23_resectable
+        - if: { condition_episode.group_stage: locally_advanced, condition_episode.resectability: inoperable }
+          then: nsclc_stage3_unresectable
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: egfr }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: alk }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: ros1 }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: braf }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: ret }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: ntrk }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: met }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: erbb2 }
+          then: nsclc_stage4_driver
+        - if: { condition_episode.group_stage: metastatic, condition_episode.targetable_mutation: tm_no }
+          then: nsclc_stage4_nodrivers
+      default: nsclc_other
 
 
 
@@ -370,6 +281,21 @@ graph:
         squamous:    [0.03,    0,    0,    0, 0.03,    0, 0.04, 0.003, 0.05, 0.847]
         none:        [0.21, 0.02, 0.07, 0.02, 0.02, 0.01, 0.03,  0.02, 0.25, 0.35]
 
+    # Keep early and locally advanced disease within the smaller biomarker
+    # space currently modeled by the early-stage tail graphs. Stage 0 is not a
+    # treatment-entry state in this profile and therefore collapses to no
+    # actionable biomarker.
+    - from: condition_occurrence.cancer_stage
+      to: condition_occurrence.biomarker
+      using: probability_table
+      table:
+                   # [egfr, erbb2, alk, ros1, ret, ntrk, met, braf, kras, none]
+        stage_0:    [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 1.00]
+        stage_i:    [0.18, 0.00, 0.04, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.78]
+        stage_ii:   [0.17, 0.00, 0.04, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.79]
+        stage_iii:  [0.16, 0.00, 0.04, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.80]
+        stage_iv:   [0.20, 0.01, 0.05, 0.02, 0.02, 0.01, 0.03, 0.01, 0.15, 0.50]
+
     - from: condition_occurrence.pdl1
       to: condition_occurrence.pdl1_binary
       using: probability_table
@@ -379,11 +305,41 @@ graph:
         low:    [1, 0]
         absent: [0, 1]
 
+    - from: condition_occurrence.pdl1
+      to: condition_occurrence.pdl1_binary_50
+      using: probability_table
+      table:
+        high:   [1, 0]
+        low:    [0, 1]
+        absent: [0, 1]
+
     - from: person.performance_status
       to: person.performance_status_binary
       using: probability_table
       table: 
-           # [not_v_poor, v_poor]
+           # [not_v_frail, v_frail]
+        ps0: [1, 0]
+        ps1: [1, 0]
+        ps2: [1, 0]
+        ps3: [0, 1]
+        ps4: [0, 1]
+
+    - from: person.performance_status
+      to: person.performance_status_frail
+      using: probability_table
+      table:
+           # [not_frail, frail]
+        ps0: [1, 0]
+        ps1: [1, 0]
+        ps2: [0, 1]
+        ps3: [0, 1]
+        ps4: [0, 1]
+
+    - from: person.performance_status
+      to: person.performance_status_v_frail
+      using: probability_table
+      table:
+           # [not_v_frail, v_frail]
         ps0: [1, 0]
         ps1: [1, 0]
         ps2: [1, 0]
@@ -394,32 +350,25 @@ graph:
       to: condition_occurrence.morphology
       using: probability_table
       table:
-        male:    [0.75, 0.20, 0.05]
-        female:  [0.85, 0.10, 0.05]
-        default: [0.80, 0.15, 0.05]
+        male:    [0.78, 0.22, 0.00]
+        female:  [0.89, 0.11, 0.00]
+        default: [0.84, 0.16, 0.00]
 
     - from: condition_occurrence.laterality
-      to: condition_occurrence.lobe
+      to: condition_occurrence.topog
       using: probability_table
       table:
-        left:  [0.63, 0.00, 0.37]
-        right: [0.55, 0.20, 0.25]
+        # [main_bronchus, upper, middle, lower, overlapping, nos]
+        left:  [0.04, 0.57, 0.00, 0.32, 0.02, 0.05]
+        right: [0.05, 0.46, 0.18, 0.22, 0.02, 0.07]
 
     - from: condition_occurrence.morphology
       to: condition_episode.resectability
       using: probability_table
       table:
-        nonsquamous: [0.5, 0.5]
-        squamous:    [0.1, 0.9]
-        none:        [0.4, 0.6]
-
-    - from: condition_occurrence.morphology
-      to: condition_episode.radiotherapy_eligibility
-      using: probability_table
-      table:
-        nonsquamous: [0.4, 0.6]
-        squamous:    [0.1, 0.9]
-        none:        [0.5, 0.5]
+        nonsquamous: [0.65, 0.35]
+        squamous:    [0.25, 0.75]
+        none:        [0.55, 0.45]
 
     # Broken - commented out until worth debugging
     # Not sure I should be doing this this way (given colinearity)
@@ -427,31 +376,47 @@ graph:
     # I'm not weighting averages for lung by laterality properly
     # in the below values. curative RT + SBRT + unknown RT
     # This will underestimate eligibility
-    # - from: condition_occurrence.lobe
+    # - from: condition_occurrence.topog
     #   to: condition_episode.radiotherapy_eligibility
     #   table:
-    #     upper:  [0.21, 0.79]
-    #     middle: [0.15, 0.85]
-    #     lower:  [0.19, 0.81]
+    #     upper:         [0.21, 0.79]
+    #     middle:        [0.15, 0.85]
+    #     lower:         [0.19, 0.81]
+    #     main_bronchus: [0.17, 0.83]
+    #     overlapping:   [0.17, 0.83]
+    #     nos:           [0.18, 0.82]
 
     # Not sure I should be doing this this way (given colinearity)
     # Based on: Table 1 in https://doi.org/10.1186/s12890-024-02918-w
-    - from: condition_occurrence.lobe
+    - from: condition_occurrence.topog
       to: condition_episode.resectability
       using: probability_table
       table:
-        upper:  [0.26, 0.74]
-        middle: [0.33, 0.67]
-        lower:  [0.3, 0.7]
+        main_bronchus: [0.30, 0.70]
+        upper:         [0.42, 0.58]
+        middle:        [0.50, 0.50]
+        lower:         [0.45, 0.55]
+        overlapping:   [0.25, 0.75]
+        nos:           [0.40, 0.60]
+
+    - from: condition_occurrence.cancer_stage
+      to: condition_episode.resectability
+      using: probability_table
+      table:
+        stage_0:  [0.50, 0.50]
+        stage_i:  [0.75, 0.25]
+        stage_ii: [0.60, 0.40]
+        stage_iii: [0.35, 0.65]
+        stage_iv: [0.05, 0.95]
 
     - from: person.years_since_diagnosis
       to: condition_occurrence.cancer_stage
       using: probability_table
       table:
-        0: [0.6, 0.2, 0.1, 0.05, 0.05]
-        1: [0.4, 0.3, 0.15, 0.1, 0.05]
-        2: [0.3, 0.3, 0.2, 0.15, 0.05]
-        3: [0.2, 0.25, 0.25, 0.2, 0.1]
+        0: [0.00, 0.42, 0.27, 0.19, 0.12]
+        1: [0.00, 0.28, 0.28, 0.24, 0.20]
+        2: [0.00, 0.18, 0.24, 0.28, 0.30]
+        3: [0.00, 0.10, 0.18, 0.25, 0.47]
 
     # PD-L1 proportions
     # https://doi.org/10.1016/j.pathol.2023.08.008
@@ -517,9 +482,9 @@ graph:
       to: condition_occurrence.cancer_stage
       using: probability_table
       table:
-        current: [0.2, 0.4, 0.2, 0.05, 0.05]
-        never:   [0.5, 0.3, 0.1, 0.05, 0.05]
-        former:  [0.4, 0.35, 0.15, 0.05, 0.05]
+        current: [0.00, 0.18, 0.22, 0.25, 0.35]
+        never:   [0.00, 0.35, 0.28, 0.19, 0.18]
+        former:  [0.00, 0.26, 0.26, 0.21, 0.27]
 
     # Based on doi: 10.1038/srep28477
     # None is just using nonsquamous values
@@ -544,7 +509,7 @@ graph:
         2B: [    0,     0,     0, 0.123, 0.877, 0]
         3A: [0.079, 0.086, 0.248, 0.101, 0.281, 0.205]
         3B: [0.041, 0.046, 0.105, 0.067, 0.123, 0.617]
-        4:  [0.049, 0.066, 0.197, 0.098, 0.263, 0.327]
+        "4":  [0.049, 0.066, 0.197, 0.098, 0.263, 0.327]
 
       # WHY? So I can use both overall stage and t to determine N
       # This is my workaround for not having dependent bivariate distributions
@@ -574,5 +539,3 @@ graph:
 
     # todo: can we support deterministic mappings here like t, n, m stage to group stage?
     
-
-

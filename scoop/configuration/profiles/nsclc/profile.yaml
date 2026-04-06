@@ -1,0 +1,22 @@
+profile:
+  profile_id: nsclc
+  default_graph: nsclc
+  entry_graph: nsclc
+  regimen_registry: nsclc_regimen_registry.yaml
+  graphs:
+    nsclc: nsclc.yaml
+    nsclc_stg1: nsclc_stg1.yaml
+    nsclc_stg23_resectable: nsclc_stg23_resectable.yaml
+    nsclc_stg3_unresectable: nsclc_stg3_unresectable.yaml
+    nsclc_stg4_driver: nsclc_stg4_driver.yaml
+    nsclc_stg4_nodrivers: nsclc_stg4_nodrivers.yaml
+  pathways:
+    nsclc_stage1: nsclc_stg1
+    nsclc_stage23_resectable: nsclc_stg23_resectable
+    nsclc_stage3_unresectable: nsclc_stg3_unresectable
+    nsclc_stage4_driver: nsclc_stg4_driver
+    nsclc_stage4_nodrivers: nsclc_stg4_nodrivers
+  mappers:
+    concept_map: ../../mappers/concept_maps.yaml
+    measurement_map: ../../mappers/measurement_mappers.yaml
+    observation_map: ../../mappers/observation_mappers.yaml
