@@ -22,27 +22,286 @@ registry:
       - 25309
     nsclc_squamous: &nsclc_squamous
       - 25316
+  hemonc_groups:
+    neoadjuvant_chemo_ici:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [pembrolizumab, durvalumab, tislelizumab]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 1
+        immunotherapy:
+          type: exact
+          amount: 1
+    adjuvant_pembrolizumab:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [pembrolizumab]
+      category_restrictions:
+        immunotherapy:
+          type: exact
+          amount: 1
+    adjuvant_osimertinib:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [osimertinib]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 1
+    adjuvant_cisplatin_osimertinib:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [cisplatin, carboplatin]
+        - [osimertinib]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 1
+    adjuvant_optchemo_alectinib:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [alectinib]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 1
+    egfr_intervention:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [osimertinib, gefitinib, erlotinib, afatinib, dacomitinib]
+      category_restrictions:
+        immunotherapy:
+          type: min
+          amount: 0
+        chemotherapy:
+          type: min
+          amount: 1
+    alk_intervention:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [alectinib, brigatinib, lorlatinib, crizotinib, ceritinib]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 0
+    ros1_intervention:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [crizotinib, entrectinib, repotrectinib]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 0
+    braf_intervention:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [dabrafenib]
+        - [trametinib]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 0
+    ret_intervention:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [pralsetinib, selpercatinib]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 0
+    erbb2_intervention:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [trastuzumab]
+        - [deruxtecan]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 0
+    ntrk_intervention:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [entrectinib, larotrectinib]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 1
+    met_tki:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [capmatinib, tepotinib]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 1
+    met_ptdb:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [Platinum agent]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+    met_ptdb_w_ici:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [Platinum agent]
+        - [Immunostimulatory monoclonal antibody]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+        immunotherapy:
+          type: min
+          amount: 1
+    best_supportive_care:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists: []
+      category_restrictions:
+        radiotherapy:
+          type: exact
+          amount: 0
+        surgery:
+          type: exact
+          amount: 0
+        chemotherapy:
+          type: exact
+          amount: 0
+        immunotherapy:
+          type: exact
+          amount: 0
+        supportive:
+          type: min
+          amount: 1
+    platinum_doublet_3rd_gen_agent:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [Platinum agent]
+        - [taxane, gemcitabine, vinorelbine]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+    platinum_doublet_nonsquamous:
+      basis: variant
+      condition_set: nsclc_nonsquamous
+      component_lists:
+        - [Platinum agent]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+    ici_w_chemo_nonsquamous:
+      basis: variant
+      condition_set: nsclc_nonsquamous
+      component_lists:
+        - [Platinum agent]
+        - [Immunostimulatory monoclonal antibody]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 0
+    ici_w_chemo_squamous:
+      basis: variant
+      condition_set: nsclc_squamous
+      component_lists:
+        - [Platinum agent]
+        - [Immunostimulatory monoclonal antibody]
+      category_restrictions:
+        chemotherapy:
+          type: min
+          amount: 0
+    ici_monotherapy:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [Immunostimulatory monoclonal antibody]
+      category_restrictions:
+        immunotherapy:
+          type: exact
+          amount: 1
+    ptdb_squamous:
+      basis: variant
+      condition_set: nsclc_squamous
+      component_lists:
+        - [Platinum agent]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+    single_chemo_squamous:
+      basis: variant
+      condition_set: nsclc_squamous
+      component_lists:
+        - [gemcitabine, vinorelbine, docetaxel]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 1
+    ptdb_nonsquamous:
+      basis: variant
+      condition_set: nsclc_nonsquamous
+      component_lists:
+        - [Platinum agent]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+    single_chemo_nonsquamous:
+      basis: variant
+      condition_set: nsclc_nonsquamous
+      component_lists:
+        - [gemcitabine, vinorelbine, docetaxel, pemetrexed]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 1
+    atezolizumab:
+      basis: variant
+      condition_set: nsclc_squamous
+      component_lists:
+        - [atezolizumab]
+      category_restrictions:
+        immunotherapy:
+          type: exact
+          amount: 1
   entries:
     sbrt:
       public: true
       stage_scope: [stage_i]
       clinical_group: local_stage_i
       # review_status: graph_only
-      aliases: [definitive_sbrt]
       graph_sources: [nsclc_stg1, nsclc]
       exploratory_sources: []
       required_modifiers:
         - condition_episode.operability
       resolver:
         type: none
-      notes: No exploratory resolver YAML exists yet for stage I SBRT.
 
     surgery_only:
       public: true
       stage_scope: [stage_i]
       clinical_group: local_stage_i
       # review_status: graph_only
-      aliases: []
       graph_sources: [nsclc_stg1]
       exploratory_sources: []
       required_modifiers:
@@ -50,14 +309,12 @@ registry:
         - treatment_episode.resection_margin
       resolver:
         type: none
-      notes: Stage I surgery without adjuvant therapy is now modeled explicitly.
 
     port:
       public: true
       stage_scope: [stage_i]
       clinical_group: local_stage_i
       # review_status: graph_only
-      aliases: [surgery_port]
       graph_sources: [nsclc_stg1, nsclc]
       exploratory_sources: []
       required_modifiers:
@@ -65,14 +322,12 @@ registry:
         - treatment_episode.resection_margin
       resolver:
         type: none
-      notes: Retained as a top-level review entry even though it may later become an adjunct treatment modifier.
 
     port_adjuvant_osimertinib:
       public: true
       stage_scope: [stage_i]
       clinical_group: local_stage_i
       # review_status: graph_only
-      aliases: []
       graph_sources: [nsclc_stg1]
       exploratory_sources: []
       required_modifiers:
@@ -81,14 +336,12 @@ registry:
         - condition_occurrence.biomarker
       resolver:
         type: none
-      notes: Best-effort combined stage I endpoint for EGFR-mutated R1 disease requiring both PORT and adjuvant osimertinib.
 
     surgery_adjuvant_osimertinib:
       public: true
       stage_scope: [stage_i]
       clinical_group: local_stage_i
       # review_status: graph_only
-      aliases: []
       graph_sources: [nsclc_stg1]
       exploratory_sources: []
       required_modifiers:
@@ -97,14 +350,12 @@ registry:
         - condition_occurrence.biomarker
       resolver:
         type: none
-      notes: No exploratory resolver YAML exists yet for stage I surgery plus adjuvant osimertinib.
 
     neoadjuvant_chemo_ici:
       public: true
       stage_scope: [stage_ii, stage_iii, resectable]
       clinical_group: resectable_stage_ii_iii
       # review_status: aligned
-      aliases: [neoadjuvant_chemotherapy_w_ici]
       graph_sources: [nsclc_stg23_resectable, nsclc]
       exploratory_sources: [nsclc_23_resectable]
       required_modifiers:
@@ -112,24 +363,13 @@ registry:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [pembrolizumab, durvalumab, tislelizumab]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 1
-          immunotherapy:
-            type: exact
-            amount: 1
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: neoadjuvant_chemo_ici
 
     adjuvant_pembrolizumab:
       public: true
       stage_scope: [stage_ii, stage_iii, resectable]
       clinical_group: resectable_stage_ii_iii
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg23_resectable]
       exploratory_sources: [nsclc_23_resectable]
       required_modifiers:
@@ -138,21 +378,13 @@ registry:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [pembrolizumab]
-        category_restrictions:
-          immunotherapy:
-            type: exact
-            amount: 1
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: adjuvant_pembrolizumab
 
     adjuvant_atezolizumab_pembrolizumab:
       public: true
       stage_scope: [stage_ii, stage_iii, resectable]
       clinical_group: resectable_stage_ii_iii
       # review_status: draft
-      aliases: []
       graph_sources: [nsclc_stg23_resectable]
       exploratory_sources: [nsclc_23_resectable]
       required_modifiers:
@@ -164,19 +396,17 @@ registry:
         default_condition_cuis: *lung_nsclc_all
         component_lists:
           - [atezolizumab]
-          - [Pembrolizumab]
+          - [pembrolizumab]
         category_restrictions:
           immunotherapy:
             type: exact
             amount: 1
-      notes: Current exploratory query returns no results.
 
     adjuvant_osimertinib:
       public: true
       stage_scope: [stage_ii, stage_iii, resectable]
       clinical_group: resectable_stage_ii_iii
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg23_resectable]
       exploratory_sources: [nsclc_23_resectable]
       required_modifiers:
@@ -184,21 +414,13 @@ registry:
         - condition_episode.chemo_eligible
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [osimertinib]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 1
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: adjuvant_osimertinib
 
     adjuvant_cisplatin_osimertinib:
       public: true
       stage_scope: [stage_ii, stage_iii, resectable]
       clinical_group: resectable_stage_ii_iii
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg23_resectable]
       exploratory_sources: [nsclc_23_resectable]
       required_modifiers:
@@ -206,57 +428,38 @@ registry:
         - condition_episode.chemo_eligible
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [cisplatin, carboplatin]
-          - [osimertinib]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 1
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: adjuvant_cisplatin_osimertinib
 
     adjuvant_optchemo_alectinib:
       public: true
       stage_scope: [stage_ii, stage_iii, resectable]
       clinical_group: resectable_stage_ii_iii
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg23_resectable]
       exploratory_sources: [nsclc_23_resectable]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [alectinib]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 1
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: adjuvant_optchemo_alectinib
 
     radiotherapy:
       public: true
       stage_scope: [stage_iii, unresectable]
       clinical_group: unresectable_stage_iii
       # review_status: graph_only
-      aliases: [rt]
       graph_sources: [nsclc_stg3_unresectable, nsclc]
       exploratory_sources: []
       required_modifiers:
         - condition_episode.crt_eligible
       resolver:
         type: none
-      notes: Registry entry exists ahead of resolver design; stage III unresectable graph YAML is still syntactically broken.
 
     sequential_crt:
       public: true
       stage_scope: [stage_iii, unresectable]
       clinical_group: unresectable_stage_iii
       # review_status: graph_only
-      aliases: [seq_crt]
       graph_sources: [nsclc_stg3_unresectable]
       exploratory_sources: []
       required_modifiers:
@@ -265,14 +468,12 @@ registry:
         - condition_occurrence.pdl1_binary
       resolver:
         type: none
-      notes: Registry entry exists ahead of resolver design; stage III unresectable graph YAML is still syntactically broken.
 
     concurrent_crt:
       public: true
       stage_scope: [stage_iii, unresectable]
       clinical_group: unresectable_stage_iii
       # review_status: graph_only
-      aliases: [conc_crt, chemoradiotherapy]
       graph_sources: [nsclc_stg3_unresectable, nsclc]
       exploratory_sources: []
       required_modifiers:
@@ -282,14 +483,12 @@ registry:
         - condition_occurrence.pdl1_binary
       resolver:
         type: none
-      notes: Registry entry exists ahead of resolver design; stage III unresectable graph YAML is still syntactically broken.
 
     sequential_crt_adjuvant_osimertinib:
       public: true
       stage_scope: [stage_iii, unresectable]
       clinical_group: unresectable_stage_iii
       # review_status: graph_only
-      aliases: [seq_crt_adj_osimertinib]
       graph_sources: [nsclc_stg3_unresectable]
       exploratory_sources: []
       required_modifiers:
@@ -297,14 +496,12 @@ registry:
         - condition_occurrence.egfr
       resolver:
         type: none
-      notes: Registry entry exists ahead of resolver design; stage III unresectable graph YAML is still syntactically broken.
 
     concurrent_crt_adjuvant_osimertinib:
       public: true
       stage_scope: [stage_iii, unresectable]
       clinical_group: unresectable_stage_iii
       # review_status: graph_only
-      aliases: [conc_crt_adj_osimertinib]
       graph_sources: [nsclc_stg3_unresectable]
       exploratory_sources: []
       required_modifiers:
@@ -313,14 +510,12 @@ registry:
         - condition_occurrence.egfr
       resolver:
         type: none
-      notes: Registry entry exists ahead of resolver design; stage III unresectable graph YAML is still syntactically broken.
 
     sequential_crt_adjuvant_durvalumab:
       public: true
       stage_scope: [stage_iii, unresectable]
       clinical_group: unresectable_stage_iii
       # review_status: graph_only
-      aliases: [seq_crt_adj_durvalumab]
       graph_sources: [nsclc_stg3_unresectable]
       exploratory_sources: []
       required_modifiers:
@@ -329,14 +524,12 @@ registry:
         - condition_occurrence.pdl1_binary
       resolver:
         type: none
-      notes: Registry entry exists ahead of resolver design; stage III unresectable graph YAML is still syntactically broken.
 
     concurrent_crt_adjuvant_durvalumab:
       public: true
       stage_scope: [stage_iii, unresectable]
       clinical_group: unresectable_stage_iii
       # review_status: graph_only
-      aliases: [conc_crt_adj_durvalumab]
       graph_sources: [nsclc_stg3_unresectable]
       exploratory_sources: []
       required_modifiers:
@@ -346,166 +539,103 @@ registry:
         - condition_occurrence.pdl1_binary
       resolver:
         type: none
-      notes: Registry entry exists ahead of resolver design; stage III unresectable graph YAML is still syntactically broken.
 
     egfr_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [osimertinib, geftinib, erlotinib, afatinib, dacomitinib, gefitinib]
-        category_restrictions:
-          immunotherapy:
-            type: min
-            amount: 0
-          chemotherapy:
-            type: min
-            amount: 1
-      notes: Resolver copied directly from Bri's exploratory YAML, including original spelling variants.
+        group_id: egfr_intervention
 
     alk_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: draft
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [alectinib, brigatinib, lorlatinib, crizotinib, ceritinib]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 0
-      notes: Graph condition is currently wrong and must be fixed later.
+        group_id: alk_intervention
 
     ros1_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [crizotinib, entrectinib, reptrectinib]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 0
-      notes: Resolver copied directly from Bri's exploratory YAML, including original spelling variants.
+        group_id: ros1_intervention
 
     braf_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [dabrafenib]
-          - [trametinib]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 0
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: braf_intervention
 
     ret_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [pralsetinib, selpercatinib]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 0
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: ret_intervention
 
     erbb2_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [trastuzumab]
-          - [deruxtecan]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 0
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: erbb2_intervention
 
     ntrk_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: draft
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [entrectinib, larotrectinib]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 1
-      notes: Exploratory YAML already questions NSCLC specificity.
+        group_id: ntrk_intervention
 
     met_intervention:
       public: true
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: composite
-      aliases: []
       graph_sources: [nsclc_stg4_driver]
       exploratory_sources: [nsclc_4_driver]
       required_modifiers:
@@ -513,110 +643,61 @@ registry:
       resolver:
         type: composite
         members: [met_tki, met_ptdb, met_ptdb_w_ici]
-      notes: Public entry intentionally modeled as a composite over targeted and chemotherapy-based helper scenarios.
 
     met_tki:
       public: false
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_driver]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [capamatinib, tepotinib]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 1
-      notes: Internal helper scenario for met_intervention.
+        group_id: met_tki
 
     met_ptdb:
       public: false
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_driver]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [Platinum agent]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 2
-      notes: Internal helper scenario for met_intervention.
+        group_id: met_ptdb
 
     met_ptdb_w_ici:
       public: false
       stage_scope: [stage_iv, driver_positive]
       clinical_group: metastatic_driver_positive
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_driver]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [Platinum agent]
-          - [Immunostimulatory monoclonal antibody]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 2
-          immunotherapy:
-            type: min
-            amount: 1
-      notes: Internal helper scenario for met_intervention.
+        group_id: met_ptdb_w_ici
 
     best_supportive_care:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: aligned
-      aliases: [supportive_care_only, bsc_only]
       graph_sources: [nsclc_stg4_nodrivers, nsclc]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
         - person.performance_status_v_frail
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists: []
-        category_restrictions:
-          radiotherapy:
-            type: exact
-            amount: 0
-          surgery:
-            type: exact
-            amount: 0
-          chemotherapy:
-            type: exact
-            amount: 0
-          immunotherapy:
-            type: exact
-            amount: 0
-          supportive:
-            type: min
-            amount: 1
-      notes: Effective restriction set includes the prototype defaults plus supportive minimum requirement.
+        group_id: best_supportive_care
 
     platinum_doublet_3rd_gen_agent:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_nodrivers]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -625,22 +706,13 @@ registry:
         - person.ici_eligible
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [Platinum agent]
-          - [taxane, gemcitabine, vinorelbine]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 2
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: platinum_doublet_3rd_gen_agent
 
     platinum_doublet_nonsquamous:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_nodrivers]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -649,21 +721,13 @@ registry:
         - person.ici_eligible
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_nonsquamous
-        component_lists:
-          - [Platinum agent]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 2
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: platinum_doublet_nonsquamous
 
     ici_w_chemo_nonsquamous:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_nodrivers, nsclc]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -673,22 +737,13 @@ registry:
         - person.performance_status_frail
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_nonsquamous
-        component_lists:
-          - [Platinum agent]
-          - [Immunostimulatory monoclonal antibody]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 0
-      notes: Category restrictions preserve the prototype default behavior for scenarios without explicit exploratory restrictions.
+        group_id: ici_w_chemo_nonsquamous
 
     ici_w_chemo_squamous:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: aligned
-      aliases: []
       graph_sources: [nsclc_stg4_nodrivers, nsclc]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -698,22 +753,13 @@ registry:
         - person.performance_status_frail
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_squamous
-        component_lists:
-          - [Platinum agent]
-          - [Immunostimulatory monoclonal antibody]
-        category_restrictions:
-          chemotherapy:
-            type: min
-            amount: 0
-      notes: Category restrictions preserve the prototype default behavior for scenarios without explicit exploratory restrictions.
+        group_id: ici_w_chemo_squamous
 
     ici_monotherapy:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: aligned
-      aliases: [ici_mono]
       graph_sources: [nsclc_stg4_nodrivers, nsclc]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -722,21 +768,13 @@ registry:
         - condition_occurrence.pdl1
       resolver:
         type: component_query
-        default_condition_cuis: *lung_nsclc_all
-        component_lists:
-          - [Immunostimulatory monoclonal antibody]
-        category_restrictions:
-          immunotherapy:
-            type: exact
-            amount: 1
-      notes: Resolver copied directly from Bri's exploratory YAML.
+        group_id: ici_monotherapy
 
     chemotherapy_or_atezolizumab_squamous:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: composite
-      aliases: []
       graph_sources: [nsclc_stg4_nodrivers]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -747,14 +785,12 @@ registry:
       resolver:
         type: composite
         members: [ptdb_squamous, single_chemo_squamous, atezolizumab]
-      notes: Composite public entry over helper scenarios defined in Bri's exploratory YAML.
 
     chemotherapy_or_atezolizumab_nonsquamous:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: composite
-      aliases: []
       graph_sources: [nsclc_stg4_nodrivers]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -765,14 +801,12 @@ registry:
       resolver:
         type: composite
         members: [ptdb_nonsquamous, single_chemo_nonsquamous, atezolizumab]
-      notes: Composite public entry over helper scenarios defined in Bri's exploratory YAML.
 
     ici_monotherapy_or_ici_with_chemotherapy_squamous:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: composite
-      aliases: [ici_montherapy_or_ici_with_chemotherapy_squamous]
       graph_sources: [nsclc_stg4_nodrivers]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -783,14 +817,12 @@ registry:
       resolver:
         type: composite
         members: [ici_monotherapy, ici_w_chemo_squamous]
-      notes: Canonical ID fixes the current graph typo montherapy->monotherapy.
 
     ici_monotherapy_or_ici_with_chemotherapy_nonsquamous:
       public: true
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: composite
-      aliases: [ici_montherapy_or_ici_with_chemotherapy_nonsquamous]
       graph_sources: [nsclc_stg4_nodrivers]
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers:
@@ -801,104 +833,63 @@ registry:
       resolver:
         type: composite
         members: [ici_monotherapy, ici_w_chemo_nonsquamous]
-      notes: Canonical ID fixes the current graph typo montherapy->monotherapy.
 
     ptdb_squamous:
       public: false
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_squamous
-        component_lists:
-          - [Platinum agent]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 2
-      notes: Internal helper scenario for chemotherapy_or_atezolizumab_squamous.
+        group_id: ptdb_squamous
 
     single_chemo_squamous:
       public: false
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_squamous
-        component_lists:
-          - [gemcitabine, vinorelbine, docetaxel]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 1
-      notes: Internal helper scenario for chemotherapy_or_atezolizumab_squamous.
+        group_id: single_chemo_squamous
 
     ptdb_nonsquamous:
       public: false
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_nonsquamous
-        component_lists:
-          - [Platinum agent]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 2
-      notes: Internal helper scenario for chemotherapy_or_atezolizumab_nonsquamous.
+        group_id: ptdb_nonsquamous
 
     single_chemo_nonsquamous:
       public: false
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_nonsquamous
-        component_lists:
-          - [gemcitabine, vinorelbine, docetaxel, pemetrexed]
-        category_restrictions:
-          chemotherapy:
-            type: exact
-            amount: 1
-      notes: Internal helper scenario for chemotherapy_or_atezolizumab_nonsquamous.
+        group_id: single_chemo_nonsquamous
 
     atezolizumab:
       public: false
       stage_scope: [stage_iv, driver_negative]
       clinical_group: metastatic_non_driver
       # review_status: internal
-      aliases: []
       graph_sources: []
       exploratory_sources: [nsclc_4_nodrivers]
       required_modifiers: []
       resolver:
         type: component_query
-        default_condition_cuis: *nsclc_squamous
-        component_lists:
-          - [atezolizumab]
-        category_restrictions:
-          immunotherapy:
-            type: exact
-            amount: 1
-      notes: Internal helper scenario for chemotherapy_or_atezolizumab composites; condition scope remains as defined in Bri's exploratory YAML.
+        group_id: atezolizumab

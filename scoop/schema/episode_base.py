@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from ..configuration import episode_mapper
 from ..utils.id_management import episode_id_seq
+from .omop_export import OmopExportBundle, as_datetime
 from .transformable_object import TransformableBase
 
 def _source_value(source: Any, *names: str) -> Any:
@@ -46,6 +47,15 @@ class Episode_Event(BaseModel):
     event_id: int
     episode_event_field_concept_id: int
 
+    def to_omop_row(self):
+        from omop_alchemy.cdm import model as omop_model
+
+        return omop_model.Episode_Event(
+            episode_id=self.episode_id,
+            event_id=self.event_id,
+            episode_event_field_concept_id=self.episode_event_field_concept_id,
+        )
+
 
 class Episode_Base(TransformableBase):
     """Shared OMOP episode fields and default-population logic."""
@@ -58,12 +68,15 @@ class Episode_Base(TransformableBase):
     episode_id: int = Field(default_factory=episode_id_seq.next)
     episode_parent_id: int | None = None
     episode_start_date: date | None = None
+    episode_start_datetime: datetime | None = None
     episode_end_date: date | None = None
+    episode_end_datetime: datetime | None = None
     episode_number: int | None = None
     episode_source_value: str | None = None
     episode_concept_id: int | None = None
     episode_object_concept_id: int | None = None
     episode_type_concept_id: int | None = None
+    episode_source_concept_id: int | None = None
     episode_events: list[Episode_Event] = Field(default_factory=list)
     episode_object: Any | None = Field(
         default=None,
@@ -100,8 +113,20 @@ class Episode_Base(TransformableBase):
             "transform": lambda episode: episode._derive_episode_start_date(),
             "when_missing": True,
         },
+        "episode_start_datetime": {
+            "transform": lambda episode: as_datetime(episode.episode_start_date),
+            "when_missing": True,
+        },
+        "episode_end_datetime": {
+            "transform": lambda episode: as_datetime(episode.episode_end_date),
+            "when_missing": True,
+        },
         "episode_object_concept_id": {
             "transform": lambda episode: episode._derive_episode_object_concept_id(),
+            "when_missing": True,
+        },
+        "episode_source_concept_id": {
+            "transform": lambda episode: episode._episode_spec().episode_source_concept_id,
             "when_missing": True,
         },
     }
@@ -142,6 +167,31 @@ class Episode_Base(TransformableBase):
 
     def _derive_episode_events(self) -> list[Episode_Event]:
         return list(self.episode_events)
+
+    def to_omop_row(self):
+        from omop_alchemy.cdm import model as omop_model
+
+        return omop_model.Episode(
+            episode_id=self.episode_id,
+            episode_parent_id=self.episode_parent_id,
+            episode_start_date=self.episode_start_date,
+            episode_start_datetime=self.episode_start_datetime,
+            episode_end_date=self.episode_end_date,
+            episode_end_datetime=self.episode_end_datetime,
+            episode_number=self.episode_number,
+            episode_source_value=self.episode_source_value,
+            episode_concept_id=self.episode_concept_id,
+            episode_object_concept_id=self.episode_object_concept_id,
+            episode_type_concept_id=self.episode_type_concept_id,
+            episode_source_concept_id=self.episode_source_concept_id,
+            person_id=self.person_id,
+        )
+
+    def to_omop_bundle(self) -> OmopExportBundle:
+        return OmopExportBundle(
+            episodes=[self.to_omop_row()],
+            episode_events=[event.to_omop_row() for event in self.episode_events],
+        )
 
     @model_validator(mode="after")
     def _populate_episode_defaults(self):

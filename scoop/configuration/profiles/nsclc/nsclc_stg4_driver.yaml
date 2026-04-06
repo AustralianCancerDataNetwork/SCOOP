@@ -12,8 +12,8 @@ graph:
     # Excluding exon 20 insertion
     # Options:
     # osimertinib
-    # geftinib
-    # erlotinib, erlotinib-bevacizumab, erlotinib-ramacinumab
+    # gefitinib
+    # erlotinib, erlotinib-bevacizumab, erlotinib-ramucirumab
     # afatinib
     # dacomitinib
     # gefitinib-carboplatin-pemetrexed

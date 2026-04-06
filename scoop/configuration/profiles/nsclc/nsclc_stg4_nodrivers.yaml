@@ -3,7 +3,7 @@
 # Last updated: 21/01/2025
 
 # Assumptions/simplifications:
-# - Suitiblity for ICIs is based on an arbitrary probability and not
+# - Suitability for ICIs is based on an arbitrary probability and not
 # linked to patient or tumour characteristics.
 # - I have written this as suitability for ICIs rather than suitability for
 # immunotherapy as a) some other ESMO pages indicate it as ICIs rather than
@@ -36,7 +36,7 @@ graph:
       active_when:
         person.performance_status_v_frail: v_frail
 
-    # ? Add req for eligibitility for pt doublet therapy?
+    # ? Add req for eligibility for pt doublet therapy?
     # i.e. ineligibles (? subset of ps2) get single agent chemo?
 
     # 4-6 cycles
@@ -79,7 +79,7 @@ graph:
         person.performance_status_frail: not_frail
 
     # Options:
-    # Pembrolizumab-carboplatin-(nab)-paclitaxel
+    # pembrolizumab-carboplatin-(nab)-paclitaxel
     # cemiplimab platinum doublet
     # sugemalimab platinum doublet
     # nivolumab-ipilimumab + 2 cycles platinum doublet
@@ -132,9 +132,9 @@ graph:
     # options:
       # monotherapy: pembrolizumab, atezolizumab, cemiplimab
       # ici_w_chemo: 
-        # nivolmab-ipililumab w 2 cycles platinum based chemo
+        # nivolumab-ipilimumab w 2 cycles platinum based chemo
         # durvalumab-tremelimumab-platinum based doublet chemo
-    treatment_episode.ici_montherapy_or_ici_with_chemotherapy_squamous:
+    treatment_episode.ici_monotherapy_or_ici_with_chemotherapy_squamous:
       type: categorical
       labels: ["ici_monotherapy_or_w_chemo_sqcc"]
       active_when:
@@ -147,10 +147,10 @@ graph:
     # options:
       # monotherapy: pembrolizumab, atezolizumab, cemiplimab
       # ici_w_chemo: 
-        # nivolmab-ipililumab w 2 cycles platinum based chemo
+        # nivolumab-ipilimumab w 2 cycles platinum based chemo
         # durvalumab-tremelimumab-platinum based doublet chemo
         # tislelizumab-pemetrexed-platinum based chemotherapy
-    treatment_episode.ici_montherapy_or_ici_with_chemotherapy_nonsquamous:
+    treatment_episode.ici_monotherapy_or_ici_with_chemotherapy_nonsquamous:
       type: categorical
       labels: ["ici_monotherapy_or_w_chemo_nonsqcc"]
       active_when:

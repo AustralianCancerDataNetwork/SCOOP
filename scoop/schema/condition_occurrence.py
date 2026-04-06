@@ -8,6 +8,7 @@ from scoop.configuration import modifier_mapper
 from ..utils.id_management import condition_id_seq
 from ..utils.date_handler import random_date
 from ..utils.condition_resolver import get_condition_concept_resolver
+from .omop_export import OmopExportBundle, as_datetime
 if TYPE_CHECKING:
     from .object_factories import assign_regimen
     from .condition_episode import Condition_Episode
@@ -49,6 +50,21 @@ def _build_metastasis_measurement(condition: "Condition_Occurrence") -> "Measure
         meas_event_field_concept_id=1147127,
         value_source_value=sampled_metastasis.concept_code,
     )
+
+
+def _resolved_condition_concepts(
+    condition: "Condition_Occurrence",
+) -> dict[str, int | str] | None:
+    resolver = get_condition_concept_resolver(condition)
+    if resolver is None:
+        return None
+
+    resolved = resolver.resolve_for_condition(condition)
+    return {
+        "condition_concept_id": resolved.concept_id,
+        "condition_source_concept_id": resolved.concept_id,
+        "condition_source_value": resolved.concept_code,
+    }
 
 
 class Condition_Occurrence(TransformableBase):
@@ -93,20 +109,7 @@ class Condition_Occurrence(TransformableBase):
         )
 
     def _resolve_condition_concept(self):
-        if self._has_resolved_condition_concept():
-            return self
-
-        resolver = get_condition_concept_resolver(self)
-        if resolver is None:
-            return self
-
-        resolved = resolver.resolve_for_condition(self)
-        if self.condition_concept_id is None:
-            self.condition_concept_id = resolved.concept_id
-        if self.condition_source_concept_id is None:
-            self.condition_source_concept_id = resolved.concept_id
-        if self.condition_source_value is None:
-            self.condition_source_value = resolved.concept_code
+        self._apply_named_persisted_bundle_transform("condition_concept_resolution")
         return self
 
     def _create_overarching_condition_episode(self):
@@ -143,6 +146,38 @@ class Condition_Occurrence(TransformableBase):
         if self.regimen:
             drug_exposures, procedures = self.regimen.roll_events()
 
+    def to_omop_row(self):
+        from omop_alchemy.cdm import model as omop_model
+
+        return omop_model.Condition_Occurrence(
+            condition_occurrence_id=self.condition_occurrence_id,
+            person_id=self.person_id,
+            condition_concept_id=self.condition_concept_id,
+            condition_start_date=self.condition_start_date,
+            condition_start_datetime=as_datetime(self.condition_start_date),
+            condition_source_value=self.condition_source_value,
+            condition_source_concept_id=self.condition_source_concept_id,
+        )
+
+    def to_omop_bundle(self, *, include_related: bool = False) -> OmopExportBundle:
+        _, measurements, observations, _ = self._collect_emitted_outputs()
+        bundle = OmopExportBundle(
+            condition_occurrences=[self.to_omop_row()],
+            measurements=[
+                measurement.to_omop_row()
+                for measurement in measurements
+                if measurement is not None
+            ],
+            observations=[
+                observation.to_omop_row()
+                for observation in observations
+                if observation is not None
+            ],
+        )
+        if include_related and self.overarching_episode is not None:
+            bundle.merge(self.overarching_episode.to_omop_bundle())
+        return bundle
+
     model_config = {
         "from_attributes": True  
     }
@@ -167,6 +202,19 @@ class Condition_Occurrence(TransformableBase):
         "condition_start_date": {
             "inputs": ["year_of_diagnosis", "years_since_diagnosis"],
             "transform": _condition_start_date,
+            "when_missing": True,
+        },
+    }
+
+    __persisted_bundle_transforms__ = {
+        "condition_concept_resolution": {
+            "inputs": ["morphology", "topog", "condition_domain", "source_profile"],
+            "outputs": [
+                "condition_concept_id",
+                "condition_source_concept_id",
+                "condition_source_value",
+            ],
+            "transform": _resolved_condition_concepts,
             "when_missing": True,
         },
     }

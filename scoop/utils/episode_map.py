@@ -13,6 +13,7 @@ class EpisodeSpec:
     episode_type_concept_id: int
     episode_number: int | None = None
     episode_source_value: str | None = None
+    episode_source_concept_id: int | None = None
     episode_event_field_concept_id: int | None = None
 
 
@@ -43,6 +44,11 @@ class EpisodeMapper:
                 episode_source_value=(
                     str(entry["episode_source_value"])
                     if entry.get("episode_source_value") is not None
+                    else None
+                ),
+                episode_source_concept_id=(
+                    int(entry["episode_source_concept_id"])
+                    if entry.get("episode_source_concept_id") is not None
                     else None
                 ),
                 episode_event_field_concept_id=(
