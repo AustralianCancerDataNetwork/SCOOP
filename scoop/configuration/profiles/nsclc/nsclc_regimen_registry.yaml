@@ -284,6 +284,234 @@ registry:
         immunotherapy:
           type: exact
           amount: 1
+    nsclc_crt_backbone:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [Platinum agent]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+    nsclc_osimertinib_monotherapy:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [osimertinib]
+      category_restrictions: {}
+    nsclc_durvalumab_monotherapy:
+      basis: variant
+      condition_set: lung_nsclc_all
+      component_lists:
+        - [durvalumab]
+      category_restrictions:
+        immunotherapy:
+          type: exact
+          amount: 1
+  hemonc_bundle_groups:
+    sbrt:
+      basis: sig_bundle
+      assembly_mode: rt_only
+      sequence_template: standalone
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: radiotherapy
+          title: stereotactic radiotherapy
+          phase_type: radiotherapy
+          timing: standalone
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+    surgery_only:
+      basis: sig_bundle
+      assembly_mode: sig_only
+      sequence_template: standalone
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: surgery
+          phase_type: surgery
+          timing: standalone
+          source_type: sig_component
+          component_terms: [Surgery]
+    port:
+      basis: sig_bundle
+      assembly_mode: multi_sig_only
+      sequence_template: postoperative
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: surgery
+          phase_type: surgery
+          timing: pre
+          source_type: sig_component
+          component_terms: [Surgery]
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: post
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+    port_adjuvant_osimertinib:
+      basis: sig_bundle
+      assembly_mode: variant_plus_surgery
+      sequence_template: postoperative
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: surgery
+          phase_type: surgery
+          timing: pre
+          source_type: sig_component
+          component_terms: [Surgery]
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: post
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+        - phase_id: adjuvant_osimertinib
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: nsclc_osimertinib_monotherapy
+    surgery_adjuvant_osimertinib:
+      basis: sig_bundle
+      assembly_mode: variant_plus_surgery
+      sequence_template: adjuvant
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: surgery
+          phase_type: surgery
+          timing: pre
+          source_type: sig_component
+          component_terms: [Surgery]
+        - phase_id: adjuvant_osimertinib
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: nsclc_osimertinib_monotherapy
+    radiotherapy:
+      basis: sig_bundle
+      assembly_mode: rt_only
+      sequence_template: standalone
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: standalone
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+    sequential_crt:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: sequential
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: pre
+          source_type: group
+          source_group_id: nsclc_crt_backbone
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: post
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+    concurrent_crt:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: concurrent
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: concurrent
+          source_type: group
+          source_group_id: nsclc_crt_backbone
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: concurrent
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+    sequential_crt_adjuvant_osimertinib:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: sequential
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: pre
+          source_type: group
+          source_group_id: nsclc_crt_backbone
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: post
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+        - phase_id: adjuvant_osimertinib
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: nsclc_osimertinib_monotherapy
+    concurrent_crt_adjuvant_osimertinib:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: concurrent
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: concurrent
+          source_type: group
+          source_group_id: nsclc_crt_backbone
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: concurrent
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+        - phase_id: adjuvant_osimertinib
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: nsclc_osimertinib_monotherapy
+    sequential_crt_adjuvant_durvalumab:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: sequential
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: pre
+          source_type: group
+          source_group_id: nsclc_crt_backbone
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: post
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+        - phase_id: adjuvant_durvalumab
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: nsclc_durvalumab_monotherapy
+    concurrent_crt_adjuvant_durvalumab:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: concurrent
+      condition_set: lung_nsclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: concurrent
+          source_type: group
+          source_group_id: nsclc_crt_backbone
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: concurrent
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+        - phase_id: adjuvant_durvalumab
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: nsclc_durvalumab_monotherapy
   entries:
     sbrt:
       public: true
@@ -295,7 +523,8 @@ registry:
       required_modifiers:
         - condition_episode.operability
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: sbrt
 
     surgery_only:
       public: true
@@ -308,7 +537,8 @@ registry:
         - condition_episode.operability
         - treatment_episode.resection_margin
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: surgery_only
 
     port:
       public: true
@@ -321,7 +551,8 @@ registry:
         - condition_episode.operability
         - treatment_episode.resection_margin
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: port
 
     port_adjuvant_osimertinib:
       public: true
@@ -335,7 +566,8 @@ registry:
         - treatment_episode.resection_margin
         - condition_occurrence.biomarker
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: port_adjuvant_osimertinib
 
     surgery_adjuvant_osimertinib:
       public: true
@@ -349,7 +581,8 @@ registry:
         - treatment_episode.resection_margin
         - condition_occurrence.biomarker
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: surgery_adjuvant_osimertinib
 
     neoadjuvant_chemo_ici:
       public: true
@@ -453,7 +686,8 @@ registry:
       required_modifiers:
         - condition_episode.crt_eligible
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: radiotherapy
 
     sequential_crt:
       public: true
@@ -467,7 +701,8 @@ registry:
         - condition_occurrence.egfr
         - condition_occurrence.pdl1_binary
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: sequential_crt
 
     concurrent_crt:
       public: true
@@ -482,7 +717,8 @@ registry:
         - condition_occurrence.egfr
         - condition_occurrence.pdl1_binary
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: concurrent_crt
 
     sequential_crt_adjuvant_osimertinib:
       public: true
@@ -495,7 +731,8 @@ registry:
         - condition_episode.sequential_crt_eligible
         - condition_occurrence.egfr
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: sequential_crt_adjuvant_osimertinib
 
     concurrent_crt_adjuvant_osimertinib:
       public: true
@@ -509,7 +746,8 @@ registry:
         - condition_episode.sequential_crt_eligible
         - condition_occurrence.egfr
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: concurrent_crt_adjuvant_osimertinib
 
     sequential_crt_adjuvant_durvalumab:
       public: true
@@ -523,7 +761,8 @@ registry:
         - condition_occurrence.egfr
         - condition_occurrence.pdl1_binary
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: sequential_crt_adjuvant_durvalumab
 
     concurrent_crt_adjuvant_durvalumab:
       public: true
@@ -538,7 +777,8 @@ registry:
         - condition_occurrence.egfr
         - condition_occurrence.pdl1_binary
       resolver:
-        type: none
+        type: bundle_recipe
+        group_id: concurrent_crt_adjuvant_durvalumab
 
     egfr_intervention:
       public: true

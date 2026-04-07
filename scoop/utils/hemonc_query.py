@@ -1,4 +1,10 @@
 from __future__ import annotations
+"""Helpers for turning resolved HemOnc variant queries into SQLAlchemy queries.
+
+This module covers the variant-backed path only. It normalizes component and
+category requirements, builds SQL expressions against the `hemonc_import`
+schema, and optionally executes the resulting variant query.
+"""
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -71,11 +77,20 @@ DEFAULT_COMPONENT_REQUIREMENTS = {
     },
 }
 
+COMPATIBILITY_COMPONENT_REQUIREMENTS = {
+    "component_lists": [],
+    "category_restrictions": {
+        "chemotherapy": {"type": "min", "amount": 0},
+    },
+}
+
 COMPONENT_STR_COLS = ["canmed_major_class", "canmed_minor_class", "main_class", "component"]
 
 
 @dataclass(frozen=True)
 class HemOncModels:
+    """Container for the SQLAlchemy entities used by the query helpers."""
+
     Variants: Any
     Sigs: Any
     Studies: Any
@@ -86,6 +101,8 @@ class HemOncModels:
 
 @dataclass(frozen=True)
 class HemOncQueryArtifacts:
+    """Intermediate SQL artifacts for inspecting how a variant query was built."""
+
     resolved_query: ResolvedHemOncQuery
     components_subquery: Any
     categorised_components_subquery: Any
@@ -94,6 +111,8 @@ class HemOncQueryArtifacts:
 
 
 def _load_hemonc_models() -> HemOncModels:
+    """Import and package the HemOnc SQLAlchemy models on demand."""
+
     try:
         from hemonc_import.final_model.relationships import Drugs, Sigs, Studies, Variants
         from hemonc_import.final_model.entities import (
@@ -119,20 +138,56 @@ def _load_hemonc_models() -> HemOncModels:
 def apply_default_component_requirements(
     component_requirements: dict[str, Any],
 ) -> dict[str, Any]:
-    merged = deepcopy(DEFAULT_COMPONENT_REQUIREMENTS)
-    merged["component_lists"] = list(component_requirements.get("component_lists", ()))
-    merged["category_restrictions"].update(
-        {
-            category: _normalise_category_restriction(requirement)
-            for category, requirement in component_requirements.get(
-                "category_restrictions", {}
-            ).items()
-        }
+    """Normalize component-query requirements before SQL generation.
+
+    The normalization keeps current strict defaults for explicit restriction
+    blocks while preserving output-compatible permissive behavior for omitted
+    or legacy-equivalent category restrictions.
+    """
+
+    component_lists = list(component_requirements.get("component_lists", ()))
+    raw_category_restrictions = component_requirements.get("category_restrictions", {})
+    category_restrictions = {
+        category: _normalise_category_restriction(requirement)
+        for category, requirement in raw_category_restrictions.items()
+    }
+
+    category_restrictions_provided = component_requirements.get(
+        "category_restrictions_provided"
     )
+    if category_restrictions_provided is None:
+        category_restrictions_provided = "category_restrictions" in component_requirements
+
+    if _uses_compatibility_category_defaults(
+        category_restrictions=category_restrictions,
+        category_restrictions_provided=bool(category_restrictions_provided),
+    ):
+        merged = deepcopy(COMPATIBILITY_COMPONENT_REQUIREMENTS)
+        merged["component_lists"] = component_lists
+        return merged
+
+    merged = deepcopy(DEFAULT_COMPONENT_REQUIREMENTS)
+    merged["component_lists"] = component_lists
+    merged["category_restrictions"].update(category_restrictions)
     return merged
 
 
+def _uses_compatibility_category_defaults(
+    category_restrictions: dict[str, dict[str, Any]],
+    category_restrictions_provided: bool,
+) -> bool:
+    """Return True when legacy permissive defaults should be used."""
+
+    if not category_restrictions_provided and not category_restrictions:
+        return True
+    return category_restrictions == {
+        "chemotherapy": {"type": "min", "amount": 0},
+    }
+
+
 def _normalise_category_restriction(requirement: Any) -> dict[str, Any]:
+    """Convert Pydantic restriction objects into plain dict form."""
+
     if isinstance(requirement, CategoryRestriction):
         return {"type": requirement.type, "amount": requirement.amount}
     if isinstance(requirement, dict):
@@ -148,6 +203,8 @@ def _normalise_category_restriction(requirement: Any) -> dict[str, Any]:
 
 
 def _component_search_expressions(search_terms: str | list[str], table: Any) -> list[Any]:
+    """Build `ILIKE` expressions across all supported component text columns."""
+
     if isinstance(search_terms, str):
         search_terms = [search_terms]
     expressions: list[Any] = []
@@ -158,6 +215,8 @@ def _component_search_expressions(search_terms: str | list[str], table: Any) -> 
 
 
 def component_search_by_name(search_terms: str | list[str], table: Any) -> Any:
+    """Build a subquery selecting component CUIs matching the search terms."""
+
     return (
         sa.select(table.c.component_cui)
         .where(sa.or_(*_component_search_expressions(search_terms, table)))
@@ -167,6 +226,8 @@ def component_search_by_name(search_terms: str | list[str], table: Any) -> Any:
 
 
 def _category_mapping_expressions(components: Any) -> list[Any]:
+    """Build SQL expressions mapping raw HemOnc classes into broad categories."""
+
     class_maps = {
         "canmed_major_class": MAJOR_CLASS_MAP,
         "main_class": MAIN_CLASS_MAP,
@@ -184,6 +245,8 @@ def _category_mapping_expressions(components: Any) -> list[Any]:
 
 
 def build_components_subquery(condition_cuis: list[int], models: HemOncModels | None = None) -> Any:
+    """Build the base component-level subquery for a condition set."""
+
     models = models or _load_hemonc_models()
     return (
         sa.select(
@@ -211,6 +274,8 @@ def build_components_subquery(condition_cuis: list[int], models: HemOncModels | 
 
 
 def categorise_components(components: Any) -> Any:
+    """Annotate component rows with derived broad-category labels."""
+
     return (
         sa.select(
             components.c.variant_cui,
@@ -230,6 +295,8 @@ def build_component_requirement_expressions(
     component_requirements: dict[str, Any],
     categorised_components: Any,
 ) -> list[Any]:
+    """Translate normalized component requirements into SQL HAVING clauses."""
+
     normalised = apply_default_component_requirements(component_requirements)
     expressions: list[Any] = []
 
@@ -263,6 +330,8 @@ def build_variant_cui_subquery(
     resolved_query: ResolvedHemOncQuery,
     models: HemOncModels | None = None,
 ) -> Any:
+    """Build the subquery that identifies matching variant CUIs."""
+
     component_requirements = {
         "component_lists": resolved_query.component_lists,
         "category_restrictions": resolved_query.category_restrictions,
@@ -281,6 +350,8 @@ def build_variant_statement(
     resolved_query: ResolvedHemOncQuery,
     models: HemOncModels | None = None,
 ) -> Any:
+    """Build the final SQLAlchemy statement returning matching variant rows."""
+
     models = models or _load_hemonc_models()
     variant_cuis = build_variant_cui_subquery(resolved_query, models=models)
     return sa.select(models.Variants).join(
@@ -292,6 +363,8 @@ def build_variant_query_artifacts(
     resolved_query: ResolvedHemOncQuery,
     models: HemOncModels | None = None,
 ) -> HemOncQueryArtifacts:
+    """Build inspectable intermediate SQL artifacts for a resolved variant query."""
+
     models = models or _load_hemonc_models()
     components = build_components_subquery(resolved_query.default_condition_cuis, models=models)
     categorised = categorise_components(components)
@@ -325,6 +398,8 @@ def build_variant_statement_for_entry(
     entry_id: str,
     models: HemOncModels | None = None,
 ) -> Any:
+    """Resolve a registry entry and build its executable variant statement."""
+
     resolved_query = registry.resolve_hemonc_query(entry_id)
     if resolved_query is None:
         raise ValueError(f"Registry entry '{entry_id}' does not resolve to a HemOnc query.")
@@ -336,6 +411,8 @@ def execute_variant_query(
     resolved_query: ResolvedHemOncQuery,
     models: HemOncModels | None = None,
 ) -> list[Any]:
+    """Execute a resolved variant query and return ORM variant rows."""
+
     stmt = build_variant_statement(resolved_query, models=models)
     return session.execute(stmt).unique().scalars().all()
 
@@ -346,6 +423,8 @@ def execute_variant_query_for_entry(
     entry_id: str,
     models: HemOncModels | None = None,
 ) -> list[Any]:
+    """Resolve and execute a variant query directly from a registry entry id."""
+
     resolved_query = registry.resolve_hemonc_query(entry_id)
     if resolved_query is None:
         raise ValueError(f"Registry entry '{entry_id}' does not resolve to a HemOnc query.")

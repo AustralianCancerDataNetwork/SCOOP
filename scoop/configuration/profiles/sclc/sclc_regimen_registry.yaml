@@ -1,6 +1,90 @@
 registry:
   disease: sclc
   version: 1
+  condition_sets:
+    lung_sclc_all: &lung_sclc_all
+      - 666
+  hemonc_groups:
+    sclc_platinum_etoposide:
+      basis: variant
+      condition_set: lung_sclc_all
+      component_lists:
+        - [Platinum agent]
+        - [etoposide]
+      category_restrictions:
+        chemotherapy:
+          type: exact
+          amount: 2
+  hemonc_bundle_groups:
+    surgery_adjuvant_platinum_etoposide:
+      basis: sig_bundle
+      assembly_mode: variant_plus_surgery
+      sequence_template: adjuvant
+      condition_set: lung_sclc_all
+      phases:
+        - phase_id: surgery
+          phase_type: surgery
+          timing: pre
+          source_type: sig_component
+          component_terms: [Surgery]
+        - phase_id: adjuvant_systemic
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: sclc_platinum_etoposide
+    surgery_adjuvant_platinum_etoposide_rt:
+      basis: sig_bundle
+      assembly_mode: variant_plus_surgery
+      sequence_template: postoperative
+      condition_set: lung_sclc_all
+      phases:
+        - phase_id: surgery
+          phase_type: surgery
+          timing: pre
+          source_type: sig_component
+          component_terms: [Surgery]
+        - phase_id: adjuvant_systemic
+          phase_type: systemic
+          timing: post
+          source_type: group
+          source_group_id: sclc_platinum_etoposide
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: post
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+    concurrent_crt:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: concurrent
+      condition_set: lung_sclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: concurrent
+          source_type: group
+          source_group_id: sclc_platinum_etoposide
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: concurrent
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
+    sequential_crt:
+      basis: sig_bundle
+      assembly_mode: variant_plus_rt
+      sequence_template: sequential
+      condition_set: lung_sclc_all
+      phases:
+        - phase_id: systemic
+          phase_type: systemic
+          timing: pre
+          source_type: group
+          source_group_id: sclc_platinum_etoposide
+        - phase_id: radiotherapy
+          phase_type: radiotherapy
+          timing: post
+          source_type: sig_component
+          component_terms: [External beam radiotherapy]
   entries:
     surgery_adjuvant_platinum_etoposide:
       public: true
@@ -13,8 +97,9 @@ registry:
         - condition_episode.limited_stage_path
         - condition_episode.resection_pathology
       resolver:
-        type: none
-      notes: Starter registry entry. Resolver not yet defined.
+        type: bundle_recipe
+        group_id: surgery_adjuvant_platinum_etoposide
+      notes: Sig-bundle recipe for surgery followed by adjuvant platinum-etoposide.
 
     surgery_adjuvant_platinum_etoposide_rt:
       public: true
@@ -27,8 +112,9 @@ registry:
         - condition_episode.limited_stage_path
         - condition_episode.resection_pathology
       resolver:
-        type: none
-      notes: Starter registry entry for post-operative chemo-radiotherapy. Resolver not yet defined.
+        type: bundle_recipe
+        group_id: surgery_adjuvant_platinum_etoposide_rt
+      notes: Sig-bundle recipe for surgery followed by adjuvant platinum-etoposide and radiotherapy.
 
     concurrent_crt:
       public: true
@@ -40,8 +126,9 @@ registry:
       required_modifiers:
         - condition_episode.concurrent_crt_eligibility
       resolver:
-        type: none
-      notes: Starter registry entry. PCI is not modeled as a separate category yet.
+        type: bundle_recipe
+        group_id: concurrent_crt
+      notes: Sig-bundle recipe for concurrent chemoradiotherapy. PCI is not modeled as a separate category yet.
 
     sequential_crt:
       public: true
@@ -53,8 +140,9 @@ registry:
       required_modifiers:
         - condition_episode.concurrent_crt_eligibility
       resolver:
-        type: none
-      notes: Starter registry entry for patients not eligible for concurrent CRT.
+        type: bundle_recipe
+        group_id: sequential_crt
+      notes: Sig-bundle recipe for sequential chemoradiotherapy.
 
     platinum_etoposide_atezolizumab:
       public: true

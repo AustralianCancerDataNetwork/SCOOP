@@ -20,6 +20,11 @@ class Treatment_Episode(TransformableBase):
     required_modifiers: list[str] = Field(default_factory=list)
     decision_context: dict[str, Any] = Field(default_factory=dict)
     registry_notes: str | None = None
+    bundle_recipe_id: str | None = None
+    bundle_basis: str | None = None
+    bundle_assembly_mode: str | None = None
+    bundle_sequence_template: str | None = None
+    bundle_phase_summary: list[dict[str, Any]] = Field(default_factory=list)
 
     def roll_events(self):
         """ Placeholder method to generate drug exposures and procedures for this treatment episode. """

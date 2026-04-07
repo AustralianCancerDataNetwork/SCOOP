@@ -11,6 +11,7 @@ from .episode_base import Episode_Base
 from .treatment_episode import Treatment_Episode, build_graph_outcome
 
 from ..configuration.profile_manager import get_active_simulation_context
+from ..configuration.regimen_registry import BundleRecipeResolver
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +268,31 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
         condition_occurrence.condition_occurrence_id,
         outcome.graph_endpoint,
     )
+    bundle_kwargs: dict[str, Any] = {}
+    if isinstance(entry.resolver, BundleRecipeResolver):
+        resolved_bundle = registry.resolve_hemonc_bundle(outcome.primary_category_id)
+        bundle_kwargs = {
+            "bundle_recipe_id": resolved_bundle.group_id if resolved_bundle is not None else entry.resolver.group_id,
+            "bundle_basis": resolved_bundle.basis if resolved_bundle is not None else "sig_bundle",
+            "bundle_assembly_mode": (
+                resolved_bundle.assembly_mode if resolved_bundle is not None else None
+            ),
+            "bundle_sequence_template": (
+                resolved_bundle.sequence_template if resolved_bundle is not None else None
+            ),
+            "bundle_phase_summary": [
+                {
+                    "phase_id": phase.phase_id,
+                    "phase_type": phase.phase_type,
+                    "timing": phase.timing,
+                    "source_type": phase.source_type,
+                    "source_entry_id": phase.source_entry_id,
+                    "source_group_id": phase.source_group_id,
+                    "component_terms": list(phase.component_terms),
+                }
+                for phase in (resolved_bundle.phases if resolved_bundle is not None else [])
+            ],
+        }
     return Treatment_Episode(
         regimen_type=outcome.primary_category_id,
         regimen_category_id=outcome.primary_category_id,
@@ -279,5 +305,6 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
         registry_notes=entry.notes,
         condition_occurrence_id=condition_occurrence.condition_occurrence_id,
         person_id=condition_occurrence.person_id,
+        **bundle_kwargs,
         **overrides,
     )
