@@ -8,7 +8,9 @@ The goal is to make it clear:
 2. How it is expressed in configuration or code.
 3. How it is turned into query expressions or assembled treatment options.
 
-This is a conceptual map of the current production structure, with notes where the bundle path is still only partially executable.
+This is a conceptual map of the current production structure, including both the
+variant-query path and the now-executable bundle path for non-variant
+scenarios.
 
 ## Why There Are Multiple Grouping Layers
 
@@ -29,14 +31,18 @@ Other categories are not naturally one HemOnc variant:
 - concurrent CRT
 - CRT plus adjuvant durvalumab or osimertinib
 
-Because of that, SCOOP now uses two parallel structures:
+Because of that, SCOOP uses two parallel structures:
 
 - a `variant` query path
 - a `sig_bundle` recipe path
 
 The variant path is already executable end to end.
 
-The bundle path is already expressive enough to describe non-variant scenarios and compile per-phase SQL, but it is not yet a full end-to-end bundle execution engine.
+The bundle path is executable end to end, using a lightweight assembly model:
+
+- phase candidates are fetched per phase
+- filtering may be applied in Python or SQL, depending on requirement complexity
+- bundle compatibility is enforced with pragmatic heuristics rather than a deeply clinical sequencing engine
 
 ## The Grouping Stack
 
@@ -85,11 +91,17 @@ For variant-backed queries, condition sets become:
 ```python
 Variants.study_objects.any(Studies.condition_cui.in_(condition_cuis))
 ```
-For sig-component phases, they become:
+For sig-component phases, the candidate condition set is selected:
 
 ```python
-Sigs.study_objects.any(Studies.condition_cui.in_(condition_cuis))
+select(Sigs).where(Sigs.component.ilike(...))
 ```
+
+and the returned rows are then filtered in Python using discoverable condition metadata such as:
+
+- `sig.condition_objects`
+- `sig.study_objects`
+- `sig.variant_context`
 
 ## 2. Component Term
 
@@ -322,10 +334,13 @@ Inside a bundle recipe:
   component_terms: [External beam radiotherapy]
 ```
 
-It becomes a SQLAlchemy `select(Sigs)` statement filtered by:
+It becomes a coarse SQLAlchemy `select(Sigs)` statement filtered by:
 
 - `Sigs.component.ilike(...)`
-- optional condition-set filtering through `Sigs.study_objects`
+
+and then a Python-side compatibility filter that keeps rows whose condition
+metadata overlaps the phase condition set, while failing open when no usable
+condition metadata is exposed.
 
 ## 9. Bundle Phase
 
@@ -411,17 +426,15 @@ hemonc_bundle_groups:
 
 `RegimenRegistry.resolve_hemonc_bundle()` turns it into a `ResolvedHemOncBundle`.
 
-`build_bundle_query_artifacts()` then compiles each phase into a phase-specific SQL statement.
-
-### Important Note
-
-Today, a bundle group compiles to a set of phase expressions, not a single fully assembled query.
+`build_bundle_query_artifacts()` compiles each phase into a phase-specific SQL
+statement, and `execute_bundle_query()` executes those statements and assembles
+final bundle candidates.
 
 So the bundle path is currently:
 
 - declaratively expressive
-- partially query-generating
-- not yet a full end-to-end execution path like the variant layer
+- queryable phase by phase
+- executable end to end through runtime assembly
 
 ## 11. Bundle-Recipe Resolver
 
@@ -447,6 +460,8 @@ From there, the system can:
 
 - inspect phases
 - compile phase SQL
+- execute bundle phases
+- assemble final bundle candidates
 - carry bundle metadata into treatment assignment
 
 ## 12. Assembled Treatment Bundle
@@ -470,23 +485,35 @@ It does not become SQL itself.
 
 Instead, it is produced after SQL results are gathered for each phase.
 
-Current assembly is implemented by `assemble_bundle_matches()`, which:
+Current assembly is implemented by `execute_bundle_query()` plus
+`assemble_bundle_matches()`, which together:
 
+- execute phase-level SQL statements
+- apply Python-side phase filtering
 - takes phase result lists
 - forms Cartesian products across phases
+- apply lightweight cross-phase compatibility rules
 - creates assembled bundle objects
 - deduplicates identical phase combinations
 
 ### Important Note
 
-This is currently a structural assembly function, not a clinically aware compatibility engine.
+This is an executable assembly path, which is intentionally
+lightweight rather than a full clinical reasoning engine.
 
-It does not yet enforce:
+It does enforce:
 
-- study-level compatibility
-- variant-to-RT compatibility
-- true concurrent vs sequential semantics
-- deduplication by regimen identity beyond simple phase signatures
+- bundle execution from a resolved recipe
+- Python-side phase filtering by condition context when metadata is available
+- basic study-sharing checks for systemic plus radiotherapy combinations
+- allowance for post-CRT adjuvant phases to come from distinct evidence
+- deduplication by assembled phase signatures
+
+It does not yet fully enforce:
+
+- rich regimen-identity deduplication beyond phase signatures
+- strong concurrent vs sequential semantics derived from HemOnc evidence alone
+- more advanced clinical compatibility rules across all multi-phase scenarios
 
 ## 13. Registry Entry
 
@@ -537,20 +564,22 @@ This is the most complete path today.
 
 ### Bundle Recipe Pipeline
 
-`condition_set` + ordered `phases` -> `ResolvedHemOncBundle` -> one SQLAlchemy statement per phase -> optional runtime assembly into `AssembledTreatmentBundle`
+`condition_set` + ordered `phases` -> `ResolvedHemOncBundle` -> one SQLAlchemy statement per phase -> Python-side phase filtering -> runtime assembly into `AssembledTreatmentBundle`
 
 This is the newer path.
 
-It is already suitable for:
+It is suitable for:
 
 - describing non-variant treatment structures
 - compiling the component parts of those structures
+- executing those component parts
+- assembling bundle candidates
 - surfacing bundle metadata in treatment assignment
 
-It is not yet complete for:
+It is not complete for:
 
-- executing one bundle recipe into a validated final option set
 - distinguishing sequential vs concurrent scenarios through query semantics alone
+- expressing richer clinical compatibility logic than the current heuristic checks
 
 ## Current Mapping Between Old And New Concepts
 
@@ -562,19 +591,6 @@ The exploratory notebooks used these major concepts:
 - `SigBundle`
 - `TreatmentGroup`
 - `combinations`
-
-The production structure now maps roughly like this:
-
-| Exploratory concept | Production concept |
-|---|---|
-| `ComponentReqs` | `HemOncGroup` / `ResolvedHemOncQuery` |
-| `ScenarioYaml` | `RegistryEntry` plus resolver |
-| `SigBundle` | `AssembledTreatmentBundle` |
-| `TreatmentScenario` | registry entry plus its candidate results |
-| `TreatmentGroup` | clinical group of registry entries |
-| `combinations` | current `composite` resolver, but only for category unions |
-
-The main production difference is that bundle construction is now explicit and typed, rather than being implicit inside one exploratory YAML parser.
 
 ## Practical Rules Of Thumb
 
@@ -599,11 +615,8 @@ Use `group` phases for:
 
 ## Known Gaps
 
-The current production structure is intentionally cleaner than the exploratory version, but a few capabilities are still incomplete.
-
-### Bundle execution gap
-
-There is not yet a production `execute_bundle_query(...)` equivalent to `execute_variant_query(...)`.
+The current production structure is intentionally cleaner than the exploratory
+version, but a few capabilities are still incomplete.
 
 ### Sequence semantics gap
 
@@ -615,19 +628,4 @@ Variant queries can match on classes and component strings, while sig-component 
 
 ### Composite-inside-bundles gap
 
-Bundle phases cannot yet directly reference a composite entry or perform scenario-union logic like the old exploratory `combinations` feature.
-
-## Summary
-
-The current SCOOP grouping model now has:
-
-- a mature variant-query layer
-- a typed bundle-recipe layer for non-variant scenarios
-- a clean separation between category selection and treatment assembly
-
-The key distinction is:
-
-- variant groups describe "one family of HemOnc variants"
-- bundle groups describe "one treatment recipe made of ordered phases"
-
-That split is the main structural foundation for future work on CRT, RT-only, surgery augmentation, and other non-variant treatment selection problems.
+Bundle phases cannot yet directly reference a composite entry or perform scenario-union logic (previously `combinations` feature).
