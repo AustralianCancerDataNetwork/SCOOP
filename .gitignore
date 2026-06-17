@@ -82,6 +82,14 @@ target/
 profile_default/
 ipython_config.py
 
+# Dev docker compose
+docker-compose.override.yaml
+
+# data
+data/
+hemonc_import/
+work/
+
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:

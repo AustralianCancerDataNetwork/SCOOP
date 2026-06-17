@@ -1,0 +1,33 @@
+{
+    "name": "SCOOP Dev Container",
+    // This file needs to live in SCOOP/.devcontainer/ so we need to go one level up to find the docker-compose file
+    "dockerComposeFile": [
+        "../docker-compose.yaml",
+        "../docker-compose.override.yaml"
+    ],
+    "service": "python-scoop",
+    "remoteUser": "vscode", // Adapt if you changed it
+    "workspaceFolder": "/workspace/SCOOP/",  // Adapt if your workspace is different in docker-compose.yaml
+    "updateRemoteUserUID": true,
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/workspace/SCOOP/.venv/bin/python",
+                "python.venvPath": "/workspace/SCOOP/.venv",
+                // This is needed to make sure the terminal also uses the virtual environment
+                "terminal.integrated.env.linux": {
+                    "VIRTUAL_ENV": "/workspace/SCOOP/.venv",
+                    "PATH": "/workspace/SCOOP/.venv/bin:${env:PATH}"
+                }
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "charliermarsh.ruff"
+            ]
+        }
+    },
+    // This assumes devcontainer is in SCOOP/.devcontainer and just installs scoop
+    "postCreateCommand": "uv sync --frozen --all-packages && uv pip install -e /workspace/hemonc_import" ,  // Install dependencies after creating the container
+    "shutdownAction": "none"
+}

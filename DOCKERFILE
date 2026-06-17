@@ -1,0 +1,62 @@
+# ==========================================
+# STAGE 1: BASE (Shared by Dev and Prod)
+# ==========================================
+FROM python:3.13-slim AS base
+
+# Install uv directly from the official binaries
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install fundamental system utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ssh build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/SCOOP
+
+# ==========================================
+# STAGE 2: LOCAL DEVELOPMENT (VS Code / Dev Containers)
+# ==========================================
+FROM base AS dev
+
+ARG USERNAME=vscode
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# Create a non-root user matching standard VS Code Dev Container setups
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /bin/bash
+
+# Pre-create workspace and virtual environment with correct permissions
+RUN mkdir -p /workspace/SCOOP/.venv \
+    && chown -R $USERNAME:$USERNAME /workspace
+
+USER $USERNAME
+
+# Ensure the virtual environment binaries are prioritized in the PATH
+ENV PATH="/workspace/SCOOP/.venv/bin:/home/vscode/.local/bin:$PATH"
+
+# Copy package definitions to pre-cache dependencies
+COPY --chown=$USER_UID:$USER_GID pyproject.toml uv.lock* ./
+
+# NOTE: We are not copying the entire source code here to allow for faster rebuilds!
+# We are bind mounting the source code in docker-compose.override.yaml, 
+# so we can install dependencies without copying the source code first
+
+# Note: --no-install-project allows us to build the environment before copying the source code
+RUN uv sync --frozen --no-install-project
+
+# ==========================================
+# STAGE 3: PRODUCTION (Self-contained Image)
+# ==========================================
+FROM base AS prod
+
+ENV PATH="/workspace/SCOOP/.venv/bin:/root/.local/bin:$PATH"
+
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --frozen --no-install-project
+
+# Copy the actual source code into the production image
+COPY . .
+RUN uv sync --frozen
+
+# CMD ["python", "-m", "scoop"]
