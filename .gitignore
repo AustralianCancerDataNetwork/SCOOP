@@ -87,7 +87,6 @@ docker-compose.override.yaml
 
 # data
 data/
-hemonc_import/
 work/
 
 # pyenv
