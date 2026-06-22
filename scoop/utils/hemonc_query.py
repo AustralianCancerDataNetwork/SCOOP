@@ -97,6 +97,7 @@ class HemOncModels:
     Drugs: Any
     drugs_Canmed_major_classMap: Any
     drugs_Canmed_minor_classMap: Any
+    variants_StudyMap: Any
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ def _load_hemonc_models() -> HemOncModels:
         from hemonc_import.final_model.entities import (
             drugs_Canmed_major_classMap,
             drugs_Canmed_minor_classMap,
+            variants_StudyMap,
         )
     except ImportError as exc:
         raise ImportError(
@@ -132,6 +134,7 @@ def _load_hemonc_models() -> HemOncModels:
         Drugs=Drugs,
         drugs_Canmed_major_classMap=drugs_Canmed_major_classMap,
         drugs_Canmed_minor_classMap=drugs_Canmed_minor_classMap,
+        variants_StudyMap=variants_StudyMap
     )
 
 
@@ -268,7 +271,9 @@ def build_components_subquery(condition_cuis: list[int], models: HemOncModels | 
             models.drugs_Canmed_minor_classMap,
             models.drugs_Canmed_minor_classMap.parent_id == models.Drugs.id,
         )
-        .where(models.Variants.study_objects.any(models.Studies.condition_cui.in_(condition_cuis)))
+        .join(models.variants_StudyMap)
+        .join(models.Studies, models.variants_StudyMap.study == models.Studies.study)
+        .where(models.Variants.study_items.any(models.Studies.condition_cui.in_(condition_cuis)))
         .subquery()
     )
 

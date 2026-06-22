@@ -3,21 +3,8 @@ registry:
   version: 1
   condition_sets:
     lung_nsclc_all: &lung_nsclc_all
-      - 30824
-      - 30898
-      - 154361
-      - 30910
-      - 52958
-      - 54044
       - 46104
-      - 13094
       - 642
-      - 25309
-      - 25316
-      - 149626
-      - 157580
-      - 18383
-      - 30982
     nsclc_nonsquamous: &nsclc_nonsquamous
       - 25309
     nsclc_squamous: &nsclc_squamous
@@ -125,8 +112,7 @@ registry:
       basis: variant
       condition_set: lung_nsclc_all
       component_lists:
-        - [trastuzumab]
-        - [deruxtecan]
+        - [trastuzumab deruxtecan]
       category_restrictions:
         chemotherapy:
           type: min
@@ -308,6 +294,16 @@ registry:
         immunotherapy:
           type: exact
           amount: 1
+    nsclc_concurrent_crt:
+      basis: variant
+      condition_set: lung_nsclc_all
+      category_restrictions:
+          chemotherapy:
+              type: min
+              amount: 1
+          radiotherapy:
+              type: exact
+              amount: 1
   hemonc_bundle_groups:
     sbrt:
       basis: sig_bundle
@@ -412,22 +408,22 @@ registry:
           timing: post
           source_type: sig_component
           component_terms: [External beam radiotherapy]
-    concurrent_crt:
-      basis: sig_bundle
-      assembly_mode: variant_plus_rt
-      sequence_template: concurrent
-      condition_set: lung_nsclc_all
-      phases:
-        - phase_id: systemic
-          phase_type: systemic
-          timing: concurrent
-          source_type: group
-          source_group_id: nsclc_crt_backbone
-        - phase_id: radiotherapy
-          phase_type: radiotherapy
-          timing: concurrent
-          source_type: sig_component
-          component_terms: [External beam radiotherapy]
+    # concurrent_crt:
+    #   basis: sig_bundle
+    #   assembly_mode: variant_plus_rt
+    #   sequence_template: concurrent
+    #   condition_set: lung_nsclc_all
+    #   phases:
+    #     - phase_id: systemic
+    #       phase_type: systemic
+    #       timing: concurrent
+    #       source_type: group
+    #       source_group_id: nsclc_crt_backbone
+    #     - phase_id: radiotherapy
+    #       phase_type: radiotherapy
+    #       timing: concurrent
+    #       source_type: sig_component
+    #       component_terms: [External beam radiotherapy]
     sequential_crt_adjuvant_osimertinib:
       basis: sig_bundle
       assembly_mode: variant_plus_rt
@@ -455,16 +451,11 @@ registry:
       sequence_template: concurrent
       condition_set: lung_nsclc_all
       phases:
-        - phase_id: systemic
+        - phase_id: concurrent_crt
           phase_type: systemic
           timing: concurrent
           source_type: group
-          source_group_id: nsclc_crt_backbone
-        - phase_id: radiotherapy
-          phase_type: radiotherapy
-          timing: concurrent
-          source_type: sig_component
-          component_terms: [External beam radiotherapy]
+          source_group_id: nsclc_concurrent_crt
         - phase_id: adjuvant_osimertinib
           phase_type: systemic
           timing: post
@@ -497,16 +488,11 @@ registry:
       sequence_template: concurrent
       condition_set: lung_nsclc_all
       phases:
-        - phase_id: systemic
+        - phase_id: concurrent_crt
           phase_type: systemic
           timing: concurrent
           source_type: group
-          source_group_id: nsclc_crt_backbone
-        - phase_id: radiotherapy
-          phase_type: radiotherapy
-          timing: concurrent
-          source_type: sig_component
-          component_terms: [External beam radiotherapy]
+          source_group_id: nsclc_concurrent_crt
         - phase_id: adjuvant_durvalumab
           phase_type: systemic
           timing: post
@@ -628,8 +614,7 @@ registry:
         type: component_query
         default_condition_cuis: *lung_nsclc_all
         component_lists:
-          - [atezolizumab]
-          - [pembrolizumab]
+          - [atezolizumab, pembrolizumab]
         category_restrictions:
           immunotherapy:
             type: exact
@@ -717,8 +702,8 @@ registry:
         - condition_occurrence.egfr
         - condition_occurrence.pdl1_binary
       resolver:
-        type: bundle_recipe
-        group_id: concurrent_crt
+        type: component_query
+        group_id: nsclc_concurrent_crt
 
     sequential_crt_adjuvant_osimertinib:
       public: true
