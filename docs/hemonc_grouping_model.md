@@ -34,7 +34,7 @@ Other categories are not naturally one HemOnc variant:
 Because of that, SCOOP uses two parallel structures:
 
 - a `variant` query path
-- a `sig_bundle` recipe path
+- a `nonvariant` recipe path
 
 The variant path is already executable end to end.
 
@@ -235,7 +235,7 @@ In `hemonc_groups`:
 ```yaml
 hemonc_groups:
   egfr_intervention:
-    basis: variant
+    # basis: variant
     condition_set: lung_nsclc_all
     component_lists:
       - [osimertinib, gefitinib, erlotinib, afatinib, dacomitinib]
@@ -330,7 +330,7 @@ Inside a bundle recipe:
 - phase_id: radiotherapy
   phase_type: radiotherapy
   timing: post
-  source_type: sig_component
+  source_type: nonvariant_component
   component_terms: [External beam radiotherapy]
 ```
 
@@ -356,7 +356,7 @@ Supported phase sources currently are:
 
 - `group`
 - `entry`
-- `sig_component`
+- `nonvariant_component`
 
 Supported phase types currently are:
 
@@ -388,7 +388,7 @@ During registry resolution:
 
 - `group` phases become embedded `ResolvedHemOncQuery` objects
 - `entry` phases become embedded `ResolvedHemOncQuery` objects by resolving the referenced entry
-- `sig_component` phases retain component-term matching information
+- `nonvariant_component` phases retain component-term matching information
 
 ## 10. HemOnc Bundle Group
 
@@ -407,7 +407,7 @@ In `hemonc_bundle_groups`:
 ```yaml
 hemonc_bundle_groups:
   sequential_crt:
-    basis: sig_bundle
+    # basis: nonvariant
     assembly_mode: variant_plus_rt
     sequence_template: sequential
     condition_set: lung_nsclc_all
@@ -420,7 +420,7 @@ hemonc_bundle_groups:
       - phase_id: radiotherapy
         phase_type: radiotherapy
         timing: post
-        source_type: sig_component
+        source_type: nonvariant_component
         component_terms: [External beam radiotherapy]
 ```
 
@@ -601,7 +601,7 @@ Use:
 - `composite` when the category is a union of helper categories
 - `none` when the category is real but not yet mapped
 
-Use `sig_component` phases for:
+Use `nonvariant_component` phases for:
 
 - surgery
 - RT-only components

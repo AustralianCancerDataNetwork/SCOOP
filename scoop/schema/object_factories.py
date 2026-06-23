@@ -273,7 +273,6 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
         resolved_bundle = registry.resolve_hemonc_bundle(outcome.primary_category_id)
         bundle_kwargs = {
             "bundle_recipe_id": resolved_bundle.group_id if resolved_bundle is not None else entry.resolver.group_id,
-            "bundle_basis": resolved_bundle.basis if resolved_bundle is not None else "sig_bundle",
             "bundle_assembly_mode": (
                 resolved_bundle.assembly_mode if resolved_bundle is not None else None
             ),

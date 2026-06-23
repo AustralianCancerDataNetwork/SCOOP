@@ -24,8 +24,6 @@ BroadCategory = Literal[
     "supportive",
 ]
 
-QueryBasis = Literal["variant"]
-BundleBasis = Literal["sig_bundle"]
 AssemblyMode = Literal[
     "rt_only",
     "variant_only",
@@ -36,7 +34,7 @@ AssemblyMode = Literal[
 ]
 PhaseType = Literal["systemic", "radiotherapy", "surgery", "supportive"]
 PhaseTiming = Literal["standalone", "pre", "concurrent", "post"]
-BundlePhaseSourceType = Literal["entry", "group", "sig_component"]
+BundlePhaseSourceType = Literal["entry", "group", "nonvariant_component"]
 
 
 class CategoryRestriction(BaseModel):
@@ -50,7 +48,6 @@ class HemOncGroup(BaseModel):
     """Reusable named variant-query definition backed by HemOnc components."""
 
     group_id: str = ""
-    basis: QueryBasis = "variant"
     condition_set: str | None = None
     default_condition_cuis: list[int] = Field(default_factory=list)
     component_lists: list[list[str]] = Field(default_factory=list)
@@ -71,7 +68,6 @@ class ResolvedHemOncQuery(BaseModel):
     """Concrete variant query ready for SQL generation or execution."""
 
     group_id: str | None = None
-    basis: QueryBasis = "variant"
     default_condition_cuis: list[int] = Field(default_factory=list)
     component_lists: list[list[str]] = Field(default_factory=list)
     category_restrictions: dict[BroadCategory, CategoryRestriction] = Field(default_factory=dict)
@@ -115,14 +111,14 @@ class BundlePhase(BaseModel):
                 raise ValueError(
                     "Bundle phase with source_type='group' cannot declare source_entry_id or component_terms."
                 )
-        elif self.source_type == "sig_component":
+        elif self.source_type == "nonvariant_component":
             if not self.component_terms:
                 raise ValueError(
-                    "Bundle phase with source_type='sig_component' requires component_terms."
+                    "Bundle phase with source_type='nonvariant_component' requires component_terms."
                 )
             if self.source_entry_id is not None or self.source_group_id is not None:
                 raise ValueError(
-                    "Bundle phase with source_type='sig_component' cannot declare source_entry_id or source_group_id."
+                    "Bundle phase with source_type='nonvariant_component' cannot declare source_entry_id or source_group_id."
                 )
         return self
 
@@ -131,7 +127,6 @@ class HemOncBundleGroup(BaseModel):
     """Reusable named bundle recipe composed of ordered treatment phases."""
 
     group_id: str = ""
-    basis: BundleBasis = "sig_bundle"
     assembly_mode: AssemblyMode
     sequence_template: str | None = None
     condition_set: str | None = None
@@ -160,7 +155,6 @@ class ResolvedHemOncBundle(BaseModel):
     """Concrete bundle recipe ready for SQL compilation and bundle assembly."""
 
     group_id: str
-    basis: BundleBasis = "sig_bundle"
     assembly_mode: AssemblyMode
     sequence_template: str | None = None
     resolved_condition_cuis: list[int] = Field(default_factory=list)
@@ -341,7 +335,6 @@ class RegimenRegistry(BaseModel):
         )
         return ResolvedHemOncQuery(
             group_id=group.group_id,
-            basis=group.basis,
             default_condition_cuis=default_condition_cuis,
             component_lists=[list(component_list) for component_list in group.component_lists],
             category_restrictions=group.category_restrictions,
@@ -427,7 +420,6 @@ class RegimenRegistry(BaseModel):
 
         return ResolvedHemOncBundle(
             group_id=group.group_id,
-            basis=group.basis,
             assembly_mode=group.assembly_mode,
             sequence_template=group.sequence_template,
             resolved_condition_cuis=resolved_condition_cuis,

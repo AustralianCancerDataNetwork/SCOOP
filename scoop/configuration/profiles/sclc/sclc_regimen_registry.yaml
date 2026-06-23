@@ -6,7 +6,6 @@ registry:
       - 666
   hemonc_groups:
     sclc_platinum_etoposide:
-      basis: variant
       condition_set: lung_sclc_all
       component_lists:
         - [Platinum agent]
@@ -17,7 +16,6 @@ registry:
           amount: 2
   hemonc_bundle_groups:
     surgery_adjuvant_platinum_etoposide:
-      basis: sig_bundle
       assembly_mode: variant_plus_surgery
       sequence_template: adjuvant
       condition_set: lung_sclc_all
@@ -25,7 +23,7 @@ registry:
         - phase_id: surgery
           phase_type: surgery
           timing: pre
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [Surgery]
         - phase_id: adjuvant_systemic
           phase_type: systemic
@@ -33,7 +31,6 @@ registry:
           source_type: group
           source_group_id: sclc_platinum_etoposide
     surgery_adjuvant_platinum_etoposide_rt:
-      basis: sig_bundle
       assembly_mode: variant_plus_surgery
       sequence_template: postoperative
       condition_set: lung_sclc_all
@@ -41,7 +38,7 @@ registry:
         - phase_id: surgery
           phase_type: surgery
           timing: pre
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [Surgery]
         - phase_id: adjuvant_systemic
           phase_type: systemic
@@ -51,10 +48,9 @@ registry:
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: post
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     concurrent_crt:
-      basis: sig_bundle
       assembly_mode: variant_plus_rt
       sequence_template: concurrent
       condition_set: lung_sclc_all
@@ -67,10 +63,9 @@ registry:
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: concurrent
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     sequential_crt:
-      basis: sig_bundle
       assembly_mode: variant_plus_rt
       sequence_template: sequential
       condition_set: lung_sclc_all
@@ -83,7 +78,7 @@ registry:
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: post
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
   entries:
     surgery_adjuvant_platinum_etoposide:

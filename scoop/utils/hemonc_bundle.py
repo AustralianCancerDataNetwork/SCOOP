@@ -76,7 +76,7 @@ class AssembledTreatmentBundle(BaseModel):
     bundle_name: str = ""
 
 
-def build_sig_component_statement(
+def build_nonvariant_component_statement(
     phase: ResolvedBundlePhase,
     models: HemOncModels | None = None,
 ) -> Any:
@@ -100,8 +100,8 @@ def build_bundle_phase_statement(
 
     if phase.resolved_query is not None:
         return build_variant_statement(phase.resolved_query, models=models)
-    if phase.source_type == "sig_component":
-        return build_sig_component_statement(phase, models=models)
+    if phase.source_type == "nonvariant_component":
+        return build_nonvariant_component_statement(phase, models=models)
     raise ValueError(f"Unsupported bundle phase source type: {phase.source_type}")
 
 
@@ -302,7 +302,7 @@ def assemble_bundle_matches(
     phase_options: list[list[BundlePhaseMatch]] = []
     for phase in resolved_bundle.phases:
         records = phase_records.get(phase.phase_id, [])
-        if phase.source_type == "sig_component":
+        if phase.source_type == "nonvariant_component":
             matches = [_phase_match_from_sig(phase, sig) for sig in records]
         else:
             matches = [_phase_match_from_variant(phase, variant) for variant in records]

@@ -11,7 +11,6 @@ registry:
       - 25316
   hemonc_groups:
     neoadjuvant_chemo_ici:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [pembrolizumab, durvalumab, tislelizumab]
@@ -23,7 +22,6 @@ registry:
           type: exact
           amount: 1
     adjuvant_pembrolizumab:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [pembrolizumab]
@@ -32,7 +30,6 @@ registry:
           type: exact
           amount: 1
     adjuvant_osimertinib:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [osimertinib]
@@ -41,7 +38,6 @@ registry:
           type: exact
           amount: 1
     adjuvant_cisplatin_osimertinib:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [cisplatin, carboplatin]
@@ -51,7 +47,6 @@ registry:
           type: min
           amount: 1
     adjuvant_optchemo_alectinib:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [alectinib]
@@ -60,7 +55,6 @@ registry:
           type: min
           amount: 1
     egfr_intervention:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [osimertinib, gefitinib, erlotinib, afatinib, dacomitinib]
@@ -72,7 +66,6 @@ registry:
           type: min
           amount: 1
     alk_intervention:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [alectinib, brigatinib, lorlatinib, crizotinib, ceritinib]
@@ -81,7 +74,6 @@ registry:
           type: min
           amount: 0
     ros1_intervention:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [crizotinib, entrectinib, repotrectinib]
@@ -90,7 +82,6 @@ registry:
           type: min
           amount: 0
     braf_intervention:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [dabrafenib]
@@ -100,7 +91,6 @@ registry:
           type: min
           amount: 0
     ret_intervention:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [pralsetinib, selpercatinib]
@@ -109,7 +99,6 @@ registry:
           type: min
           amount: 0
     erbb2_intervention:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [trastuzumab deruxtecan]
@@ -118,7 +107,6 @@ registry:
           type: min
           amount: 0
     ntrk_intervention:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [entrectinib, larotrectinib]
@@ -127,7 +115,6 @@ registry:
           type: exact
           amount: 1
     met_tki:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [capmatinib, tepotinib]
@@ -136,7 +123,6 @@ registry:
           type: exact
           amount: 1
     met_ptdb:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [Platinum agent]
@@ -145,7 +131,6 @@ registry:
           type: exact
           amount: 2
     met_ptdb_w_ici:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [Platinum agent]
@@ -158,7 +143,6 @@ registry:
           type: min
           amount: 1
     best_supportive_care:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists: []
       category_restrictions:
@@ -178,7 +162,6 @@ registry:
           type: min
           amount: 1
     platinum_doublet_3rd_gen_agent:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [Platinum agent]
@@ -188,7 +171,6 @@ registry:
           type: exact
           amount: 2
     platinum_doublet_nonsquamous:
-      basis: variant
       condition_set: nsclc_nonsquamous
       component_lists:
         - [Platinum agent]
@@ -197,7 +179,6 @@ registry:
           type: exact
           amount: 2
     ici_w_chemo_nonsquamous:
-      basis: variant
       condition_set: nsclc_nonsquamous
       component_lists:
         - [Platinum agent]
@@ -207,7 +188,6 @@ registry:
           type: min
           amount: 0
     ici_w_chemo_squamous:
-      basis: variant
       condition_set: nsclc_squamous
       component_lists:
         - [Platinum agent]
@@ -217,7 +197,6 @@ registry:
           type: min
           amount: 0
     ici_monotherapy:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [Immunostimulatory monoclonal antibody]
@@ -226,7 +205,6 @@ registry:
           type: exact
           amount: 1
     ptdb_squamous:
-      basis: variant
       condition_set: nsclc_squamous
       component_lists:
         - [Platinum agent]
@@ -235,7 +213,6 @@ registry:
           type: exact
           amount: 2
     single_chemo_squamous:
-      basis: variant
       condition_set: nsclc_squamous
       component_lists:
         - [gemcitabine, vinorelbine, docetaxel]
@@ -244,7 +221,6 @@ registry:
           type: exact
           amount: 1
     ptdb_nonsquamous:
-      basis: variant
       condition_set: nsclc_nonsquamous
       component_lists:
         - [Platinum agent]
@@ -253,7 +229,6 @@ registry:
           type: exact
           amount: 2
     single_chemo_nonsquamous:
-      basis: variant
       condition_set: nsclc_nonsquamous
       component_lists:
         - [gemcitabine, vinorelbine, docetaxel, pemetrexed]
@@ -262,7 +237,6 @@ registry:
           type: exact
           amount: 1
     atezolizumab:
-      basis: variant
       condition_set: nsclc_squamous
       component_lists:
         - [atezolizumab]
@@ -271,7 +245,6 @@ registry:
           type: exact
           amount: 1
     nsclc_crt_backbone:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [Platinum agent]
@@ -280,13 +253,11 @@ registry:
           type: exact
           amount: 2
     nsclc_osimertinib_monotherapy:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [osimertinib]
       category_restrictions: {}
     nsclc_durvalumab_monotherapy:
-      basis: variant
       condition_set: lung_nsclc_all
       component_lists:
         - [durvalumab]
@@ -295,7 +266,6 @@ registry:
           type: exact
           amount: 1
     nsclc_concurrent_crt:
-      basis: variant
       condition_set: lung_nsclc_all
       category_restrictions:
           chemotherapy:
@@ -306,7 +276,6 @@ registry:
               amount: 1
   hemonc_bundle_groups:
     sbrt:
-      basis: sig_bundle
       assembly_mode: rt_only
       sequence_template: standalone
       condition_set: lung_nsclc_all
@@ -315,10 +284,9 @@ registry:
           title: stereotactic radiotherapy
           phase_type: radiotherapy
           timing: standalone
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     surgery_only:
-      basis: sig_bundle
       assembly_mode: sig_only
       sequence_template: standalone
       condition_set: lung_nsclc_all
@@ -326,10 +294,9 @@ registry:
         - phase_id: surgery
           phase_type: surgery
           timing: standalone
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [Surgery]
     port:
-      basis: sig_bundle
       assembly_mode: multi_sig_only
       sequence_template: postoperative
       condition_set: lung_nsclc_all
@@ -337,15 +304,14 @@ registry:
         - phase_id: surgery
           phase_type: surgery
           timing: pre
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [Surgery]
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: post
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     port_adjuvant_osimertinib:
-      basis: sig_bundle
       assembly_mode: variant_plus_surgery
       sequence_template: postoperative
       condition_set: lung_nsclc_all
@@ -353,12 +319,12 @@ registry:
         - phase_id: surgery
           phase_type: surgery
           timing: pre
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [Surgery]
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: post
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
         - phase_id: adjuvant_osimertinib
           phase_type: systemic
@@ -366,7 +332,6 @@ registry:
           source_type: group
           source_group_id: nsclc_osimertinib_monotherapy
     surgery_adjuvant_osimertinib:
-      basis: sig_bundle
       assembly_mode: variant_plus_surgery
       sequence_template: adjuvant
       condition_set: lung_nsclc_all
@@ -374,7 +339,7 @@ registry:
         - phase_id: surgery
           phase_type: surgery
           timing: pre
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [Surgery]
         - phase_id: adjuvant_osimertinib
           phase_type: systemic
@@ -382,7 +347,6 @@ registry:
           source_type: group
           source_group_id: nsclc_osimertinib_monotherapy
     radiotherapy:
-      basis: sig_bundle
       assembly_mode: rt_only
       sequence_template: standalone
       condition_set: lung_nsclc_all
@@ -390,10 +354,9 @@ registry:
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: standalone
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     sequential_crt:
-      basis: sig_bundle
       assembly_mode: variant_plus_rt
       sequence_template: sequential
       condition_set: lung_nsclc_all
@@ -406,26 +369,9 @@ registry:
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: post
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
-    # concurrent_crt:
-    #   basis: sig_bundle
-    #   assembly_mode: variant_plus_rt
-    #   sequence_template: concurrent
-    #   condition_set: lung_nsclc_all
-    #   phases:
-    #     - phase_id: systemic
-    #       phase_type: systemic
-    #       timing: concurrent
-    #       source_type: group
-    #       source_group_id: nsclc_crt_backbone
-    #     - phase_id: radiotherapy
-    #       phase_type: radiotherapy
-    #       timing: concurrent
-    #       source_type: sig_component
-    #       component_terms: [External beam radiotherapy]
     sequential_crt_adjuvant_osimertinib:
-      basis: sig_bundle
       assembly_mode: variant_plus_rt
       sequence_template: sequential
       condition_set: lung_nsclc_all
@@ -438,7 +384,7 @@ registry:
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: post
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
         - phase_id: adjuvant_osimertinib
           phase_type: systemic
@@ -446,7 +392,6 @@ registry:
           source_type: group
           source_group_id: nsclc_osimertinib_monotherapy
     concurrent_crt_adjuvant_osimertinib:
-      basis: sig_bundle
       assembly_mode: variant_plus_rt
       sequence_template: concurrent
       condition_set: lung_nsclc_all
@@ -462,7 +407,6 @@ registry:
           source_type: group
           source_group_id: nsclc_osimertinib_monotherapy
     sequential_crt_adjuvant_durvalumab:
-      basis: sig_bundle
       assembly_mode: variant_plus_rt
       sequence_template: sequential
       condition_set: lung_nsclc_all
@@ -475,7 +419,7 @@ registry:
         - phase_id: radiotherapy
           phase_type: radiotherapy
           timing: post
-          source_type: sig_component
+          source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
         - phase_id: adjuvant_durvalumab
           phase_type: systemic
@@ -483,7 +427,6 @@ registry:
           source_type: group
           source_group_id: nsclc_durvalumab_monotherapy
     concurrent_crt_adjuvant_durvalumab:
-      basis: sig_bundle
       assembly_mode: variant_plus_rt
       sequence_template: concurrent
       condition_set: lung_nsclc_all
@@ -612,6 +555,7 @@ registry:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
+        # TODO: fix/remove
         default_condition_cuis: *lung_nsclc_all
         component_lists:
           - [atezolizumab, pembrolizumab]
