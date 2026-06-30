@@ -127,7 +127,6 @@ class HemOncBundleGroup(BaseModel):
     """Reusable named bundle recipe composed of ordered treatment phases."""
 
     group_id: str = ""
-    assembly_mode: AssemblyMode
     sequence_template: str | None = None
     condition_set: str | None = None
     default_condition_cuis: list[int] = Field(default_factory=list)
@@ -155,7 +154,6 @@ class ResolvedHemOncBundle(BaseModel):
     """Concrete bundle recipe ready for SQL compilation and bundle assembly."""
 
     group_id: str
-    assembly_mode: AssemblyMode
     sequence_template: str | None = None
     resolved_condition_cuis: list[int] = Field(default_factory=list)
     phases: list[ResolvedBundlePhase] = Field(default_factory=list)
@@ -420,7 +418,6 @@ class RegimenRegistry(BaseModel):
 
         return ResolvedHemOncBundle(
             group_id=group.group_id,
-            assembly_mode=group.assembly_mode,
             sequence_template=group.sequence_template,
             resolved_condition_cuis=resolved_condition_cuis,
             phases=resolved_phases,

@@ -69,7 +69,6 @@ class AssembledTreatmentBundle(BaseModel):
     """Serializable bundle assembled from one candidate per recipe phase."""
 
     recipe_id: str
-    assembly_mode: str
     sequence_template: str | None = None
     variant_cui: int | None = None
     phases: list[AssembledBundlePhase] = Field(default_factory=list)
@@ -114,7 +113,6 @@ def build_bundle_query_artifacts(
     models = models or _load_hemonc_models()
     return {
         "recipe_id": resolved_bundle.group_id,
-        "assembly_mode": resolved_bundle.assembly_mode,
         "sequence_template": resolved_bundle.sequence_template,
         "phase_statements": {
             phase.phase_id: build_bundle_phase_statement(phase, models=models)
@@ -346,7 +344,6 @@ def assemble_bundle_matches(
         bundles.append(
             AssembledTreatmentBundle(
                 recipe_id=resolved_bundle.group_id,
-                assembly_mode=resolved_bundle.assembly_mode,
                 sequence_template=resolved_bundle.sequence_template,
                 variant_cui=primary_variant_cui,
                 phases=bundle_phases,

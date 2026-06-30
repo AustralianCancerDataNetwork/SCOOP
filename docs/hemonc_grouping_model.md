@@ -408,7 +408,7 @@ In `hemonc_bundle_groups`:
 hemonc_bundle_groups:
   sequential_crt:
     # basis: nonvariant
-    assembly_mode: variant_plus_rt
+    # assembly_mode: variant_plus_rt
     sequence_template: sequential
     condition_set: lung_nsclc_all
     phases:

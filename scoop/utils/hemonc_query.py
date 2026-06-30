@@ -77,7 +77,7 @@ DEFAULT_COMPONENT_REQUIREMENTS = {
     },
 }
 
-COMPATIBILITY_COMPONENT_REQUIREMENTS = {
+PERMISSIVE_COMPONENT_REQUIREMENTS = {
     "component_lists": [],
     "category_restrictions": {
         "chemotherapy": {"type": "min", "amount": 0},
@@ -165,7 +165,7 @@ def apply_default_component_requirements(
         category_restrictions=category_restrictions,
         category_restrictions_provided=bool(category_restrictions_provided),
     ):
-        merged = deepcopy(COMPATIBILITY_COMPONENT_REQUIREMENTS)
+        merged = deepcopy(PERMISSIVE_COMPONENT_REQUIREMENTS)
         merged["component_lists"] = component_lists
         return merged
 

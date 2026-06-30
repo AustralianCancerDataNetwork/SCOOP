@@ -16,7 +16,6 @@ registry:
           amount: 2
   hemonc_bundle_groups:
     surgery_adjuvant_platinum_etoposide:
-      assembly_mode: variant_plus_surgery
       sequence_template: adjuvant
       condition_set: lung_sclc_all
       phases:
@@ -31,7 +30,6 @@ registry:
           source_type: group
           source_group_id: sclc_platinum_etoposide
     surgery_adjuvant_platinum_etoposide_rt:
-      assembly_mode: variant_plus_surgery
       sequence_template: postoperative
       condition_set: lung_sclc_all
       phases:
@@ -51,7 +49,6 @@ registry:
           source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     concurrent_crt:
-      assembly_mode: variant_plus_rt
       sequence_template: concurrent
       condition_set: lung_sclc_all
       phases:
@@ -66,7 +63,6 @@ registry:
           source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     sequential_crt:
-      assembly_mode: variant_plus_rt
       sequence_template: sequential
       condition_set: lung_sclc_all
       phases:
