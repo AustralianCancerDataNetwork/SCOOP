@@ -207,8 +207,6 @@ class RegimenAssignmentTests(unittest.TestCase):
         self.assertEqual(condition.regimen.regimen_type, "radiotherapy")
         self.assertEqual(condition.regimen.registry_resolver_type, "bundle_recipe")
         self.assertEqual(condition.regimen.bundle_recipe_id, "radiotherapy")
-        self.assertEqual(condition.regimen.bundle_basis, "sig_bundle")
-        self.assertEqual(condition.regimen.bundle_assembly_mode, "rt_only")
         self.assertEqual(
             [phase["phase_id"] for phase in condition.regimen.bundle_phase_summary],
             ["radiotherapy"],

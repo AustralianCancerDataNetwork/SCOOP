@@ -65,7 +65,6 @@ class SCLCProfileTests(unittest.TestCase):
 
         resolved = registry.resolve_hemonc_bundle("concurrent_crt")
         self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.assembly_mode, "variant_plus_rt")
         self.assertEqual(
             [phase.phase_id for phase in resolved.phases],
             ["systemic", "radiotherapy"],

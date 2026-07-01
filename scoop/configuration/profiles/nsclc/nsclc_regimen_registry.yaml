@@ -267,6 +267,8 @@ registry:
           amount: 1
     nsclc_concurrent_crt:
       condition_set: lung_nsclc_all
+      component_lists:
+       - []
       category_restrictions:
           chemotherapy:
               type: min

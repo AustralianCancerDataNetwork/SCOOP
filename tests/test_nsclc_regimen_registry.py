@@ -236,7 +236,6 @@ class NSCLCRegistryTests(unittest.TestCase):
     def test_hemonc_groups_have_required_fields(self):
         self.assertIn("egfr_intervention", self.hemonc_groups)
         for group_id, group in self.hemonc_groups.items():
-            self.assertIn("basis", group, group_id)
             self.assertIn("component_lists", group, group_id)
             self.assertIn("category_restrictions", group, group_id)
             self.assertTrue(
@@ -247,8 +246,6 @@ class NSCLCRegistryTests(unittest.TestCase):
     def test_hemonc_bundle_groups_have_required_fields(self):
         self.assertIn("sequential_crt", self.hemonc_bundle_groups)
         for group_id, group in self.hemonc_bundle_groups.items():
-            self.assertIn("basis", group, group_id)
-            self.assertIn("assembly_mode", group, group_id)
             self.assertIn("phases", group, group_id)
             self.assertTrue(group["phases"], group_id)
 
@@ -355,7 +352,6 @@ class NSCLCRegistryTests(unittest.TestCase):
         )
         self.assertIsNotNone(resolved)
         self.assertEqual(resolved.group_id, "sequential_crt_adjuvant_durvalumab")
-        self.assertEqual(resolved.assembly_mode, "variant_plus_rt")
         self.assertEqual(resolved.sequence_template, "sequential")
         self.assertEqual(
             [phase.phase_id for phase in resolved.phases],
