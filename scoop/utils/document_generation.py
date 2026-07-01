@@ -72,12 +72,11 @@ def make_mermaid(graph: "TransformationGraph") -> str:
 
 
     implicit_edges: List[MermaidEdge] = []
+    external_nodes: set[str] = set()
     for name, node in nodes.items():
         if node.type=="numeric_range":
             if node.from_ not in nodes:
-                raise ValueError(
-                    f"Range node '{name}' refers to unknown upstream node '{node.from_}'"
-                )
+                external_nodes.add(node.from_)
             implicit_edges.append(
                 (
                     node.from_,
@@ -97,9 +96,7 @@ def make_mermaid(graph: "TransformationGraph") -> str:
                 cond: Dict[str, Any] = rule.get("if", {})
                 for upstream in cond.keys():
                     if upstream not in nodes:
-                        raise ValueError(
-                            f"Branch node '{name}' refers to unknown node '{upstream}'"
-                        )
+                        external_nodes.add(upstream)
                     upstreams.add(upstream)
 
             for upstream in upstreams:
@@ -122,9 +119,7 @@ def make_mermaid(graph: "TransformationGraph") -> str:
 
         for upstream in active_when.keys():
             if upstream not in nodes:
-                raise ValueError(
-                    f"Node '{name}' has active_when dependency on unknown node '{upstream}'"
-                )
+                external_nodes.add(upstream)
 
             activation_edges.append(
                 (
@@ -161,11 +156,12 @@ def make_mermaid(graph: "TransformationGraph") -> str:
         connected.add(src)
         connected.add(dst)
 
-    all_nodes = set(nodes.keys())
+    all_nodes = set(nodes.keys()) | external_nodes
     disconnected = sorted(all_nodes - connected)
 
     # Topological part for connected nodes
     connected_sorted = [n for n in graph.order if n in connected]
+    connected_sorted = sorted(external_nodes & connected) + connected_sorted
 
     ordered_nodes = disconnected + connected_sorted
 
@@ -185,7 +181,7 @@ def make_mermaid(graph: "TransformationGraph") -> str:
             lines.append("    %% root nodes (no prefix)")
 
         for name in group_nodes:
-            node = nodes[name]
+            node = nodes.get(name)
             node_id = mermaid_id(name)
 
             # Node summary + color
@@ -194,7 +190,12 @@ def make_mermaid(graph: "TransformationGraph") -> str:
             shape_close = "]"
             color = "#EEE"
 
-            if node.type=="numeric":
+            if node is None:
+                summary = "<br/>inherited"
+                shape_open = "[/"
+                shape_close = "/]"
+                color = "#F5F5F5"
+            elif node.type=="numeric":
                 summary = f"<br/>N({node.mean}, {node.sd})"
                 color = "#A3C4FF"  # soft blue
             elif node.type=="categorical":
@@ -220,7 +221,7 @@ def make_mermaid(graph: "TransformationGraph") -> str:
                 summary = "<br/>branch"
                 color = "#FFD966"
             
-            active = getattr(node, "active_when")
+            active = getattr(node, "active_when", None) if node is not None else None
             if active:
                 conds = ", ".join(
                     f"{k}={v}" for k, v in active.items()

@@ -1,4 +1,4 @@
-# YAML for NSCLC stage 4 with no oncogenic drivers identified
+# YAML for NSCLC stage 4 with actionable oncogenic drivers identified
 # Drafted by Brianna 
 # Last updated: 15/01/2025
 # Based on: ESMO living guidelines
@@ -7,34 +7,19 @@
 
 graph:
   nodes:
-    # I am using this distribution that includes none
-    # as I assume the inclusion of none will be useful for the combined yaml
-    # It seems in first line kras should be treated as none.
-    condition_occurrence.biomarker:
-      type: categorical
-      labels: [egfr, erbb2, alk, ros1, ret, ntrk, met, braf, kras, none]
-
-    person.sex:
-      type: categorical
-      distribution:
-        male: 0.55
-        female: 0.45
-
-    condition_occurrence.morphology:
-      type: categorical
-      labels: [nonsquamous, squamous]
-    
+    # Tail graph: this pathway assumes biomarker status has already been
+    # established by the shared NSCLC entry graph and inherited as upstream state.
     # Excluding exon 20 insertion
     # Options:
     # osimertinib
-    # geftinib
-    # erlotinib, erlotinib-bevacizumab, erlotinib-ramacinumab
+    # gefitinib
+    # erlotinib, erlotinib-bevacizumab, erlotinib-ramucirumab
     # afatinib
     # dacomitinib
     # gefitinib-carboplatin-pemetrexed
     treatment_episode.egfr_intervention:
       type: categorical
-      label: ["egfr_int"]
+      labels: ["egfr_int"]
       active_when:
         condition_occurrence.biomarker: egfr
 
@@ -46,25 +31,25 @@ graph:
     # ceritinib
     treatment_episode.alk_intervention:
       type: categorical
-      label: ["alk_int"]
+      labels: ["alk_int"]
       active_when:
-        condition_occurrence.biomarker: egfr
+        condition_occurrence.biomarker: alk
 
     # Options:
     # crizotinib
     # entrectinib
     # repotrectinib
     treatment_episode.ros1_intervention:
-    type: categorical
-    label: ["ros1_int"]
-    active_when:
-      condition_occurrence.biomarker: ros1
+      type: categorical
+      labels: ["ros1_int"]
+      active_when:
+        condition_occurrence.biomarker: ros1
 
     # Options:
     # dabrafenib-trametinib
     treatment_episode.braf_intervention:
       type: categorical
-      label: ["braf_int"]
+      labels: ["braf_int"]
       active_when:
         condition_occurrence.biomarker: braf
 
@@ -73,7 +58,7 @@ graph:
     # selpercatinib
     treatment_episode.ret_intervention:
       type: categorical
-      label: ["ret_int"]
+      labels: ["ret_int"]
       active_when:
         condition_occurrence.biomarker: ret
 
@@ -81,7 +66,7 @@ graph:
     # trastuzumab-deruxtecan
     treatment_episode.erbb2_intervention:
       type: categorical
-      label: ["erbb2_int"]
+      labels: ["erbb2_int"]
       active_when:
         condition_occurrence.biomarker: erbb2
 
@@ -90,7 +75,7 @@ graph:
     # larotrectinib
     treatment_episode.ntrk_intervention:
       type: categorical
-      label: ["ntrk_int"]
+      labels: ["ntrk_int"]
       active_when:
         condition_occurrence.biomarker: ntrk
 
@@ -100,24 +85,8 @@ graph:
     # Tepotinib
     treatment_episode.met_intervention:
       type: categorical
-      label: ["met_int"]
+      labels: ["met_int"]
       active_when:
         condition_occurrence.biomarker: met
 
-  edges:
-      # Based on: figure 4: DOI:10.1007/s10555-024-10187-6
-    - from: condition_occurrence.morphology 
-      to: condition_occurrence.biomarker
-      using: probability_table
-      table:
-                   # [egfr, erbb2, alk, ros1,  ret, ntrk,  met,  braf, kras, none]
-        nonsquamous: [0.21, 0.02, 0.07, 0.02, 0.02, 0.01, 0.03,  0.02, 0.25, 0.35]
-        squamous:    [0.03,    0,    0,    0, 0.03,    0, 0.04, 0.003, 0.05, 0.847]
-
-    - from: person.sex
-      to: condition_occurrence.morphology
-      using: probability_table
-      table:
-        male:    [0.75, 0.20]
-        female:  [0.85, 0.10]
-        default: [0.80, 0.15]
+  edges: []

@@ -1,0 +1,218 @@
+registry:
+  disease: bladder
+  version: 1
+  entries:
+    turbt_intravesical_therapy:
+      public: true
+      stage_scope: [nmibc]
+      clinical_group: nmibc
+      aliases: []
+      graph_sources: [bladder_nmibc]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.nmibc_risk_group
+      resolver:
+        type: none
+      notes: Starter entry for TURBT plus intravesical treatment in lower-risk NMIBC.
+
+    bcg_induction_maintenance:
+      public: true
+      stage_scope: [nmibc]
+      clinical_group: nmibc
+      aliases: []
+      graph_sources: [bladder_nmibc]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.nmibc_risk_group
+      resolver:
+        type: none
+      notes: Starter entry for high-risk BCG-naive NMIBC.
+
+    radical_cystectomy_nmibc:
+      public: true
+      stage_scope: [nmibc]
+      clinical_group: nmibc
+      aliases: []
+      graph_sources: [bladder_nmibc]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.nmibc_risk_group
+        - condition_episode.cystectomy_eligibility
+      resolver:
+        type: none
+      notes: Starter entry for BCG-unresponsive NMIBC with cystectomy.
+
+    pembrolizumab_bcg_unresponsive:
+      public: true
+      stage_scope: [nmibc]
+      clinical_group: nmibc
+      aliases: []
+      graph_sources: [bladder_nmibc]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.nmibc_risk_group
+        - condition_episode.cystectomy_eligibility
+      resolver:
+        type: none
+      notes: Starter entry for BCG-unresponsive disease when cystectomy is not taken.
+
+    neoadjuvant_cisplatin_radical_cystectomy:
+      public: true
+      stage_scope: [mibc_localized]
+      clinical_group: localized_mibc
+      aliases: []
+      graph_sources: [bladder_mibc_localized]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.local_therapy_strategy
+        - condition_episode.cisplatin_eligibility
+      resolver:
+        type: none
+      notes: Starter entry for cisplatin-eligible localized MIBC managed with cystectomy.
+
+    radical_cystectomy_only:
+      public: true
+      stage_scope: [mibc_localized]
+      clinical_group: localized_mibc
+      aliases: []
+      graph_sources: [bladder_mibc_localized]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.local_therapy_strategy
+        - condition_episode.cisplatin_eligibility
+      resolver:
+        type: none
+      notes: Starter entry for localized MIBC treated with cystectomy without neoadjuvant cisplatin.
+
+    trimodality_bladder_preservation:
+      public: true
+      stage_scope: [mibc_localized]
+      clinical_group: localized_mibc
+      aliases: []
+      graph_sources: [bladder_mibc_localized]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.local_therapy_strategy
+      resolver:
+        type: none
+      notes: Starter entry for bladder-preserving trimodality treatment.
+
+    adjuvant_nivolumab:
+      public: true
+      stage_scope: [mibc_localized]
+      clinical_group: localized_mibc
+      aliases: []
+      graph_sources: [bladder_mibc_localized]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.post_cystectomy_high_risk
+      resolver:
+        type: none
+      notes: Starter entry for post-cystectomy adjuvant immunotherapy.
+
+    cisplatin_gemcitabine:
+      public: true
+      stage_scope: [advanced_first_line]
+      clinical_group: advanced_metastatic
+      aliases: [cisplatin_gemcitabine_no_maintenance]
+      graph_sources: [bladder_advanced_first_line]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.platinum_eligibility
+        - condition_episode.cisplatin_eligibility
+      resolver:
+        type: none
+      notes: Starter first-line cisplatin-based entry.
+
+    cisplatin_gemcitabine_avelumab_maintenance:
+      public: true
+      stage_scope: [advanced_first_line]
+      clinical_group: advanced_metastatic
+      aliases: []
+      graph_sources: [bladder_advanced_first_line]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.platinum_response
+        - condition_episode.maintenance_avelumab_eligibility
+      resolver:
+        type: none
+      notes: Starter combined first-line plus maintenance entry.
+
+    carboplatin_gemcitabine:
+      public: true
+      stage_scope: [advanced_first_line]
+      clinical_group: advanced_metastatic
+      aliases: [carboplatin_gemcitabine_no_maintenance]
+      graph_sources: [bladder_advanced_first_line]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.platinum_eligibility
+        - condition_episode.cisplatin_eligibility
+      resolver:
+        type: none
+      notes: Starter first-line carboplatin-based entry.
+
+    carboplatin_gemcitabine_avelumab_maintenance:
+      public: true
+      stage_scope: [advanced_first_line]
+      clinical_group: advanced_metastatic
+      aliases: []
+      graph_sources: [bladder_advanced_first_line]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_episode.platinum_response
+        - condition_episode.maintenance_avelumab_eligibility
+      resolver:
+        type: none
+      notes: Starter combined carboplatin plus maintenance entry.
+
+    best_supportive_care_advanced:
+      public: true
+      stage_scope: [advanced_first_line, advanced_post_platinum]
+      clinical_group: advanced_metastatic
+      aliases: []
+      graph_sources: [bladder_advanced_first_line, bladder_advanced_post_platinum]
+      exploratory_sources: []
+      required_modifiers: []
+      resolver:
+        type: none
+      notes: Starter supportive-care entry for advanced disease.
+
+    pembrolizumab_post_platinum:
+      public: true
+      stage_scope: [advanced_post_platinum]
+      clinical_group: advanced_metastatic
+      aliases: [pembrolizumab_post_platinum_wildtype]
+      graph_sources: [bladder_advanced_post_platinum]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_occurrence.fgfr2_3_alteration
+      resolver:
+        type: none
+      notes: Starter post-platinum immunotherapy entry.
+
+    enfortumab_vedotin:
+      public: true
+      stage_scope: [advanced_post_platinum]
+      clinical_group: advanced_metastatic
+      aliases: [enfortumab_vedotin_wildtype]
+      graph_sources: [bladder_advanced_post_platinum]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_occurrence.fgfr2_3_alteration
+      resolver:
+        type: none
+      notes: Starter antibody-drug conjugate entry.
+
+    erdafitinib:
+      public: true
+      stage_scope: [advanced_post_platinum]
+      clinical_group: advanced_metastatic
+      aliases: []
+      graph_sources: [bladder_advanced_post_platinum]
+      exploratory_sources: []
+      required_modifiers:
+        - condition_occurrence.fgfr2_3_alteration
+      resolver:
+        type: none
+      notes: Starter FGFR-targeted entry.

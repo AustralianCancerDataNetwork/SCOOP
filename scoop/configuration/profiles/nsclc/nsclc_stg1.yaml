@@ -1,0 +1,74 @@
+# YAML for NSCLC stage 1
+# Drafted by Brianna 
+# Last updated: 13/01/2025
+# Based on: https://www.annalsofoncology.org/action/showPdf?pii=S0923-7534%2825%2900923-8 
+#
+# Assumptions/simplifications:
+# - R2 treated as not possible, only R0 and R1 are options.
+# - operability is based on ECOG PS only.
+#
+# See: [link diagram/documentation]
+
+graph:
+  nodes:
+    # Tail graph: this pathway assumes biomarker status and performance-state
+    # buckets have already been established by the shared NSCLC entry graph and
+    # inherited as upstream state.
+
+    # The numbers I was seeing were so different from paper to paper
+    # Might not be worth trying to have high accuracy without specifying
+    # type of surgery?
+    treatment_episode.resection_margin:
+      type: categorical
+      distribution:
+        r0: 0.7
+        r1: 0.3
+
+    condition_episode.operability:
+      type: branch
+      rules: 
+      - if: { person.performance_status_v_frail: not_v_frail }
+        then: operable
+      - if: { person.performance_status_v_frail: v_frail }
+        then: inoperable
+      default: operable
+
+    treatment_episode.sbrt:
+      type: categorical
+      labels: ["sbrt"]
+      active_when:
+        condition_episode.operability: inoperable
+
+    # Model surgery without adjuvant treatment explicitly so operable R0
+    # patients do not fall out of the modeled endpoint space.
+    treatment_episode.surgery_only:
+      type: categorical
+      labels: ["surgery_only"]
+      active_when:
+        condition_episode.operability: operable
+        treatment_episode.resection_margin: r0
+
+    # surgery followed by port for non-EGFR-mutated disease
+    treatment_episode.port:
+      type: categorical
+      labels: ["port"]
+      active_when:
+        condition_episode.operability: operable
+        treatment_episode.resection_margin: r1
+        condition_occurrence.biomarker: none
+
+    # Best-effort combined endpoint for the currently overlapping EGFR-mutated
+    # R1 subgroup; using one explicit category avoids double activation until a
+    # more detailed stage I design is chosen.
+    treatment_episode.port_adjuvant_osimertinib:
+      type: categorical
+      labels: ["port_adj_osimertinib"]
+      active_when:
+        condition_episode.operability: operable
+        treatment_episode.resection_margin: r1
+        condition_occurrence.biomarker: egfr
+
+  # Surgery-only cases are now modeled explicitly above.
+
+  edges: []
+  

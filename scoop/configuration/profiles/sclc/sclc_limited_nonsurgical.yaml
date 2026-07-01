@@ -1,0 +1,28 @@
+# SCLC tail graph: limited-stage non-surgical pathway
+# Expects inherited state from sclc.yaml.
+
+graph:
+  nodes:
+    condition_episode.concurrent_crt_eligibility:
+      type: branch
+      rules:
+        - if:
+            person.performance_status: ps0_1
+            person.age_group: lte70
+            person.frailty: fit
+          then: eligible
+      default: ineligible
+
+    treatment_episode.concurrent_crt:
+      type: categorical
+      labels: ["concurrent_crt"]
+      active_when:
+        condition_episode.concurrent_crt_eligibility: eligible
+
+    treatment_episode.sequential_crt:
+      type: categorical
+      labels: ["sequential_crt"]
+      active_when:
+        condition_episode.concurrent_crt_eligibility: ineligible
+
+  edges: []

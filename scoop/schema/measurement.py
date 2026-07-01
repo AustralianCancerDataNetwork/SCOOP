@@ -2,15 +2,41 @@ from pydantic import BaseModel, Field
 from datetime import date
 from .clinical_field_base import ClinicalFieldBase
 from ..utils.id_management import measurement_id_seq
+from .omop_export import as_datetime
 
 class Measurement(BaseModel):
     person_id: int
     measurement_id: int = Field(default_factory=measurement_id_seq.next)
     measurement_concept_id: int
     measurement_date: date
+    measurement_event_id: int | None = None
+    meas_event_field_concept_id: int | None = None
+    unit_concept_id: int | None = None
     value_as_concept_id: int | None = None
     value_as_number: float | None = None
-    source_value: str | None = None
+    value_source_value: str | None = None
+
+    def to_omop_row(self):
+        from omop_alchemy.cdm import model as omop_model
+
+        payload = {
+            "measurement_id": self.measurement_id,
+            "person_id": self.person_id,
+            "measurement_concept_id": self.measurement_concept_id,
+            "measurement_date": self.measurement_date,
+            "measurement_datetime": as_datetime(self.measurement_date),
+            "value_source_value": self.value_source_value,
+            "measurement_event_id": self.measurement_event_id,
+            "meas_event_field_concept_id": self.meas_event_field_concept_id,
+        }
+        if self.unit_concept_id is not None:
+            payload["unit_concept_id"] = self.unit_concept_id
+        if self.value_as_number is not None:
+            payload["value_as_number"] = self.value_as_number
+        if self.value_as_concept_id is not None:
+            payload["value_as_concept_id"] = self.value_as_concept_id
+
+        return omop_model.Measurement(**payload)
 
 
 class MeasurementField(ClinicalFieldBase):
@@ -21,52 +47,3 @@ class MeasurementField(ClinicalFieldBase):
 
     def to_measurement(self, person, value):
         return self.to_record(person, value)
-
-
-# class MeasurementField:
-#     """
-#     Describes how to turn an attribute into a Measurement record.
-
-#     Supports:
-#       - categorical → value_as_concept_id
-#       - numeric → value_as_number (+ optional unit)
-#     """
-
-#     def __init__(
-#         self,
-#         measurement_concept_id: int,
-#         value_map: Callable[[str | float | None], int | float | None],
-#         *,
-#         is_numeric: bool = False,
-#         unit_concept_id: int | None = None,
-#         source_field: str | None = None,
-#     ):
-#         self.measurement_concept_id = measurement_concept_id
-#         self.value_map = value_map
-#         self.is_numeric = is_numeric
-#         self.unit_concept_id = unit_concept_id
-#         self.source_field = source_field
-
-#     def to_measurement(self, person, value: str | float | None) -> Measurement:
-#         """Convert a single value into a Measurement instance."""
-#         mapped = self.value_map(value)
-#         if mapped is None:
-#             return None
-
-#         if self.is_numeric:
-#             return Measurement(
-#                 person_id=person.person_id or 0,
-#                 measurement_concept_id=self.measurement_concept_id,
-#                 measurement_date=date.today(),
-#                 value_as_number=float(mapped),
-#                 unit_concept_id=self.unit_concept_id,
-#                 value_source_value=str(value) if value is not None else None,
-#             )
-#         else:
-#             return Measurement(
-#                 person_id=person.person_id or 0,
-#                 measurement_concept_id=self.measurement_concept_id,
-#                 measurement_date=date.today(),
-#                 value_as_concept_id=int(mapped),
-#                 value_source_value=str(value) if value is not None else None,
-#             )

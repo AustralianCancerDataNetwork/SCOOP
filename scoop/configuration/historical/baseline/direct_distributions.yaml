@@ -59,3 +59,9 @@ variant:
     braf: 0.05
     kras: 0.1
     none: 0.4
+
+laterality:
+  type: labelled
+  probs:
+    left: 0.4
+    right: 0.6

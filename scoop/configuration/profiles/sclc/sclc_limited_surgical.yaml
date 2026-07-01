@@ -1,0 +1,25 @@
+# SCLC tail graph: limited-stage surgical pathway
+# Expects inherited state from sclc.yaml.
+
+graph:
+  nodes:
+    # placeholder distribution
+    condition_episode.resection_pathology:
+      type: categorical
+      distribution:
+        r0_n0_1: 0.5
+        n2_or_r1_2: 0.5
+
+    treatment_episode.surgery_adjuvant_platinum_etoposide:
+      type: categorical
+      labels: ["surgery_adj_platinum_etoposide"]
+      active_when:
+        condition_episode.resection_pathology: r0_n0_1
+
+    treatment_episode.surgery_adjuvant_platinum_etoposide_rt:
+      type: categorical
+      labels: ["surgery_adj_platinum_etoposide_rt"]
+      active_when:
+        condition_episode.resection_pathology: n2_or_r1_2
+
+  edges: []

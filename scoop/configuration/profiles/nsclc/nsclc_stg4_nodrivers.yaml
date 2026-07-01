@@ -3,7 +3,7 @@
 # Last updated: 21/01/2025
 
 # Assumptions/simplifications:
-# - Suitiblity for ICIs is based on an arbitrary probability and not
+# - Suitability for ICIs is based on an arbitrary probability and not
 # linked to patient or tumour characteristics.
 # - I have written this as suitability for ICIs rather than suitability for
 # immunotherapy as a) some other ESMO pages indicate it as ICIs rather than
@@ -20,6 +20,9 @@
 
 graph:
   nodes:
+    # Tail graph: this pathway assumes morphology, PD-L1, and performance-state
+    # buckets have already been established by the shared NSCLC entry graph and
+    # inherited as upstream state.
     person.ici_eligible:
       type: categorical
       # Proportions completely unsubstantiated
@@ -27,70 +30,13 @@ graph:
         eligible: 0.8
         ineligible: 0.2
 
-    # sex -> morphology -> egfr probabilities
-    person.sex:
-      type: categorical
-      distribution:
-        male: 0.55
-        female: 0.45
-
-    condition_occurrence.morphology:
-      type: categorical
-      labels: [nonsquamous, squamous]
-
-    person.age:
-      type: numeric
-      mean: 70
-      sd: 7
-      min_value: 50
-      max_value: 95
-      as_int: true
-
-    person.age_group:
-      type: numeric_range
-      from: person.age
-      ranges:
-        - "<60"
-        - "60-69"
-        - "70-79"
-        - "80+"
-
-    person.performance_status:
-      type: categorical
-      labels: [ps0, ps1, ps2, ps3, ps4]
-
-    # 0-2 not very frail; 3+ very frail
-    person.performance_status_v_frail:
-      type: categorical
-      labels: [not_v_frail, v_frail]
-
-    # 0-1 not frail; 2+ frail
-    person.performance_status_frail:
-      type: categorical
-      labels: [not_frail, frail]
-
-    # Refers to tumour PD-L1
-    condition_occurrence.pdl1:
-      type: categorical
-      labels: ["high", "low", "absent"]
-
-    # Refers to tumour PD-L1
-    condition_occurrence.pdl1_binary:
-      type: categorical
-      labels: ["present", "absent"]
-
-    # Refers to tumour PD-L1
-    condition_occurrence.pdl1_binary_50:
-      type: categorical
-      labels: ["gte50", "lt50"]
-
     treatment_episode.best_supportive_care:
       type: categorical
       labels: ["bsc"]
       active_when:
         person.performance_status_v_frail: v_frail
 
-    # ? Add req for eligibitility for pt doublet therapy?
+    # ? Add req for eligibility for pt doublet therapy?
     # i.e. ineligibles (? subset of ps2) get single agent chemo?
 
     # 4-6 cycles
@@ -127,13 +73,13 @@ graph:
       type: categorical
       labels: ["ici_w_chemo_nonsqcc"]
       active_when:
-        condition_occurrence.pdl1: absent
+        condition_occurrence.pdl1_binary_50: lt50
         condition_occurrence.morphology: nonsquamous
         person.ici_eligible: eligible
         person.performance_status_frail: not_frail
 
     # Options:
-    # Pembrolizumab-carboplatin-(nab)-paclitaxel
+    # pembrolizumab-carboplatin-(nab)-paclitaxel
     # cemiplimab platinum doublet
     # sugemalimab platinum doublet
     # nivolumab-ipilimumab + 2 cycles platinum doublet
@@ -142,7 +88,7 @@ graph:
       type: categorical
       labels: ["ici_w_chemo_sqcc"]
       active_when:
-        condition_occurrence.pdl1: absent
+        condition_occurrence.pdl1_binary_50: lt50
         condition_occurrence.morphology: squamous
         person.ici_eligible: eligible
         person.performance_status_frail: not_frail
@@ -186,9 +132,9 @@ graph:
     # options:
       # monotherapy: pembrolizumab, atezolizumab, cemiplimab
       # ici_w_chemo: 
-        # nivolmab-ipililumab w 2 cycles platinum based chemo
+        # nivolumab-ipilimumab w 2 cycles platinum based chemo
         # durvalumab-tremelimumab-platinum based doublet chemo
-    treatment_episode.ici_montherapy_or_ici_with_chemotherapy_squamous:
+    treatment_episode.ici_monotherapy_or_ici_with_chemotherapy_squamous:
       type: categorical
       labels: ["ici_monotherapy_or_w_chemo_sqcc"]
       active_when:
@@ -201,10 +147,10 @@ graph:
     # options:
       # monotherapy: pembrolizumab, atezolizumab, cemiplimab
       # ici_w_chemo: 
-        # nivolmab-ipililumab w 2 cycles platinum based chemo
+        # nivolumab-ipilimumab w 2 cycles platinum based chemo
         # durvalumab-tremelimumab-platinum based doublet chemo
         # tislelizumab-pemetrexed-platinum based chemotherapy
-    treatment_episode.ici_montherapy_or_ici_with_chemotherapy_nonsquamous:
+    treatment_episode.ici_monotherapy_or_ici_with_chemotherapy_nonsquamous:
       type: categorical
       labels: ["ici_monotherapy_or_w_chemo_nonsqcc"]
       active_when:
@@ -213,73 +159,4 @@ graph:
         condition_occurrence.pdl1: high
         condition_occurrence.morphology: nonsquamous
 
-
-  edges:
-    - from: condition_occurrence.pdl1
-      to: condition_occurrence.pdl1_binary
-      using: probability_table
-      table:
-              # ["present", "absent"]
-        high:   [1, 0]
-        low:    [1, 0]
-        absent: [0, 1]
-
-    - from: condition_occurrence.pdl1
-      to: condition_occurrence.pdl1_binary_50
-      using: probability_table
-      table:
-        high:   [1, 0]
-        low:    [0, 1]
-        absent: [0, 1]
-
-    # PD-L1 proportions
-    # https://doi.org/10.1016/j.pathol.2023.08.008
-    # Split into the 3 categories
-    - from: condition_occurrence.morphology
-      to: condition_occurrence.pdl1
-      using: probability_table
-      table:
-                   # ["high", "low", "absent"]
-              # i.e. [  >=50,  1-50, <1] 
-        nonsquamous: [  0.30,  0.31, 0.39]
-        squamous:    [  0.26,  0.38, 0.36]
-
-    - from: person.age_group
-      to: person.performance_status
-      using: probability_table
-      table:
-        "<60":   [0.55, 0.30, 0.10, 0.03, 0.02]
-        "60-69": [0.50, 0.30, 0.10, 0.05, 0.05]
-        "70-79": [0.45, 0.30, 0.15, 0.05, 0.05]
-        "80+":   [0.40, 0.30, 0.15, 0.10, 0.05]
-
-
-    - from: person.performance_status
-      to: person.performance_status_v_frail
-      using: probability_table
-      table: 
-           # [not_v_frail, v_frail]
-        ps0: [1, 0]
-        ps1: [1, 0]
-        ps2: [1, 0]
-        ps3: [0, 1]
-        ps4: [0, 1]
-
-    - from: person.performance_status
-      to: person.performance_status_frail
-      using: probability_table
-      table: 
-           # [not_frail, frail]
-        ps0: [1, 0]
-        ps1: [1, 0]
-        ps2: [0, 1]
-        ps3: [0, 1]
-        ps4: [0, 1]
-
-    - from: person.sex
-      to: condition_occurrence.morphology
-      using: probability_table
-      table:
-        male:    [0.75, 0.20]
-        female:  [0.85, 0.10]
-        default: [0.80, 0.15]
+  edges: []

@@ -1,0 +1,107 @@
+# Bladder cancer tail graph: advanced/metastatic first-line disease
+# Expects inherited state from bladder.yaml.
+
+graph:
+  nodes:
+    condition_episode.platinum_eligibility:
+      type: branch
+      rules:
+        - if:
+            person.performance_status: ps0_1
+            person.frailty: fit
+          then: eligible
+        - if:
+            person.performance_status: ps2
+            person.frailty: fit
+          then: eligible
+      default: ineligible
+
+    condition_episode.cisplatin_eligibility:
+      type: branch
+      rules:
+        - if:
+            person.performance_status: ps0_1
+            person.age_group: lt75
+            person.frailty: fit
+          then: eligible
+      default: ineligible
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+
+    # placeholder distribution
+    condition_episode.platinum_response:
+      type: categorical
+      distribution:
+        responder: 0.5
+        nonresponder: 0.5
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+
+    # placeholder distribution
+    condition_episode.maintenance_avelumab_eligibility:
+      type: categorical
+      distribution:
+        eligible: 0.5
+        ineligible: 0.5
+      active_when:
+        condition_episode.platinum_response: responder
+
+    treatment_episode.best_supportive_care_advanced:
+      type: categorical
+      labels: ["bsc_advanced"]
+      active_when:
+        condition_episode.platinum_eligibility: ineligible
+
+    treatment_episode.cisplatin_gemcitabine_avelumab_maintenance:
+      type: categorical
+      labels: ["cis_gem_avelumab_maintenance"]
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+        condition_episode.cisplatin_eligibility: eligible
+        condition_episode.platinum_response: responder
+        condition_episode.maintenance_avelumab_eligibility: eligible
+
+    treatment_episode.cisplatin_gemcitabine:
+      type: categorical
+      labels: ["cis_gem"]
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+        condition_episode.cisplatin_eligibility: eligible
+        condition_episode.platinum_response: nonresponder
+
+    treatment_episode.cisplatin_gemcitabine_no_maintenance:
+      type: categorical
+      labels: ["cis_gem_no_maintenance"]
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+        condition_episode.cisplatin_eligibility: eligible
+        condition_episode.platinum_response: responder
+        condition_episode.maintenance_avelumab_eligibility: ineligible
+
+    treatment_episode.carboplatin_gemcitabine_avelumab_maintenance:
+      type: categorical
+      labels: ["carbo_gem_avelumab_maintenance"]
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+        condition_episode.cisplatin_eligibility: ineligible
+        condition_episode.platinum_response: responder
+        condition_episode.maintenance_avelumab_eligibility: eligible
+
+    treatment_episode.carboplatin_gemcitabine:
+      type: categorical
+      labels: ["carbo_gem"]
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+        condition_episode.cisplatin_eligibility: ineligible
+        condition_episode.platinum_response: nonresponder
+
+    treatment_episode.carboplatin_gemcitabine_no_maintenance:
+      type: categorical
+      labels: ["carbo_gem_no_maintenance"]
+      active_when:
+        condition_episode.platinum_eligibility: eligible
+        condition_episode.cisplatin_eligibility: ineligible
+        condition_episode.platinum_response: responder
+        condition_episode.maintenance_avelumab_eligibility: ineligible
+
+  edges: []

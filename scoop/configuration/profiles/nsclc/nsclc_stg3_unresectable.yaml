@@ -1,0 +1,95 @@
+# YAML for NSCLC stage 3 and unresectable
+# Drafted by Brianna 
+# Last updated: 13/01/2025
+#
+# Assumptions/simplifications:
+# - RT / sequential CRT / concurrent CRT is assumed to be based solely on PS
+#
+# See: https://unsw-my.sharepoint.com/:w:/g/personal/z5555108_ad_unsw_edu_au/IQDpV-P_V4tTQrLPpd4lvfd9AdQ92LkMGJh-mN9tmD3y-K4?e=60mgM8
+
+
+graph:
+  nodes:
+    # Tail graph: this pathway assumes biomarker status, PD-L1, and
+    # performance status have already been established by the shared NSCLC
+    # entry graph and inherited as upstream state.
+    condition_occurrence.egfr:
+      type: branch
+      rules:
+      - if: { condition_occurrence.biomarker: egfr }
+        then: not_wt
+      default: wt
+
+    condition_episode.crt_eligible:
+      type: branch
+      rules: 
+      - if: { person.performance_status_v_frail: not_v_frail }
+        then: eligible
+      - if: { person.performance_status_v_frail: v_frail }
+        then: ineligible
+      default: eligible
+
+    condition_episode.sequential_crt_eligible:
+      type: branch
+      rules:
+      - if: { person.performance_status: ps2 }
+        then: eligible
+      default: ineligible
+
+    treatment_episode.radiotherapy:
+      type: categorical
+      labels: ["rt"]
+      active_when:
+        condition_episode.crt_eligible: ineligible
+
+    # When adjuvant is not specified it is not present
+    treatment_episode.sequential_crt:
+      type: categorical
+      labels: ["seq_crt"]
+      active_when:
+        condition_episode.sequential_crt_eligible: eligible
+        condition_occurrence.egfr: wt
+        condition_occurrence.pdl1_binary: absent
+
+    treatment_episode.concurrent_crt:
+      type: categorical
+      labels: ["conc_crt"]
+      active_when:
+        condition_episode.crt_eligible: eligible
+        condition_episode.sequential_crt_eligible: ineligible
+        condition_occurrence.egfr: wt
+        condition_occurrence.pdl1_binary: absent
+
+    treatment_episode.sequential_crt_adjuvant_osimertinib:
+      type: categorical
+      labels: ["seq_crt_adj_osimertinib"]
+      active_when:
+        condition_episode.sequential_crt_eligible: eligible
+        condition_occurrence.egfr: not_wt
+
+    treatment_episode.concurrent_crt_adjuvant_osimertinib:
+      type: categorical
+      labels: ["conc_crt_adj_osimertinib"]
+      active_when:
+        condition_episode.crt_eligible: eligible
+        condition_episode.sequential_crt_eligible: ineligible
+        condition_occurrence.egfr: not_wt
+
+    treatment_episode.sequential_crt_adjuvant_durvalumab:
+      type: categorical
+      labels: ["seq_crt_adj_durvalumab"]
+      active_when:
+        condition_episode.sequential_crt_eligible: eligible
+        condition_occurrence.egfr: wt
+        condition_occurrence.pdl1_binary: present
+
+    treatment_episode.concurrent_crt_adjuvant_durvalumab:
+      type: categorical
+      labels: ["conc_crt_adj_durvalumab"]
+      active_when:
+        condition_episode.crt_eligible: eligible
+        condition_episode.sequential_crt_eligible: ineligible
+        condition_occurrence.egfr: wt
+        condition_occurrence.pdl1_binary: present
+
+  edges: []

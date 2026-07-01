@@ -37,17 +37,25 @@ class ClinicalFieldBase:
         field_type: ClinicalFieldType = ClinicalFieldType.CATEGORICAL,
         unit_concept_id: int | None = None,
         source_field: str | None = None,
+        event_id_attr: str | None = None,
+        event_field_concept_id: int | None = None,
+        drop: bool = True,
     ):
         self.concept_id = concept_id
         self.value_map = value_map
         self.field_type = field_type
         self.unit_concept_id = unit_concept_id
         self.source_field = source_field
+        self.event_id_attr = event_id_attr
+        self.event_field_concept_id = event_field_concept_id
+        self.drop = drop
 
     def to_record(self, person, value: Any):
         """Convert a single value into a Measurement/Observation instance."""
         mapped = self.value_map(value)
         if mapped is None:
+            return None
+        if self.field_type != ClinicalFieldType.NUMERIC and int(mapped) == 0:
             return None
 
         base_kwargs = {
@@ -57,6 +65,9 @@ class ClinicalFieldBase:
             "unit_concept_id": self.unit_concept_id,
             self.value_source_field: str(value) if value is not None else None,
         }
+        if self.event_id_attr is not None:
+            base_kwargs["measurement_event_id"] = getattr(person, self.event_id_attr, None)
+            base_kwargs["meas_event_field_concept_id"] = self.event_field_concept_id
 
         if self.field_type == ClinicalFieldType.NUMERIC:
             base_kwargs["value_as_number"] = float(mapped)
@@ -66,6 +77,6 @@ class ClinicalFieldBase:
             base_kwargs["value_as_concept_id"] = int(mapped)
 
         else:  # CATEGORICAL
-            base_kwargs[self.concept_field] = int(mapped)
+            base_kwargs["value_as_concept_id"] = int(mapped)
 
         return self.record_class(**base_kwargs)

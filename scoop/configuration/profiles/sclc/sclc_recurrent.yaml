@@ -1,0 +1,82 @@
+# SCLC tail graph: recurrent disease pathway
+# Expects inherited state from sclc.yaml.
+
+graph:
+  nodes:
+    # placeholder distribution
+    condition_episode.recurrent_strategy:
+      type: categorical
+      distribution:
+        platinum_sensitive: 0.34
+        platinum_resistant: 0.33
+        refractory_or_poor_ps: 0.33
+
+    # placeholder distribution
+    condition_episode.recurrent_sensitive_choice:
+      type: categorical
+      distribution:
+        platinum_etoposide_rechallenge: 0.34
+        topotecan_sensitive: 0.33
+        cav_sensitive: 0.33
+      active_when:
+        condition_episode.recurrent_strategy: platinum_sensitive
+
+    # placeholder distribution
+    condition_episode.recurrent_resistant_choice:
+      type: categorical
+      distribution:
+        topotecan_resistant: 0.34
+        cav_resistant: 0.33
+        lurbinectedin: 0.33
+      active_when:
+        condition_episode.recurrent_strategy: platinum_resistant
+
+    treatment_episode.platinum_etoposide_rechallenge:
+      type: categorical
+      labels: ["platinum_etoposide_rechallenge"]
+      active_when:
+        condition_episode.recurrent_strategy: platinum_sensitive
+        condition_episode.recurrent_sensitive_choice: platinum_etoposide_rechallenge
+
+    treatment_episode.topotecan_sensitive:
+      type: categorical
+      labels: ["topotecan_sensitive"]
+      active_when:
+        condition_episode.recurrent_strategy: platinum_sensitive
+        condition_episode.recurrent_sensitive_choice: topotecan_sensitive
+
+    treatment_episode.cav_sensitive:
+      type: categorical
+      labels: ["cav_sensitive"]
+      active_when:
+        condition_episode.recurrent_strategy: platinum_sensitive
+        condition_episode.recurrent_sensitive_choice: cav_sensitive
+
+    treatment_episode.topotecan_resistant:
+      type: categorical
+      labels: ["topotecan_resistant"]
+      active_when:
+        condition_episode.recurrent_strategy: platinum_resistant
+        condition_episode.recurrent_resistant_choice: topotecan_resistant
+
+    treatment_episode.cav_resistant:
+      type: categorical
+      labels: ["cav_resistant"]
+      active_when:
+        condition_episode.recurrent_strategy: platinum_resistant
+        condition_episode.recurrent_resistant_choice: cav_resistant
+
+    treatment_episode.lurbinectedin:
+      type: categorical
+      labels: ["lurbinectedin"]
+      active_when:
+        condition_episode.recurrent_strategy: platinum_resistant
+        condition_episode.recurrent_resistant_choice: lurbinectedin
+
+    treatment_episode.best_supportive_care_recurrent:
+      type: categorical
+      labels: ["bsc_recurrent"]
+      active_when:
+        condition_episode.recurrent_strategy: refractory_or_poor_ps
+
+  edges: []
