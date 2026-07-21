@@ -1,4 +1,3 @@
-import random
 import unittest
 
 from scoop.configuration.transformation_graph import TransformationGraph

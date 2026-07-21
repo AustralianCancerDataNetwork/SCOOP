@@ -1,7 +1,7 @@
 from .concept_map import ConceptMapper, ConceptMap
 from .condition_resolver import get_condition_concept_resolver
 from .date_handler import random_date
-from .hemonc_query import (
+from .variant_selection import (
     build_variant_query_artifacts,
     build_variant_statement,
     build_variant_statement_for_entry,

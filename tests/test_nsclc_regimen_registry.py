@@ -15,7 +15,7 @@ from scoop.configuration.config_loader import (
 )
 from scoop.configuration.regimen_registry import RegimenRegistry, load_regimen_registry
 from scoop.schema.treatment_episode import extract_active_treatment_endpoints
-from scoop.utils.hemonc_query import (
+from scoop.utils.variant_selection import (
     apply_default_component_requirements,
     build_component_requirement_expressions,
 )

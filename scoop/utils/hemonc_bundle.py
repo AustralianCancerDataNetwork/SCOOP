@@ -19,15 +19,15 @@ from ..configuration.regimen_registry import (
     ResolvedBundlePhase,
     ResolvedHemOncBundle,
 )
-from .hemonc_query import HemOncModels, _load_hemonc_models, build_variant_statement
+from .variant_selection import HemOncModels, _load_hemonc_models, build_variant_statement
 
 
 class BundlePhaseMatch(BaseModel):
     """Runtime representation of one candidate match for a bundle phase."""
 
     phase_id: str
-    phase_type: str
-    timing: str
+    # phase_type: str
+    # timing: str
     source_kind: str
     variant_cui: int | None = None
     sigs: list[Any] = Field(default_factory=list)
@@ -56,8 +56,8 @@ class AssembledBundlePhase(BaseModel):
     """Serializable summary of a single assembled bundle phase."""
 
     phase_id: str
-    phase_type: str
-    timing: str
+    # phase_type: str
+    # timing: str
     source_kind: str
     variant_cui: int | None = None
     sig_ids: list[Any] = Field(default_factory=list)
@@ -232,32 +232,32 @@ def _filter_phase_records(
 
 def _requires_shared_study(left: BundlePhaseMatch, right: BundlePhaseMatch) -> bool:
     """Return True when two phase matches must share study provenance."""
+    return False
+    # pair = {left.phase_type, right.phase_type}
+    # if pair != {"systemic", "radiotherapy"}:
+    #     return False
 
-    pair = {left.phase_type, right.phase_type}
-    if pair != {"systemic", "radiotherapy"}:
-        return False
+    # systemic = left if left.phase_type == "systemic" else right
+    # radiotherapy = left if left.phase_type == "radiotherapy" else right
 
-    systemic = left if left.phase_type == "systemic" else right
-    radiotherapy = left if left.phase_type == "radiotherapy" else right
-
-    # Adjuvant post-CRT systemic phases are intentionally allowed to come
-    # from separate evidence than the CRT backbone.
-    if systemic.timing == "post" and radiotherapy.timing == "post":
-        return False
-    return True
+    # # Adjuvant post-CRT systemic phases are intentionally allowed to come
+    # # from separate evidence than the CRT backbone.
+    # if systemic.timing == "post" and radiotherapy.timing == "post":
+    #     return False
+    # return True
 
 
 def _phase_combo_is_compatible(phase_combo: tuple[BundlePhaseMatch, ...]) -> bool:
     """Apply lightweight cross-phase compatibility rules to a bundle candidate."""
 
-    for index, left in enumerate(phase_combo):
-        for right in phase_combo[index + 1 :]:
-            if not _requires_shared_study(left, right):
-                continue
-            left_studies = _phase_match_study_keys(left)
-            right_studies = _phase_match_study_keys(right)
-            if left_studies and right_studies and left_studies.isdisjoint(right_studies):
-                return False
+    # for index, left in enumerate(phase_combo):
+    #     for right in phase_combo[index + 1 :]:
+    #         if not _requires_shared_study(left, right):
+    #             continue
+    #         left_studies = _phase_match_study_keys(left)
+    #         right_studies = _phase_match_study_keys(right)
+    #         if left_studies and right_studies and left_studies.isdisjoint(right_studies):
+    #             return False
     return True
 
 
@@ -266,8 +266,8 @@ def _phase_match_from_variant(phase: ResolvedBundlePhase, variant: Any) -> Bundl
 
     return BundlePhaseMatch(
         phase_id=phase.phase_id,
-        phase_type=phase.phase_type,
-        timing=phase.timing,
+        # phase_type=phase.phase_type,
+        # timing=phase.timing,
         source_kind=phase.source_type,
         variant_cui=getattr(variant, "variant_cui", None),
         sigs=list(getattr(variant, "component_sigs", [])),
@@ -280,8 +280,8 @@ def _phase_match_from_sig(phase: ResolvedBundlePhase, sig: Any) -> BundlePhaseMa
 
     return BundlePhaseMatch(
         phase_id=phase.phase_id,
-        phase_type=phase.phase_type,
-        timing=phase.timing,
+        # phase_type=phase.phase_type,
+        # timing=phase.timing,
         source_kind=phase.source_type,
         variant_cui=getattr(sig, "variant_cui", None),
         sigs=[sig],
@@ -316,8 +316,8 @@ def assemble_bundle_matches(
         bundle_phases = [
             AssembledBundlePhase(
                 phase_id=phase_match.phase_id,
-                phase_type=phase_match.phase_type,
-                timing=phase_match.timing,
+                # phase_type=phase_match.phase_type,
+                # timing=phase_match.timing,
                 source_kind=phase_match.source_kind,
                 variant_cui=phase_match.variant_cui,
                 sig_ids=[_sig_identifier(sig) for sig in phase_match.sigs],

@@ -24,16 +24,16 @@ BroadCategory = Literal[
     "supportive",
 ]
 
-AssemblyMode = Literal[
-    "rt_only",
-    "variant_only",
-    "variant_plus_rt",
-    "variant_plus_surgery",
-    "sig_only",
-    "multi_sig_only",
-]
-PhaseType = Literal["systemic", "radiotherapy", "surgery", "supportive"]
-PhaseTiming = Literal["standalone", "pre", "concurrent", "post"]
+# AssemblyMode = Literal[
+#     "rt_only",
+#     "variant_only",
+#     "variant_plus_rt",
+#     "variant_plus_surgery",
+#     "sig_only",
+#     "multi_sig_only",
+# ]
+# PhaseType = Literal["systemic", "radiotherapy", "surgery", "supportive"]
+# PhaseTiming = Literal["standalone", "pre", "concurrent", "post"]
 BundlePhaseSourceType = Literal["entry", "group", "nonvariant_component"]
 
 
@@ -85,8 +85,8 @@ class BundlePhase(BaseModel):
 
     phase_id: str = ""
     title: str | None = None
-    phase_type: PhaseType
-    timing: PhaseTiming = "standalone"
+    # phase_type: PhaseType
+    # timing: PhaseTiming = "standalone"
     source_type: BundlePhaseSourceType
     source_entry_id: str | None = None
     source_group_id: str | None = None
@@ -139,8 +139,8 @@ class ResolvedBundlePhase(BaseModel):
 
     phase_id: str
     title: str | None = None
-    phase_type: PhaseType
-    timing: PhaseTiming
+    # phase_type: PhaseType
+    # timing: PhaseTiming
     source_type: BundlePhaseSourceType
     source_entry_id: str | None = None
     source_group_id: str | None = None
@@ -404,8 +404,8 @@ class RegimenRegistry(BaseModel):
                 ResolvedBundlePhase(
                     phase_id=phase.phase_id,
                     title=phase.title,
-                    phase_type=phase.phase_type,
-                    timing=phase.timing,
+                    # phase_type=phase.phase_type,
+                    # timing=phase.timing,
                     source_type=phase.source_type,
                     source_entry_id=phase.source_entry_id,
                     source_group_id=phase.source_group_id,

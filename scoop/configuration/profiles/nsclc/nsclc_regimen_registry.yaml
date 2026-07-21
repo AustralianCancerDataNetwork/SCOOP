@@ -358,12 +358,12 @@ registry:
       phases:
         - phase_id: systemic
           phase_type: systemic
-          timing: pre
+          # timing: pre
           source_type: group
           source_group_id: nsclc_crt_backbone
         - phase_id: radiotherapy
           phase_type: radiotherapy
-          timing: post
+          # timing: post
           source_type: nonvariant_component
           component_terms: [External beam radiotherapy]
     sequential_crt_adjuvant_osimertinib:
