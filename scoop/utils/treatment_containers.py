@@ -65,10 +65,11 @@ class TreatmentPhase(BaseModel):
     index: int = 1
     label: Optional[str] = None
     options: list[SigBundle]
-    original_options: Optional[tuple[SigBundle, ...]] = None
-    filters_passed: Optional[dict[str, Any]] = Field(default_factory=dict)
-    filters_failed: Optional[dict[str, Any]] = Field(default_factory=dict)
+    # original_options: Optional[tuple[SigBundle, ...]] = None
+    # filters_passed: Optional[dict[str, Any]] = Field(default_factory=dict)
+    # filters_failed: Optional[dict[str, Any]] = Field(default_factory=dict)
     conditions: list
+    categories: set | None = None
 
 
     @classmethod
@@ -143,6 +144,8 @@ class Protocol(BaseModel):
     """
     name: str
     phases: list[TreatmentPhase]
+    requirement_type: str | None = None
+    requirement_element: str | None = None
 
     @classmethod
     def from_yaml(cls, name: str, 

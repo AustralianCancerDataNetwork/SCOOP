@@ -219,12 +219,13 @@ def build_component_expressions(component_lists, categorised_components):
 def source_phase_to_sigdict(source_phase, session):
     base_df = get_base_sigs_df(source_phase, session)
     phase_filtered = subset_df_on_phase(base_df, source_phase.type)
-    if phase_filtered.empty:
+    sig_deduped = phase_filtered.drop_duplicates(subset=["id"])
+    if sig_deduped.empty:
         return dict()
-    return get_sigdict(phase_filtered)
+    return get_sigdict(sig_deduped)
 
 def get_sigdict(df):
-    grouped_df = df.fillna("None").groupby(["phase", "variant_cui", "study", "regimen"], sort=False)
+    grouped_df = df.fillna("None").groupby(["phase", "variant_cui", "study", "regimen", "variant"], sort=False)
     return grouped_df["Sigs"].agg(list).to_dict()
 
 
@@ -264,6 +265,7 @@ def subquery_sigs_valid_groups(valid_groups_subquery, models):
         models.Sigs.component,
         models.Sigs.id,
         models.Sigs.regimen,
+        models.Sigs.variant,
         # models.Studies.study,
         # models.StudyResults.context,
         # models.Studies.start,
