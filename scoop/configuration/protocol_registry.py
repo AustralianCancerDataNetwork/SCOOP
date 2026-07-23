@@ -112,6 +112,7 @@ class SourcePhaseYaml(BaseModel):
     curative_intent: bool = True
     regimens: Optional[RegimenList] = Field(default_factory=list)
     type: Optional[str]
+    standalone: bool = True
 
     model_config = {"extra": "forbid"}
 
@@ -135,7 +136,8 @@ class SourcePhaseYaml(BaseModel):
             "source_phase_id":label,
             "type":phase_data.get("type"),
             "regimens":phase_data.get("regimens"),
-            "curative_intent": phase_data.get("curative_intent", True)}
+            "curative_intent": phase_data.get("curative_intent", True),
+            "standalone": phase_data.get("standalone", True)}
         return cls.model_validate(
             data, context = {"session": session}
         )
@@ -151,7 +153,7 @@ class SourcePhaseYaml(BaseModel):
 class PhaseUnionYaml(BaseModel):
     phase_id: str
     source_phase_ids: List[str]
-    remove: PhaseSubset
+    # remove: PhaseSubset
 
     model_config = {"extra": "forbid"}
 
@@ -163,17 +165,18 @@ class OptionalPhaseCriteria(BaseModel):
 class ProtocolYaml(BaseModel):
     protocol_id: str
     source_phase_ids: List[str]
-    phases_for_removal: PhaseSubset
+    # phases_for_removal: PhaseSubset
     # is this really the best structure?
     optional_phases: Optional[Dict[str, Dict[Literal["criteria"], OptionalPhaseCriteria]]]
 
     @classmethod
     def generate(cls, label:str, protocol_data:dict):
         phases = protocol_data["phases"]
-        phases_for_removal = protocol_data.get("remove_source_phases", None)
+        #phases_for_removal = protocol_data.get("remove_source_phases", None)
         optional_phases = protocol_data.get("optional_phases", None)
         return cls(protocol_id=label, source_phase_ids=phases, 
-                   phases_for_removal=phases_for_removal, optional_phases=optional_phases)
+                   #phases_for_removal=phases_for_removal, 
+                   optional_phases=optional_phases)
     
 
 

@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import Field
 from .transformable_object import TransformableBase
 from ..configuration.profile_manager import get_active_simulation_context
-from ..configuration.regimen_registry import RegimenRegistry
+# from ..configuration.regimen_registry import RegimenRegistry
 
 class Treatment_Episode(TransformableBase):
 
@@ -70,7 +70,7 @@ def _extract_modifiers(graph_sample: dict[str, Any]) -> dict[str, Any]:
 
 def build_graph_outcome(
     graph_sample: dict[str, Any],
-    registry: RegimenRegistry | None = None,
+    registry: None=None, #RegimenRegistry | None = None,
     source_profile: str | None = None,
 ) -> GraphOutcome:
     if not graph_sample:

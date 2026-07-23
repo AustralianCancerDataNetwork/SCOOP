@@ -29,7 +29,7 @@ from .paths import (
 )
 from .database import get_omop_engine
 from .profile_manager import set_active_simulation_context
-from .regimen_registry import RegimenRegistry, load_regimen_registry
+# from .regimen_registry import RegimenRegistry, load_regimen_registry
 from .transformation_graph import TransformationGraph
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ class SimulationContext:
     profile_id: str
     profile_name: str
     graph: TransformationGraph
-    regimen_registry: RegimenRegistry
+    # regimen_registry: RegimenRegistry
     concept_mapper: ConceptMapper
     modifier_mapper: ModifierMapper
     measurement_mapper: MeasurementMapper
@@ -93,7 +93,7 @@ class SimulationContext:
         sampled = self.sample_patient()
         return build_graph_outcome(
             sampled,
-            registry=self.regimen_registry,
+            # registry=self.regimen_registry,
             source_profile=self.profile_name,
         )
 
@@ -225,15 +225,15 @@ class ProfileLoader:
         graph = load_transformation_graph(
             f'{self.base_dir / profile.graph_relpath}'
         )
-        regimen_registry = load_regimen_registry(
-            self.base_dir / profile.regimen_registry_relpath
-        )
+        # regimen_registry = load_regimen_registry(
+        #     self.base_dir / profile.regimen_registry_relpath
+        # )
 
         context = SimulationContext(
             profile_id=profile.profile_id,
             profile_name=profile.profile_name,
             graph=graph,
-            regimen_registry=regimen_registry,
+            # regimen_registry=regimen_registry,
             concept_mapper=concept_mapper,
             modifier_mapper=modifier_mapper,
             measurement_mapper=measurement_mapper,

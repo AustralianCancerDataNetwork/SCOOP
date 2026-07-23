@@ -26,6 +26,9 @@ nsclc:
                     type: min
                     amount: 1
         type: adjuvant
+        # Do not create a standalone protocol with this phase only
+        # (defaults to true when not specified)
+        standalone: False
         # there are other radiation sigs like whole brain irradiation
         regimens: "Radiation therapy" 
     adj_osimertinib:
@@ -36,6 +39,7 @@ nsclc:
                   type: min
                   amount: 1
       type: adjuvant
+      standalone: False
   # -- phases for stgs 2&3 resectable -----------------------------------------
     neoadjuvant_chemo_ici:
         component_requirements:
@@ -116,6 +120,7 @@ nsclc:
                   amount: 1
         optional_reqs:
             seq_crt_only: "yes"
+        standalone: False
     definitive_rt:
         component_requirements:
           category_restrictions:
@@ -127,6 +132,7 @@ nsclc:
                   amount: 1
         regimens: "Radiation therapy"
         type: definitive
+        standalone: False
     consolidation_durvalumab:
         component_requirements:
           component_lists:
@@ -135,6 +141,7 @@ nsclc:
               immunotherapy:
                   type: exact
                   amount: 1
+        standalone: False
     consolidation_osimertinib:
         component_requirements:
           component_lists:
@@ -143,6 +150,7 @@ nsclc:
               chemotherapy:
                   type: exact
                   amount: 1
+        standalone: False
   # -- phases for stg 4 w/ drivers --------------------------------------------
   # TODO: Add extra_conditions field to facilitate drawing from approval under genomic variant 
     egfr_intervention:
@@ -190,6 +198,7 @@ nsclc:
                 chemotherapy:
                     type: exact
                     amount: 1
+        standalone: False
     met_ptdb:
         # conditions: [13094]
         component_requirements:
@@ -198,6 +207,7 @@ nsclc:
                 chemotherapy:
                     type: exact
                     amount: 2
+        standalone: False
     met_ptdb_w_ici:
         # conditions: [13094]
         component_requirements:
@@ -209,6 +219,7 @@ nsclc:
                 immunotherapy:
                     type: min
                     amount: 1
+        standalone: False
   # -- phases for stg 4 w/o drivers -------------------------------------------
     # Doesn't work currently - need to:
     # a) change category restrictions
@@ -267,6 +278,7 @@ nsclc:
                 chemotherapy:
                     type: exact
                     amount: 2
+        standalone: False
     single_chemo_squamous:
         conditions: [25316]
         component_requirements:
@@ -275,6 +287,7 @@ nsclc:
                 chemotherapy:
                     type: exact
                     amount: 1
+        standalone: False
     ptdb_nonsquamous:
         conditions: [25309]
         component_requirements:
@@ -283,6 +296,7 @@ nsclc:
                 chemotherapy:
                     type: exact
                     amount: 2
+        standalone: False
     single_chemo_nonsquamous:
         conditions: [25309]
         component_requirements:
@@ -291,6 +305,7 @@ nsclc:
                 chemotherapy:
                     type: exact
                     amount: 1
+        standalone: False
     atezolizumab:
         conditions: [25316]
         component_requirements:
@@ -299,6 +314,7 @@ nsclc:
                 immunotherapy:
                     type: exact
                     amount: 1
+        standalone: False
   phase_combinations:
     # combines phases in the same timestep in an OR relationship
     met_intervention:
@@ -306,17 +322,14 @@ nsclc:
             - met_tki
             - met_ptdb
             - met_ptdb_w_ici
-        remove: all
     ici_monotherapy_or_ici_with_chemotherapy_squamous:
         source_phases:
             - ici_monotherapy
             - ici_w_chemo_squamous
-        remove: none
     ici_monotherapy_or_ici_with_chemotherapy_nonsquamous:
         source_phases:
             - ici_monotherapy
             - ici_w_chemo_nonsquamous
-        remove: none
     # it's ok that the two below have a shared requirement
     # removal of sources is after all combinations are processed
     chemotherapy_or_atezolizumab_squamous:
@@ -324,33 +337,22 @@ nsclc:
             - ptdb_squamous
             - single_chemo_squamous
             - atezolizumab
-        remove: all
     chemotherapy_or_atezolizumab_nonsquamous:
         source_phases:
             - ptdb_nonsquamous
             - single_chemo_nonsquamous
             - atezolizumab
-        remove: all
   protocols:
     # combines phases sequentially, in order of listing, in an AND relationship
-    # any phase not removed through a combination step will also be
-    # in its own one-phase protocol
     port_adjuvant_osimertinib:
       phases:
         - surgery_only
         - port
         - adj_osimertinib
-      # controls if source phases should be kept as protocols in their own right
-      # only surgery should be a stand-alone protocol
-      # it's ok that we say to remove port here even though it's needed later
-      remove_source_phases: [adj_osimertinib, port]
     surgery_then_port:
       phases:
        - surgery_only
        - port
-      # strictly speaking the above protocol already adds port to the deletion set
-      # but specifying here as well clarifies intention
-      remove_source_phases: [port]
     neoadj_or_peri_ici_w_chemo:
       phases:
        - neoadjuvant_chemo_ici
@@ -369,29 +371,24 @@ nsclc:
       phases:
        - conc_crt
        - consolidation_durvalumab
-      remove_source_phases: [consolidation_durvalumab]
     conc_crt_followed_by_osimertinib:
       phases:
        - conc_crt
        - consolidation_osimertinib
-      remove_source_phases: [consolidation_osimertinib]
     seq_crt_followed_by_durvalumab:
       phases:
        - seq_crt_chemo
        - definitive_rt
        - consolidation_durvalumab
-      remove_source_phases: [consolidation_durvalumab]
     seq_crt_followed_by_osimertinib:
       phases:
        - seq_crt_chemo
        - definitive_rt
        - consolidation_osimertinib
-      remove_source_phases: [consolidation_osimertinib]
     seq_crt:
       phases:
        - seq_crt_chemo
        - definitive_rt
-      remove_source_phases: all
   # The below is copied from the regimen registry and has not been
   # evaluated for changing the fields etc. yet
   entries:

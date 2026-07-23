@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Any
+from typing import Optional, Dict, List
 from collections import defaultdict
 import scoop.utils.descriptions as desc
+from scoop.utils.treatment_selection import source_phase_to_sigdict
 # import scoop.configuration.protocol_registry 
 
 class SigBundle(BaseModel):
@@ -250,3 +251,157 @@ def bold_before_colon(original_text):
     else:
         result_html = original_text
     return result_html
+
+
+class ProtocolGenerator(BaseModel):
+    sigdict_cache: dict = Field(default_factory=dict)
+    source_phases: dict
+    phase_unions: dict
+
+    def get_protocol_from_source_phase(self, phase_id, session):
+        sb_list = self.source_phase_to_sb_list(self.source_phases[phase_id], session)
+        phase = TreatmentPhase(index=1, label=phase_id, options=sb_list, 
+                               conditions=self.source_phases[phase_id].condition_cuis)
+        return [Protocol(name=phase_id, phases=[phase])]
+
+    def get_protocol_from_phase_union(self, phase_id, session):
+        union_data = self.phase_unions[phase_id]
+        sb_list = []
+        conditions = get_union_phase_conditions(phase_id, self.phase_unions, self.source_phases)
+        for source_phase_id in union_data.source_phase_ids:
+            sb_list += self.source_phase_to_sb_list(self.source_phases[source_phase_id], session)
+        phase = TreatmentPhase(index=1, label=phase_id, options=sb_list, conditions=conditions)
+        return [Protocol(name=phase_id, phases=[phase])]
+
+    def get_protocols_from_protocol_yaml(self, protocol_yaml, session):
+        source_phases_sb_list = self.get_source_phases_sb_list(protocol_yaml, session)
+        return self.protocols_from_sb_list(protocol_yaml, source_phases_sb_list)
+
+    def get_source_phases_sb_list(self, protocol_yaml, session):
+        source_phases_sb_list = dict()
+        for phase_id in protocol_yaml.source_phase_ids:
+            if phase_id in self.phase_unions.keys():
+                phase_list = []
+                for phase_id in self.phase_unions[phase_id].source_phase_ids:
+                    phase_list += self.source_phase_to_sb_list(self.source_phases[phase_id], session)
+                source_phases_sb_list[phase_id] = phase_list
+            else:
+                source_phases_sb_list[phase_id] = self.source_phase_to_sb_list(self.source_phases[phase_id], session)
+        return source_phases_sb_list
+
+    def source_phase_to_sb_list(self, source_phase, session):
+        cached_sigdict = self.sigdict_cache.get(source_phase.source_phase_id)
+        if cached_sigdict:
+            return get_sigbundle_list(cached_sigdict)
+        else:
+            new_sigdict = source_phase_to_sigdict(source_phase, session)
+            self.sigdict_cache[source_phase.source_phase_id] = new_sigdict
+            return get_sigbundle_list(new_sigdict)
+
+    def protocols_from_sb_list(self, protocol_yaml, source_phases_sb_list):
+        if protocol_yaml.optional_phases:
+            optional_phase = list(protocol_yaml.optional_phases.keys())[0]
+            requirement_type = protocol_yaml.optional_phases[optional_phase]["criteria"]
+            is_shared_component_req = requirement_type.shared.lower()=="component"
+            if is_shared_component_req:
+                req_sharing_phase = requirement_type.as_phase
+                optional_phase_sigs = source_phases_sb_list[optional_phase]
+                components_in_optional = {component for sb in optional_phase_sigs for component in sb.components }
+                pb = create_protocols_by_shared_component(
+                    protocol_yaml, components_in_optional, source_phases_sb_list, 
+                    req_sharing_phase, optional_phase, self.source_phases)
+        else:
+            phases = create_phases_list(protocol_yaml, source_phases_sb_list, self.source_phases, self.phase_unions)
+            pb = [Protocol(name=protocol_yaml.protocol_id, phases=phases)]
+        return pb
+
+def get_sigbundle_list(sigdict):
+    sigbundle_list = []
+    for (phase, variant_cui, study, regimen, variant_name), siglist in sigdict.items():
+        try:
+            variant_cui = int(variant_cui)
+        except ValueError:
+            variant_cui=None
+
+        if variant_name:
+            name = regimen + " " + str(variant_name)
+        else:
+            name = regimen
+        components = {sig.component for sig in siglist}
+        sigbundle_list.append(SigBundle(name=name, sigs=siglist, 
+                                        variant_cui=variant_cui,
+                                        regimen=regimen, components=components))
+    return sigbundle_list
+
+def create_protocols_by_shared_component(protocol_yaml, components_in_optional: set, sb_lists_by_phase: Dict[str, list], 
+                                         req_sharing_phase: str, optional_phase:str, source_phases):
+    mutable_components = components_in_optional.copy()
+    protocols = []
+    for component in mutable_components.copy():
+        component = mutable_components.pop()
+        component_restricted_protocol= create_component_restricted_protocol(
+            protocol_yaml, component, source_phases, sb_lists_by_phase, req_sharing_phase, optional_phase
+            )
+        protocols.append(component_restricted_protocol)
+
+    no_opt_phase_phases = create_phases_list(protocol_yaml, sb_lists_by_phase, 
+                                             source_phases, exclude={optional_phase})
+    no_opt_phase_protocol = Protocol(name=protocol_yaml.protocol_id, phases=no_opt_phase_phases, 
+                                    requirement_type="shared component",
+                                    requirement_element=None
+                                    )
+    protocols.append(no_opt_phase_protocol)
+    return protocols
+
+
+def create_component_restricted_protocol(protocol_yaml, component: str, source_phases, sb_lists_by_phase: Dict[str, list], 
+                                         req_sharing_phase: str, optional_phase:str):
+    req_sharing_phase_w_component = [sb for sb in sb_lists_by_phase[req_sharing_phase] 
+                                if component in sb.components]
+    optional_phase_w_component = [sb for sb in sb_lists_by_phase[optional_phase] 
+                            if component in sb.components]
+    with_components_sb_lists_by_phase = {req_sharing_phase: req_sharing_phase_w_component, 
+                            optional_phase: optional_phase_w_component}
+    with_component_phases = create_phases_list(protocol_yaml, with_components_sb_lists_by_phase, 
+                                            source_phases, full_sb_list=sb_lists_by_phase)
+    component_restricted_protocol = Protocol(name=protocol_yaml.protocol_id, phases=with_component_phases, 
+                                        requirement_type="shared component",
+                                        requirement_element=component
+                                        )
+    return component_restricted_protocol
+
+
+def create_phases_list(protocol_yaml, restricted_sb_list: Dict[str, list], 
+                       source_phases, phase_unions={}, full_sb_list={}, exclude={}) -> List[TreatmentPhase]:
+    """
+    Creates a list of phases suitable for populating protocols with.
+    
+    If creating an unrestricted protocol just pass the full_sb_list to 
+    restricted_sb_list and ignore the full_sb_list parameter
+    """
+    phase_index = 0
+    phases = []
+
+    for source_phase_id in protocol_yaml.source_phase_ids:
+        if source_phase_id in exclude:
+            continue
+        phase_index +=1
+        if source_phase_id in restricted_sb_list.keys():
+            sb_list = restricted_sb_list[source_phase_id]
+        else:
+            sb_list = full_sb_list[source_phase_id]
+        if source_phase_id in phase_unions.keys():
+            conditions = get_union_phase_conditions(source_phase_id, phase_unions, source_phases)
+            categories = {category for source_phase_id in phase_unions[source_phase_id].source_phase_ids 
+                          for category in source_phases[source_phase_id].categorise()}
+        else:
+            conditions = source_phases[source_phase_id].condition_cuis
+            categories = source_phases[source_phase_id].categorise()
+        treatment_phase = TreatmentPhase(index = phase_index, label = source_phase_id, 
+                            options=sb_list, conditions=conditions, categories=categories)
+        phases.append(treatment_phase)
+    return phases
+
+def get_union_phase_conditions(phase_id, phase_unions, source_phases):
+    return list({condition for source_phase_id in phase_unions[phase_id].source_phase_ids 
+                for condition in source_phases[source_phase_id].condition_cuis})
