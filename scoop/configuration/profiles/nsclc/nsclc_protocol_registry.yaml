@@ -118,8 +118,9 @@ nsclc:
               chemotherapy:
                   type: min
                   amount: 1
-        optional_reqs:
-            seq_crt_only: "yes"
+        # sigs can only come from studies which have included radiotherapy
+        # given the category restriction, this returns chemo sigs from seq crt studies
+        study_restriction: must_have_rt
         standalone: False
     definitive_rt:
         component_requirements:
@@ -353,7 +354,7 @@ nsclc:
       phases:
        - surgery_only
        - port
-    neoadj_or_peri_ici_w_chemo:
+    neoadjuvant_or_perioperative_ici_w_chemo:
       phases:
        - neoadjuvant_chemo_ici
        - surgery_only
@@ -463,7 +464,7 @@ nsclc:
         type: bundle_recipe
         group_id: surgery_adjuvant_osimertinib
 
-    neoadjuvant_chemo_ici:
+    neoadjuvant_or_perioperative_ici_w_chemo:
       public: true
       stage_scope: [stage_ii, stage_iii, resectable]
       clinical_group: resectable_stage_ii_iii
@@ -475,7 +476,7 @@ nsclc:
         - condition_occurrence.biomarker
       resolver:
         type: component_query
-        group_id: neoadj_or_peri_ici_w_chemo
+        group_id: neoadjuvant_or_perioperative_ici_w_chemo
 
     adjuvant_pembrolizumab:
       public: true

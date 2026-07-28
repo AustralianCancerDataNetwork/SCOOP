@@ -41,7 +41,7 @@ graph:
     # neoadjuvant durvalumab + chemotherapy, adj durvalumab
     # neoadjuvant nivolumab + chemotherapy, adj nivolumab
     # neoadjuvant tislelizumab + chemotherapy, adj tislelizumab
-    treatment_episode.neoadjuvant_chemo_ici:
+    treatment_episode.neoadjuvant_or_perioperative_ici_w_chemo:
       type: categorical
       labels: ["neoadj_chemo_ici"]
       active_when:

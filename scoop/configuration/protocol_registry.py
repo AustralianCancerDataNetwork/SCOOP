@@ -2,7 +2,7 @@
 In development. Script for reading protocol registry.
 """
 from __future__ import annotations
-from typing import Annotated, Literal, Optional, List, Dict, Final, Union, Any
+from typing import Annotated, Literal, Final, Any
 from pydantic import BaseModel, Field, BeforeValidator, ValidationInfo
 from scoop.utils.hemonc_helpers import condition_cuis_by_names
 
@@ -15,7 +15,7 @@ def rescue_input_to_list(input):
     return input
 
 
-StringOrCuiList = Annotated[Union[List[int], List[str]], BeforeValidator(rescue_input_to_list)]
+StringOrCuiList = Annotated[list[int] | list[str], BeforeValidator(rescue_input_to_list)]
 # I thought it was a bad idea but consider bringing back the old condition validation approach...
 # don't want to be passing convert checks everywhere
 # ConditionList = StringOrCuiList
@@ -50,9 +50,9 @@ def rescue_component_input(component_input):
         component_lists=component_input
     return component_lists
 
-ComponentLists = Annotated[List[List[str]], BeforeValidator(rescue_component_input)]
+ComponentLists = Annotated[list[list[str]], BeforeValidator(rescue_component_input)]
 
-def check_phases_are_subset(v: Optional[List[str]] | Literal["all", "none"], info) -> List[str]:
+def check_phases_are_subset(v: list[str] | None | Literal["all", "none"], info) -> list[str]:
     if v == "all":
         v = info.data.get("source_phase_ids", [])
     if v == "none":
@@ -63,7 +63,7 @@ def check_phases_are_subset(v: Optional[List[str]] | Literal["all", "none"], inf
             raise ValueError(f"{info.field_name} must be a subset of source_phases")
     return v
 
-PhaseSubset = Annotated[Optional[List[str]], BeforeValidator(check_phases_are_subset)]
+PhaseSubset = Annotated[list[str]| None, BeforeValidator(check_phases_are_subset)]
 
 # Class definitions ###########################################################
 
@@ -71,19 +71,21 @@ class CategoryRestriction(BaseModel):
     type: Literal["exact", "min"]
     amount: int
 
-class OptionalReqs(BaseModel):
-    seq_crt_only: Literal["yes", "no"] = "no"
-    model_config = {"extra": "allow"}
+# class OptionalReqs(BaseModel):
+#     seq_crt_only: Literal["yes", "no"] = "no"
+#     model_config = {"extra": "allow"}
 
+# class StudyRestrictions(BaseModel):
+#     must_have_rt: bool = False
     
 class ComponentRequirements(BaseModel):
     component_lists: ComponentLists = Field(default_factory=list)
-    category_restrictions: Dict[BroadCategory, CategoryRestriction] = Field(default_factory=dict)
+    category_restrictions: dict[BroadCategory, CategoryRestriction] = Field(default_factory=dict)
     model_config = {"extra": "forbid"}
 
 # This doesn't use EXCLUDE_RESTRICTION because that would require changing
 # apply_default_component_requirements()
-DEFAULT_CATEGORY_RESTRICTIONS: Final[Dict[BroadCategory, CategoryRestriction]] = {
+DEFAULT_CATEGORY_RESTRICTIONS: Final[dict[BroadCategory, CategoryRestriction]] = {
     "chemotherapy":  {"type": "exact", "amount": 0},
     "radiotherapy":  {"type": "exact", "amount": 0},
     "immunotherapy": {"type": "exact", "amount": 0},
@@ -105,13 +107,14 @@ EXCLUDE_RESTRICTION = CategoryRestriction(type='exact', amount=0)
 #         return self
 
 class SourcePhaseYaml(BaseModel):
-    source_phase_id: Optional[str] = None
+    source_phase_id: str | None = None
     condition_cuis: ConditionCuis = Field(default_factory=list)
     component_requirements: ComponentRequirements = Field(default_factory=dict)
-    optional_reqs: Optional[OptionalReqs] = Field(default_factory=dict)
+    study_restriction: Literal["must_have_rt"] | None
+    # optional_reqs: OptionalReqs | None = Field(default_factory=dict)
     curative_intent: bool = True
-    regimens: Optional[RegimenList] = Field(default_factory=list)
-    type: Optional[str]
+    regimens: RegimenList | None = Field(default_factory=list)
+    type: str | None
     standalone: bool = True
 
     model_config = {"extra": "forbid"}
@@ -132,7 +135,8 @@ class SourcePhaseYaml(BaseModel):
             conditions = default_conditions
         data = {"condition_cuis": conditions,
             "component_requirements":apply_default_component_requirements(phase_data.get("component_requirements")),
-            "optional_reqs":phase_data.get("optional_reqs"),
+            # "optional_reqs":phase_data.get("optional_reqs"),
+            "study_restriction":phase_data.get("study_restriction"),
             "source_phase_id":label,
             "type":phase_data.get("type"),
             "regimens":phase_data.get("regimens"),
@@ -152,7 +156,7 @@ class SourcePhaseYaml(BaseModel):
 
 class PhaseUnionYaml(BaseModel):
     phase_id: str
-    source_phase_ids: List[str]
+    source_phase_ids: list[str]
     # remove: PhaseSubset
 
     model_config = {"extra": "forbid"}
@@ -164,10 +168,10 @@ class OptionalPhaseCriteria(BaseModel):
 
 class ProtocolYaml(BaseModel):
     protocol_id: str
-    source_phase_ids: List[str]
+    source_phase_ids: list[str]
     # phases_for_removal: PhaseSubset
     # is this really the best structure?
-    optional_phases: Optional[Dict[str, Dict[Literal["criteria"], OptionalPhaseCriteria]]]
+    optional_phases: dict[str, dict[Literal["criteria"], OptionalPhaseCriteria]] | None
 
     @classmethod
     def generate(cls, label:str, protocol_data:dict):

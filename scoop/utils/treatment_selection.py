@@ -1,28 +1,30 @@
+import logging
+import pandas as pd
+import sqlalchemy as sa
+import sqlalchemy.orm as so
+from functools import cached_property
 from typing import Any
 from ..configuration.protocol_registry import (
     ComponentRequirements,
-    CategoryRestriction,
+    # CategoryRestriction,
 )
-import sqlalchemy as sa
-import sqlalchemy.orm as so
-import pandas as pd
-from functools import cached_property
-import logging
 from scoop.utils.hemonc_helpers import ( 
     _load_hemonc_models, HemOncModels, 
     condition_cuis_by_names, search_substring, _component_search_expressions,
     join_not_distinct, or_for_piped_col,
     get_sig_study_join, COMPONENT_CLASS_MAPS
     )
+from scoop.utils.extra_filters import query_rt_inc_study_ids
+
 
 logger = logging.getLogger(__name__)
 
 
-CONCURRENT_CRT_REQUIREMENTS = (
-    ComponentRequirements(component_lists=[[]], 
-    category_restrictions={"chemotherapy": CategoryRestriction(type="min", amount=1),
-                           "radiotherapy": CategoryRestriction(type="min", amount=1)})
-)
+# CONCURRENT_CRT_REQUIREMENTS = (
+#     ComponentRequirements(component_lists=[[]], 
+#     category_restrictions={"chemotherapy": CategoryRestriction(type="min", amount=1),
+#                            "radiotherapy": CategoryRestriction(type="min", amount=1)})
+# )
 
 def show_conditions(substring: str, session: so.Session, 
                     models: HemOncModels | None = None) -> pd.DataFrame:
@@ -34,9 +36,9 @@ def show_conditions(substring: str, session: so.Session,
                             .where(models.Conditions.condition.ilike(pattern))
         ))
 
+
 def component_search_by_name(search_terms: str | list[str], table: Any) -> Any:
     """Build a subquery selecting component CUIs matching the search terms."""
-
     return (
         sa.select(table.c.component_cui)
         .where(sa.or_(*_component_search_expressions(search_terms, table)))
@@ -73,6 +75,7 @@ def get_sig_component_stmt(condition_cuis, models, non_curative=False):
     .where(models.Studies.study.in_(get_stmt_studies_by_curative_context(condition_cuis, models, non_curative)))
     )
 
+
 def get_stmt_studies_by_curative_context(condition_cuis, models, non_curative = False):
     context_operator = getattr(models.StudyResults.context, "__eq__" if non_curative else "__ne__")
     return (
@@ -95,9 +98,9 @@ def _category_mapping_expressions(components: Any) -> list[Any]:
         )
     return expressions
 
+
 def categorise_components(components: Any) -> Any:
     """Annotate component rows with derived broad-category labels."""
-
     return (
         sa.select(
             components.c.variant_cui,
@@ -159,7 +162,8 @@ class ComponentSubquery:
         else:
             df = self._df_cache[cache_key]
         return df
-    
+
+
 class ConditionDevTools:
     def __init__(self, conditions, session=None):
         self.components = ComponentSubquery(conditions, session)
@@ -174,11 +178,9 @@ def build_component_requirement_expressions(
     categorised_components: Any,
 ) -> list[Any]:
     """Translate component requirements into SQL HAVING clauses."""
-
     expressions: list[Any] = []
     expressions += build_category_expressions(component_requirements.category_restrictions, categorised_components)
     expressions += build_component_expressions(component_requirements.component_lists, categorised_components)
-
     return expressions
 
 
@@ -216,13 +218,15 @@ def build_component_expressions(component_lists, categorised_components):
         )
     return expressions
 
+
 def source_phase_to_sigdict(source_phase, session):
     base_df = get_base_sigs_df(source_phase, session)
     phase_filtered = subset_df_on_phase(base_df, source_phase.type)
     sig_deduped = phase_filtered.drop_duplicates(subset=["id"])
     if sig_deduped.empty:
-        return dict()
+        return {}
     return get_sigdict(sig_deduped)
+
 
 def get_sigdict(df):
     grouped_df = df.fillna("None").groupby(["phase", "variant_cui", "study", "regimen", "variant"], sort=False)
@@ -248,6 +252,7 @@ def get_siggroup_identifying_subquery(component_requirements, categorised, model
     .having(sa.and_(*build_component_requirement_expressions(component_requirements, categorised)))
     .subquery()
 )
+
 
 def subquery_sigs_valid_groups(valid_groups_subquery, models):
     """
@@ -290,13 +295,29 @@ def get_base_sigs_df(source_phase, session, models: HemOncModels | None = None):
     condition_cuis = source_phase.condition_cuis
     components = get_sig_component_stmt(condition_cuis, models, 
                                         non_curative=(not source_phase.curative_intent))
+    components = subset_components_by_study_stmt(source_phase.study_restriction,
+                                                 condition_cuis, components)
+    components = subset_components_stmt_by_regimens(components, source_phase.regimens)
     categorised = categorise_components(components)
-
     valid_groups_subquery = get_siggroup_identifying_subquery(comp_reqs, categorised)
     sigs_for_valid_groups_subquery= subquery_sigs_valid_groups(valid_groups_subquery, models)
     stmt = sa.select(sigs_for_valid_groups_subquery, models.Sigs).join(models.Sigs, models.Sigs.id==sigs_for_valid_groups_subquery.c.id)
     return pd.DataFrame(session.execute(stmt).unique())
 
+
+def subset_components_by_study_stmt(study_restriction, condition_cuis, 
+                                    components_stmt: sa.Select, models = None) -> sa.Select:
+    models = models or _load_hemonc_models()
+    if study_restriction and study_restriction == "must_have_rt":
+        subsetting_stmt = query_rt_inc_study_ids(condition_cuis)
+        return components_stmt.where(models.Studies.id.in_(subsetting_stmt))
+    return components_stmt
+
+def subset_components_stmt_by_regimens(components_stmt: sa.Select, regimens: list[str], models=None) -> sa.Select:
+    models = models or _load_hemonc_models()
+    if regimens:
+        return components_stmt.where(models.Sigs.regimen.in_(regimens))
+    return components_stmt
 
 def subset_df_on_phase(df, target_phase):
     """Returns df subsetted on phase as closely as possible"""
