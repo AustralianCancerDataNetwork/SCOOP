@@ -4,10 +4,6 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 from functools import cached_property
 from typing import Any
-from ..configuration.protocol_registry import (
-    ComponentRequirements,
-    # CategoryRestriction,
-)
 from scoop.utils.hemonc_helpers import ( 
     _load_hemonc_models, HemOncModels, 
     condition_cuis_by_names, search_substring, _component_search_expressions,
@@ -19,12 +15,6 @@ from scoop.utils.extra_filters import query_rt_inc_study_ids
 
 logger = logging.getLogger(__name__)
 
-
-# CONCURRENT_CRT_REQUIREMENTS = (
-#     ComponentRequirements(component_lists=[[]], 
-#     category_restrictions={"chemotherapy": CategoryRestriction(type="min", amount=1),
-#                            "radiotherapy": CategoryRestriction(type="min", amount=1)})
-# )
 
 def show_conditions(substring: str, session: so.Session, 
                     models: HemOncModels | None = None) -> pd.DataFrame:
@@ -174,7 +164,7 @@ class ConditionDevTools:
 
 
 def build_component_requirement_expressions(
-    component_requirements: ComponentRequirements,
+    component_requirements: Any,
     categorised_components: Any,
 ) -> list[Any]:
     """Translate component requirements into SQL HAVING clauses."""

@@ -4,13 +4,14 @@ In development. Script for reading protocol registry.
 from __future__ import annotations
 from typing import Annotated, Literal, Final, Any
 from pydantic import BaseModel, Field, BeforeValidator, ValidationInfo
+from yaml import safe_load
 from scoop.utils.hemonc_helpers import condition_cuis_by_names
 
 BroadCategory = Literal["chemotherapy", "radiotherapy", "immunotherapy", 
                         "surgery", "supportive",]
 
 def rescue_input_to_list(input):
-    if isinstance(input, str) or isinstance(input, int):
+    if isinstance(input, (int, str)):
         return [input]
     return input
 
@@ -19,7 +20,9 @@ StringOrCuiList = Annotated[list[int] | list[str], BeforeValidator(rescue_input_
 # I thought it was a bad idea but consider bringing back the old condition validation approach...
 # don't want to be passing convert checks everywhere
 # ConditionList = StringOrCuiList
+# TODO: Standardise like conditions
 RegimenList = StringOrCuiList
+
 
 def condition_db_validation(condition_input: Any, info: ValidationInfo) -> Any:
     context = info.context or {}
@@ -27,6 +30,7 @@ def condition_db_validation(condition_input: Any, info: ValidationInfo) -> Any:
     if session:
         condition_cuis = rescue_condition_input(condition_input, session)
     return condition_cuis
+
 
 def rescue_condition_input(condition_input, session):
     if isinstance(condition_input, str):
@@ -37,9 +41,8 @@ def rescue_condition_input(condition_input, session):
         condition_cuis = condition_input
     return condition_cuis
 
-
-
 ConditionCuis = Annotated[list[int], BeforeValidator(condition_db_validation)]
+
 
 def rescue_component_input(component_input):
     if isinstance(component_input, list) and all(isinstance(value, str) for value in component_input):
@@ -51,6 +54,7 @@ def rescue_component_input(component_input):
     return component_lists
 
 ComponentLists = Annotated[list[list[str]], BeforeValidator(rescue_component_input)]
+
 
 def check_phases_are_subset(v: list[str] | None | Literal["all", "none"], info) -> list[str]:
     if v == "all":
@@ -65,18 +69,13 @@ def check_phases_are_subset(v: list[str] | None | Literal["all", "none"], info) 
 
 PhaseSubset = Annotated[list[str]| None, BeforeValidator(check_phases_are_subset)]
 
+
 # Class definitions ###########################################################
 
 class CategoryRestriction(BaseModel):
     type: Literal["exact", "min"]
     amount: int
 
-# class OptionalReqs(BaseModel):
-#     seq_crt_only: Literal["yes", "no"] = "no"
-#     model_config = {"extra": "allow"}
-
-# class StudyRestrictions(BaseModel):
-#     must_have_rt: bool = False
     
 class ComponentRequirements(BaseModel):
     component_lists: ComponentLists = Field(default_factory=list)
@@ -111,7 +110,6 @@ class SourcePhaseYaml(BaseModel):
     condition_cuis: ConditionCuis = Field(default_factory=list)
     component_requirements: ComponentRequirements = Field(default_factory=dict)
     study_restriction: Literal["must_have_rt"] | None
-    # optional_reqs: OptionalReqs | None = Field(default_factory=dict)
     curative_intent: bool = True
     regimens: RegimenList | None = Field(default_factory=list)
     type: str | None
@@ -150,16 +148,17 @@ class SourcePhaseYaml(BaseModel):
         broad_categories = None
         category_restrictions = self.component_requirements.category_restrictions
         if category_restrictions:
-            broad_categories = {broad_category for broad_category in category_restrictions.keys() 
+            broad_categories = {broad_category for broad_category in category_restrictions 
                                 if category_restrictions[broad_category] != EXCLUDE_RESTRICTION}
         return broad_categories
+
 
 class PhaseUnionYaml(BaseModel):
     phase_id: str
     source_phase_ids: list[str]
-    # remove: PhaseSubset
 
     model_config = {"extra": "forbid"}
+
 
 class OptionalPhaseCriteria(BaseModel):
     shared: Literal["component"]
@@ -169,19 +168,56 @@ class OptionalPhaseCriteria(BaseModel):
 class ProtocolYaml(BaseModel):
     protocol_id: str
     source_phase_ids: list[str]
-    # phases_for_removal: PhaseSubset
     # is this really the best structure?
     optional_phases: dict[str, dict[Literal["criteria"], OptionalPhaseCriteria]] | None
 
     @classmethod
     def generate(cls, label:str, protocol_data:dict):
         phases = protocol_data["phases"]
-        #phases_for_removal = protocol_data.get("remove_source_phases", None)
         optional_phases = protocol_data.get("optional_phases", None)
-        return cls(protocol_id=label, source_phase_ids=phases, 
-                   #phases_for_removal=phases_for_removal, 
+        return cls(protocol_id=label, source_phase_ids=phases,  
                    optional_phases=optional_phases)
     
+
+class RegistryYaml(BaseModel):
+    label: str
+    default_conditions: ConditionCuis
+    version: float
+    source_phases: dict[str, SourcePhaseYaml]
+    union_phases:  dict[str, PhaseUnionYaml]
+    protocols:     dict[str, ProtocolYaml]
+
+    @classmethod
+    def from_yaml_path(cls, yaml_path, session):
+        with yaml_path.open("r", encoding="utf-8") as handle:
+            raw = safe_load(handle)
+
+        label, = raw.keys()
+        registry_data = raw[label]
+        default_conditions = registry_data["conditions"]
+        source_phases = {
+            label: SourcePhaseYaml.generate(source_phase, label, default_conditions, session) 
+            for label, source_phase in registry_data["source_phases"].items()
+            }
+        protocols = {
+            label: ProtocolYaml.generate(label, protocol_data) 
+            for label, protocol_data in raw["nsclc"]["protocols"].items()
+            }
+        phase_unions = {
+            label: PhaseUnionYaml(phase_id=label, source_phase_ids=union_data["source_phases"])
+            for label, union_data in raw["nsclc"]["phase_combinations"].items()
+        }
+        data = {
+                "label": label,
+                "default_conditions": default_conditions, 
+                "version": registry_data["version"],
+                "source_phases": source_phases,
+                "union_phases": phase_unions,
+                "protocols": protocols,
+        }
+        return cls.model_validate(
+            data, context = {"session": session}
+        )
 
 
 

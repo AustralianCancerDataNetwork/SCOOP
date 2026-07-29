@@ -3,12 +3,13 @@ Splitting sig bundles into cohorent parts for timing
 
 """
 
-from pydantic import BaseModel, ValidationError, computed_field, PrivateAttr
-from typing import Any
 import random
 import re
-from hemonc_import.final_model.schedule_handling import resolve_all_days
+from typing import Any
 import warnings
+from pydantic import BaseModel, ValidationError, computed_field, PrivateAttr
+from hemonc_import.final_model.schedule_handling import resolve_all_days
+
 
 NEOADJ_WEEKS_TO_SURGERY = 4 # https://doi.org/10.21037/tlcr-24-781
 ADJ_WEEKS_FROM_SURGERY = 4
