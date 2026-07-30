@@ -15,7 +15,7 @@ from hemonc_import.final_model.schedule_handling import resolve_all_days
 
 NEOADJ_WEEKS_TO_SURGERY = 4 # https://doi.org/10.21037/tlcr-24-781
 ADJ_WEEKS_FROM_SURGERY = 4
-
+WITHIN_COMPONENT_CONTINUE_PROB = 0.8
 
 class BaseRandomSampler(BaseModel):
     """
@@ -41,7 +41,7 @@ class BaseRandomSampler(BaseModel):
             self._rng = random.Random(self._engine_seed)
         return self._rng
 
-    def _get_value(self, lb: float, ub: float) -> float: # can be int specifically
+    def _get_value_in_range(self, lb: float, ub: float) -> float: # can be int specifically
         """Obtains a value defined by upper and lower bounds."""
         if lb == ub:
             return lb
@@ -61,6 +61,9 @@ class BaseRandomSampler(BaseModel):
             return self._engine.uniform(lb, ub)
             
         return self._engine.randint(lb, ub)
+
+    def _get_bool(self, true_prob: float=0.5):
+        return self._engine.random() < true_prob
 
 
 
@@ -106,7 +109,7 @@ class StandardDoseInfo(BaseRandomSampler):
                    doseunit=sig.doseunit, doseunit_cui=sig.doseunit_cui, seed=seed)
     
     def get_dose(self)-> float:
-        return self._get_value(self.doseminnum, self.dosemaxnum)
+        return self._get_value_in_range(self.doseminnum, self.dosemaxnum)
 
 
 class Duration(BaseRandomSampler):
@@ -125,7 +128,7 @@ class Duration(BaseRandomSampler):
                    durationunit_cui=sig.durationunit_cui)
     
     def get_duration(self)-> float:
-            return self._get_value(self.durationminnum, self.durationmaxnum)
+            return self._get_value_in_range(self.durationminnum, self.durationmaxnum)
 
 
 # TODO: What is this doing here? Deal w/ in testing file
@@ -207,7 +210,7 @@ def split_ho_timing(ho_timing):
     return {"every":every, "base":base, "optional":optional, 
             "ongoing_step":get_continue(ho_timing)}
 
-class CycleEvents(BaseModel):
+class CycleEvents(BaseRandomSampler):
     """
     Essentially timing sequence
 
@@ -219,10 +222,11 @@ class CycleEvents(BaseModel):
     base: list[int]
     optional: list[int]
     ongoing_step: int | None
+    _discontinued: bool = False
 
     @classmethod
-    def from_sig(cls, sig):
-        return cls(**split_ho_timing(sig.timing_sequence))
+    def from_sig(cls, sig, seed: int | None = None):
+        return cls(**split_ho_timing(sig.timing_sequence), seed=seed)
     
     @computed_field
     @property
@@ -230,8 +234,19 @@ class CycleEvents(BaseModel):
         return self.every[0]
 
     def check_active_this_cycle(self, cycle_num):
+        if cycle_num in self.every:
+            active = True
+        elif self.ongoing_step:
+            if (not self._discontinued) and ((cycle_num-max(self.every)) % self.ongoing_step == 0):
+                use_this_time = self._get_bool(WITHIN_COMPONENT_CONTINUE_PROB)
+                self._discontinued = not use_this_time
+                active = use_this_time
+            else:
+                active = False
+        else:
+            active = False
         # TODO: make more sophisticated later, consider ongoing etc.
-        return cycle_num in self.every
+        return active
 
 
 class PerCycleDays(BaseModel):
@@ -264,10 +279,10 @@ class Trio(BaseModel):
     component_part: ComponentPart
     cycle_events: CycleEvents
     @classmethod
-    def from_sig(cls, sig):
+    def from_sig(cls, sig, seed: int | None = None):
         return cls(per_cycle_days=PerCycleDays.from_sig(sig),
                    component_part= ComponentPart.from_sig(sig),
-                   cycle_events = CycleEvents.from_sig(sig))
+                   cycle_events = CycleEvents.from_sig(sig, seed))
 
     def get_days_for_cycle(self):
         # TODO: Make more sophisticated with ongoing, optional etc. 
@@ -293,8 +308,12 @@ class CycleSet(BaseRandomSampler):
     all_cycle_ints: set
 
     @classmethod
-    def from_siglist(cls, siglist: list, seed: int | None = None) -> "CycleSet":
-        trios = [Trio.from_sig(sig) for sig in siglist]
+    def from_siglist(cls, siglist: list, cycle_set_seed: int | None = None,
+                     trio_seeds: list[int] | None = None) -> "CycleSet":
+        if trio_seeds:
+            trios = [Trio.from_sig(sig, seed) for sig, seed in zip(siglist, trio_seeds)]
+        else:
+            trios = [Trio.from_sig(sig) for sig in siglist]
         all_cycle_ints = set()
         for trio in trios:
             all_cycle_ints.update(trio.cycle_events.every)
@@ -305,10 +324,10 @@ class CycleSet(BaseRandomSampler):
                    label = siglist[0].portion, 
                    trios=trios,
                    all_cycle_ints = all_cycle_ints,
-                   seed=seed)
+                   seed=cycle_set_seed)
     
     def get_cycle_length(self) -> int:
-        return self._get_value(self.cycle_length_lb, self.cycle_length_ub)
+        return self._get_value_in_range(self.cycle_length_lb, self.cycle_length_ub)
     
     # def_add_one_cycle
     def get_one_systemic_cycle(self, cycle_number, cycle_start_date):
@@ -361,6 +380,8 @@ class SystemicPhase(BaseModel):
 
     @classmethod
     def from_component_sigs(cls, siglist: list) -> "SystemicPhase":
+        if len(siglist)==1:
+            return cls(cycle_sets=[CycleSet.from_siglist(siglist)])
         sorted_siglist = sorted(siglist, key=lambda sig: CycleEventValues.from_sig(sig))
         cycleset_siglist = [sorted_siglist[0]]
         cyclesets = []

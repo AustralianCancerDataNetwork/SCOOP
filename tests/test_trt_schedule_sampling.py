@@ -67,7 +67,7 @@ def test_actual_seed_retrieval_and_auditability():
     tool = StandardDoseInfo.from_sig(sig)  # seed=None
     
     # A concrete seed integer must exist even before evaluation
-    actual_seed = tool.get_actual_seed()
+    actual_seed = tool._engine_seed
     assert isinstance(actual_seed, int)
     
     # Verify that creating a new tool manually with that captured seed replays the stream
