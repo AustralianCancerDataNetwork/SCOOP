@@ -5,8 +5,10 @@ Splitting sig bundles into cohorent parts for timing
 
 import random
 import re
+from collections import defaultdict
 from typing import Any
 import warnings
+import pandas as pd
 from pydantic import BaseModel, ValidationError, computed_field, PrivateAttr
 from hemonc_import.final_model.schedule_handling import resolve_all_days
 
@@ -107,7 +109,7 @@ class StandardDoseInfo(BaseRandomSampler):
         return self._get_value(self.doseminnum, self.dosemaxnum)
 
 
-class Duration(BaseModel):
+class Duration(BaseRandomSampler):
     """
     For when frequency is continuous
     """
@@ -121,6 +123,9 @@ class Duration(BaseModel):
                    durationmaxnum=sig.durationmaxnum,
                    durationunit=sig.durationunit,
                    durationunit_cui=sig.durationunit_cui)
+    
+    def get_duration(self)-> float:
+            return self._get_value(self.durationminnum, self.durationmaxnum)
 
 
 # TODO: What is this doing here? Deal w/ in testing file
@@ -167,6 +172,19 @@ class ComponentPart(BaseModel):
                    duration=try_attribute(Duration.from_sig, sig),
                    role=sig.component_role)
 
+    def get_dose(self, units_as_cuis=False):
+        # TODO: make more robust
+        if self.duration:
+            if units_as_cuis:
+                return self.duration.get_duration(), self.duration.durationunit_cui
+            else:
+                return self.duration.get_duration(), self.duration.durationunit
+        else:
+            if units_as_cuis:
+                return self.dose_info.get_dose(), self.dose_info.doseunit_cui
+            else:
+                return self.dose_info.get_dose(), self.dose_info.doseunit
+
 
 def get_continue(ho_timing):    
     continue_match = re.search(r"\(\+(\d+)\)$", ho_timing)
@@ -211,6 +229,10 @@ class CycleEvents(BaseModel):
     def first_event(self) -> int:
         return self.every[0]
 
+    def check_active_this_cycle(self, cycle_num):
+        # TODO: make more sophisticated later, consider ongoing etc.
+        return cycle_num in self.every
+
 
 class PerCycleDays(BaseModel):
     """
@@ -232,6 +254,7 @@ class PerCycleDays(BaseModel):
         return cls(**split_ho_timing(sig.alldays))
 
 
+
 class Trio(BaseModel):
     """
     Association of the three core elements for timing:
@@ -245,6 +268,10 @@ class Trio(BaseModel):
         return cls(per_cycle_days=PerCycleDays.from_sig(sig),
                    component_part= ComponentPart.from_sig(sig),
                    cycle_events = CycleEvents.from_sig(sig))
+
+    def get_days_for_cycle(self):
+        # TODO: Make more sophisticated with ongoing, optional etc. 
+        return self.per_cycle_days.every, self.component_part
 
 
 class CycleSet(BaseRandomSampler):
@@ -263,23 +290,40 @@ class CycleSet(BaseRandomSampler):
     cycle_sigs: str
     trios: list[Trio]
     label: str
+    all_cycle_ints: set
 
     @classmethod
     def from_siglist(cls, siglist: list, seed: int | None = None) -> "CycleSet":
+        trios = [Trio.from_sig(sig) for sig in siglist]
+        all_cycle_ints = set()
+        for trio in trios:
+            all_cycle_ints.update(trio.cycle_events.every)
         return cls(cycle_length_lb=siglist[0].cycle_length_lb, 
                    cycle_length_ub=siglist[0].cycle_length_ub, 
                    cycle_len_unit=siglist[0].cycle_length_unit, 
                    cycle_sigs=siglist[0].cyclesigs, 
                    label = siglist[0].portion, 
-                   trios=[Trio.from_sig(sig) for sig in siglist],
+                   trios=trios,
+                   all_cycle_ints = all_cycle_ints,
                    seed=seed)
     
     def get_cycle_length(self) -> int:
         return self._get_value(self.cycle_length_lb, self.cycle_length_ub)
     
     # def_add_one_cycle
+    def get_one_systemic_cycle(self, cycle_number, cycle_start_date):
+        within_cycle_administration = defaultdict(list)
+        for trio in self.trios:
+            if trio.cycle_events.check_active_this_cycle(cycle_number):
+                days, component_part = trio.get_days_for_cycle()
+                dates = [cycle_start_date + pd.DateOffset(days=day) for day in days]
+                for date in dates:
+                    within_cycle_administration[date].append(component_part)
+        return within_cycle_administration
+
+
+
     # cached property biggest_base
-    # cached property first_cycle int
 
 
 # I made this when I was working on CycleSet population
@@ -330,10 +374,33 @@ class SystemicPhase(BaseModel):
                 cyclesets.append(CycleSet.from_siglist(cycleset_siglist))
                 cycleset_siglist = [right_sig]
 
-                is_final_cycle = i == len(sorted_siglist)-1
-                if is_final_cycle:
-                    cyclesets.append(CycleSet.from_siglist(cycleset_siglist))
+            is_final_cycle = i == len(sorted_siglist)-1
+            if is_final_cycle:
+                cyclesets.append(CycleSet.from_siglist(cycleset_siglist))
         return cls(cycle_sets=cyclesets)
+
+    def get_scheduled_dates(self, phase_start_date):
+        cycle_number = 1
+        cycle_start_date = phase_start_date
+        all_component_parts = {}
+        while True:
+            was_cycle = False
+            for cycle_set in self.cycle_sets:
+                if cycle_number in cycle_set.all_cycle_ints:
+                    was_cycle = True
+                    cycle_increment = increment_cycle_date(
+                        cycle_set.get_cycle_length(), cycle_set.cycle_len_unit
+                        )
+                    # TODO: Make robust to different portions having overlapping cycles
+                    all_component_parts = all_component_parts | cycle_set.get_one_systemic_cycle(cycle_number, cycle_start_date)
+
+            if not was_cycle:
+                # TODO: Make robust to blank cycles?
+                break
+
+            cycle_number += 1
+            cycle_start_date += cycle_increment
+        return all_component_parts
 
 
 
@@ -343,4 +410,13 @@ class ProtocolScheduler(BaseModel):
     Full treatment roll out including multi-phase handling
     """
     ...
-    
+
+
+def increment_cycle_date(cycle_len: int, cycle_len_unit: str):
+    cycle_increment_size = {
+        "day":pd.DateOffset(days=cycle_len),
+        "week":pd.DateOffset(weeks=cycle_len),
+        "month":pd.DateOffset(months=cycle_len),
+        "year":pd.DateOffset(years=cycle_len)
+    }
+    return cycle_increment_size[cycle_len_unit]
