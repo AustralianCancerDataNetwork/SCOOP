@@ -16,6 +16,7 @@ from hemonc_import.final_model.schedule_handling import resolve_all_days
 NEOADJ_WEEKS_TO_SURGERY = 4 # https://doi.org/10.21037/tlcr-24-781
 ADJ_WEEKS_FROM_SURGERY = 4
 WITHIN_COMPONENT_CONTINUE_PROB = 0.8
+WITHIN_CYCLESET_CONTINUE_PROB =  0.97
 
 class BaseRandomSampler(BaseModel):
     """
@@ -237,12 +238,7 @@ class CycleEvents(BaseRandomSampler):
         if cycle_num in self.every:
             active = True
         elif self.ongoing_step:
-            if (not self._discontinued) and ((cycle_num-max(self.every)) % self.ongoing_step == 0):
-                use_this_time = self._get_bool(WITHIN_COMPONENT_CONTINUE_PROB)
-                self._discontinued = not use_this_time
-                active = use_this_time
-            else:
-                active = False
+            active = consider_ongoing(self, cycle_num, WITHIN_COMPONENT_CONTINUE_PROB)
         else:
             active = False
         # TODO: make more sophisticated later, consider ongoing etc.
@@ -305,7 +301,9 @@ class CycleSet(BaseRandomSampler):
     cycle_sigs: str
     trios: list[Trio]
     label: str
-    all_cycle_ints: set
+    every: set
+    ongoing_step: int | None
+    _discontinued: bool = False
 
     @classmethod
     def from_siglist(cls, siglist: list, cycle_set_seed: int | None = None,
@@ -314,23 +312,23 @@ class CycleSet(BaseRandomSampler):
             trios = [Trio.from_sig(sig, seed) for sig, seed in zip(siglist, trio_seeds)]
         else:
             trios = [Trio.from_sig(sig) for sig in siglist]
-        all_cycle_ints = set()
+        every = set()
         for trio in trios:
-            all_cycle_ints.update(trio.cycle_events.every)
+            every.update(trio.cycle_events.every)
         return cls(cycle_length_lb=siglist[0].cycle_length_lb, 
                    cycle_length_ub=siglist[0].cycle_length_ub, 
                    cycle_len_unit=siglist[0].cycle_length_unit, 
                    cycle_sigs=siglist[0].cyclesigs, 
                    label = siglist[0].portion, 
                    trios=trios,
-                   all_cycle_ints = all_cycle_ints,
+                   every = every,
+                   ongoing_step=cls._get_cycle_set_ongoing(trios),
                    seed=cycle_set_seed)
     
     def get_cycle_length(self) -> int:
         return self._get_value_in_range(self.cycle_length_lb, self.cycle_length_ub)
     
-    # def_add_one_cycle
-    def get_one_systemic_cycle(self, cycle_number, cycle_start_date):
+    def get_one_systemic_cycle(self, cycle_number: int, cycle_start_date):
         within_cycle_administration = defaultdict(list)
         for trio in self.trios:
             if trio.cycle_events.check_active_this_cycle(cycle_number):
@@ -340,9 +338,11 @@ class CycleSet(BaseRandomSampler):
                     within_cycle_administration[date].append(component_part)
         return within_cycle_administration
 
-
-
-    # cached property biggest_base
+    @staticmethod
+    def _get_cycle_set_ongoing(trios: list[Trio]) -> int | None:
+        any_not_ongoing = any(trio.cycle_events.ongoing_step is None for trio in trios)
+        # min_ongoing_step = 
+        return None if any_not_ongoing else min(trio.cycle_events.ongoing_step for trio in trios)
 
 
 # I made this when I was working on CycleSet population
@@ -370,7 +370,6 @@ class CycleEventValues(BaseModel):
     def _get_cycle_length_days(self):
         """Rough approximation"""
         DAYS_IN_UNIT = {"day": 1, "week":7, "month": 30}
-        # Can't find true median mean etc. w/o assumptions about probability
         central_cycle_length = 0.5 * (self.cycle_length_lb + self.cycle_length_ub)
         return DAYS_IN_UNIT[self.cycle_length_unit]*central_cycle_length
 
@@ -382,6 +381,12 @@ class SystemicPhase(BaseModel):
     def from_component_sigs(cls, siglist: list) -> "SystemicPhase":
         if len(siglist)==1:
             return cls(cycle_sets=[CycleSet.from_siglist(siglist)])
+        cyclesets = cls._get_CycleSets(siglist)
+        return cls(cycle_sets=cyclesets)
+
+    @staticmethod
+    def _get_CycleSets(siglist):
+        """Gets CycleSets iff multiple sigs in siglist"""
         sorted_siglist = sorted(siglist, key=lambda sig: CycleEventValues.from_sig(sig))
         cycleset_siglist = [sorted_siglist[0]]
         cyclesets = []
@@ -398,7 +403,8 @@ class SystemicPhase(BaseModel):
             is_final_cycle = i == len(sorted_siglist)-1
             if is_final_cycle:
                 cyclesets.append(CycleSet.from_siglist(cycleset_siglist))
-        return cls(cycle_sets=cyclesets)
+        return cyclesets
+
 
     def get_scheduled_dates(self, phase_start_date):
         cycle_number = 1
@@ -407,7 +413,10 @@ class SystemicPhase(BaseModel):
         while True:
             was_cycle = False
             for cycle_set in self.cycle_sets:
-                if cycle_number in cycle_set.all_cycle_ints:
+                if ((cycle_number in cycle_set.every) or (cycle_set.ongoing_step and
+                # TODO: Separate out, such that the whole-ongoing does not then get
+                # further reduced in probability by component-specific ongoing
+                consider_ongoing(cycle_set, cycle_number, WITHIN_CYCLESET_CONTINUE_PROB))):
                     was_cycle = True
                     cycle_increment = increment_cycle_date(
                         cycle_set.get_cycle_length(), cycle_set.cycle_len_unit
@@ -441,3 +450,12 @@ def increment_cycle_date(cycle_len: int, cycle_len_unit: str):
         "year":pd.DateOffset(years=cycle_len)
     }
     return cycle_increment_size[cycle_len_unit]
+
+
+def consider_ongoing(self, cycle_num, continue_prob):
+    if (not self._discontinued) and ((cycle_num-max(self.every)) % self.ongoing_step == 0):
+        use_this_time = self._get_bool(continue_prob)
+        self._discontinued = not use_this_time
+        return use_this_time
+    else:
+        return False
