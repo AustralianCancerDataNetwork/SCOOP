@@ -1,6 +1,18 @@
 """
-Splitting sig bundles into cohorent parts for timing
+Scheduling objects facilitating timing roll out.
 
+Attributes are purpose driven over faithfulness driven.
+
+I.e. although each object should have a from_[treatment_container_object]
+method, attributes populated in this way MAY be validly overwritten if the
+over writing better serves the purpose of answering the question for which
+the object exists. 
+
+E.g. some RT sigs have alldays None. PerCycleDays exists to answer the question
+"on which days of the cycle is this ComponentPart rolled out?" therefore, it is
+valid to populate the attributes of PerCycleDays with lists of integers and not
+have all attributes as None just because default population pulls from 
+sig.alldays.
 """
 
 import random
@@ -17,6 +29,7 @@ NEOADJ_WEEKS_TO_SURGERY = 4 # https://doi.org/10.21037/tlcr-24-781
 ADJ_WEEKS_FROM_SURGERY = 4
 WITHIN_COMPONENT_CONTINUE_PROB = 0.8
 WITHIN_CYCLESET_CONTINUE_PROB =  0.97
+OPTIONAL_CYCLE_PROB = 0.7 # completely made up without much thought
 
 class BaseRandomSampler(BaseModel):
     """
@@ -69,10 +82,8 @@ class BaseRandomSampler(BaseModel):
 
 
 class Component(BaseModel):
-    # all the info here cui etc.
     name: str
     cui: int
-    # role: str # maybe this isn't reliable here - move to component part?
     drug_object: Any | None # TODO: fix later as importing ho type
 
     @classmethod
@@ -95,19 +106,34 @@ class SeqRelInfo(BaseModel):
     seq_rel_what: str
 
 
+class DoseCap(BaseModel):
+    dosecapnum: float | None
+    dosecapunit: str | None
+    dosecapunit_cui: int | None
+    @classmethod
+    def from_sig(cls, sig):
+        return cls(dosecapnum=sig.dosecapnum, 
+                   dosecapunit=sig.dosecapunit,
+                   dosecapunit_cui=sig.dosecapunit_cui)
+
+
 class StandardDoseInfo(BaseRandomSampler):
     """
-    For when divided is false and frequency is not continuous. 
+    For not continuous. 
     """
     doseminnum: float
     dosemaxnum: float
     doseunit: str
     doseunit_cui: int
+    divided: bool
+    dose_cap: DoseCap | None
+    
     @classmethod
     def from_sig(cls, sig, seed: int | None = None):
 
         return cls(doseminnum=sig.doseminnum, dosemaxnum=sig.dosemaxnum,
-                   doseunit=sig.doseunit, doseunit_cui=sig.doseunit_cui, seed=seed)
+                   doseunit=sig.doseunit, doseunit_cui=sig.doseunit_cui, divided=sig.divided, 
+                   dose_cap=try_attribute(DoseCap.from_sig, sig), seed=seed)
     
     def get_dose(self)-> float:
         return self._get_value_in_range(self.doseminnum, self.dosemaxnum)
@@ -132,7 +158,8 @@ class Duration(BaseRandomSampler):
             return self._get_value_in_range(self.durationminnum, self.durationmaxnum)
 
 
-# TODO: What is this doing here? Deal w/ in testing file
+# This is useful for ComponentPart population of duration and dose info
+# whose presense is not guaranteed
 def try_attribute(fn, arg):
     """Tries to return fn(arg) result """
     try:
@@ -151,9 +178,9 @@ class ComponentPart(BaseModel):
     step_int: int
     step_max: int
     route: str #Literal[]
-    route_cui: int
-    frequency: str
-    frequency_cui: int
+    route_cui: int | None
+    frequency: str | None
+    frequency_cui: int | None
     # This belongs here but delaying until example
     # to guide implementation
     # seq_rel_info: Optional[SeqRelInfo]
@@ -161,6 +188,7 @@ class ComponentPart(BaseModel):
     duration: Duration | None
     role: str 
     # target level belongs here too
+    class_field: str
 
     @classmethod
     def from_sig(cls, sig):
@@ -174,7 +202,8 @@ class ComponentPart(BaseModel):
                    frequency_cui=sig.frequency_cui,
                    dose_info=try_attribute(StandardDoseInfo.from_sig, sig),
                    duration=try_attribute(Duration.from_sig, sig),
-                   role=sig.component_role)
+                   role=sig.component_role,
+                   class_field=sig.class_field,)
 
     def get_dose(self, units_as_cuis=False):
         # TODO: make more robust
@@ -190,7 +219,9 @@ class ComponentPart(BaseModel):
                 return self.dose_info.get_dose(), self.dose_info.doseunit
 
 
-def get_continue(ho_timing):    
+def get_continue(ho_timing):
+    if not ho_timing:
+        return None    
     continue_match = re.search(r"\(\+(\d+)\)$", ho_timing)
     if continue_match:
         return continue_match.group(1)
@@ -234,16 +265,23 @@ class CycleEvents(BaseRandomSampler):
     def first_event(self) -> int:
         return self.every[0]
 
-    def check_active_this_cycle(self, cycle_num):
-        if cycle_num in self.every:
-            active = True
-        elif self.ongoing_step:
-            active = consider_ongoing(self, cycle_num, WITHIN_COMPONENT_CONTINUE_PROB)
-        else:
-            active = False
-        # TODO: make more sophisticated later, consider ongoing etc.
-        return active
+    def check_active_this_cycle(self, cycle_num, ongoing_prob:float | None = None,
+                                optional_prob:float | None = None):
+        if cycle_num in self.base:
+            return True
+        if cycle_num in self.optional:
+            # TODO: consider guarding against discontinue like for ongoing
+            if not optional_prob:
+                optional_prob = OPTIONAL_CYCLE_PROB
+            return self._get_bool(optional_prob)
+        if self.ongoing_step:
+            if not ongoing_prob:
+                ongoing_prob = WITHIN_COMPONENT_CONTINUE_PROB
+            return consider_ongoing(self, cycle_num, ongoing_prob)
+        return False
 
+    def reset(self):
+        self._discontinued = False
 
 class PerCycleDays(BaseModel):
     """
@@ -265,6 +303,17 @@ class PerCycleDays(BaseModel):
         return cls(**split_ho_timing(sig.alldays))
 
 
+class OtherSigInfo(BaseModel):
+    in_parens: str | None
+    tail: str | None
+    temp: str | None
+    sig_id: int | None
+    date_added: Any
+    @classmethod
+    def from_sig(cls, sig):
+        return cls(in_parens=sig.inparens, tail=sig.tail, temp=sig.temp, 
+                   sig_id=sig.id, date_added=sig.date_added)
+
 
 class Trio(BaseModel):
     """
@@ -274,15 +323,44 @@ class Trio(BaseModel):
     per_cycle_days: PerCycleDays
     component_part: ComponentPart
     cycle_events: CycleEvents
+    other_info: OtherSigInfo
     @classmethod
     def from_sig(cls, sig, seed: int | None = None):
         return cls(per_cycle_days=PerCycleDays.from_sig(sig),
                    component_part= ComponentPart.from_sig(sig),
-                   cycle_events = CycleEvents.from_sig(sig, seed))
+                   cycle_events = CycleEvents.from_sig(sig, seed),
+                   other_info = OtherSigInfo.from_sig(sig))
+
+    def add_to_deliveries(self, cycle_start_date, within_cycle_deliveries):
+            days, component_part = self.get_days_for_cycle()
+            dates = [cycle_start_date + pd.DateOffset(days=day) for day in days]
+            for date in dates:
+                within_cycle_deliveries[date].append(component_part)
+            return within_cycle_deliveries
 
     def get_days_for_cycle(self):
         # TODO: Make more sophisticated with ongoing, optional etc. 
         return self.per_cycle_days.every, self.component_part
+
+    def reset(self):
+        self.cycle_events.reset()
+    
+
+class OriginalContext(BaseModel):
+    phase: str | None
+    study: str | None
+    regimen: str | None
+    regimen_cui: int | None
+    variant: str | None
+    variant_cui: int | None
+    branch: str | None
+    branch_type: str | None
+
+    @classmethod
+    def from_sig(cls, sig):
+        return cls(phase=sig.phase, study=sig.study, regimen=sig.regimen, 
+            regimen_cui=sig.regimen_cui, variant=sig.variant, variant_cui=sig.variant_cui, 
+            branch=sig.branch, branch_type=sig.branch_type,)
 
 
 class CycleSet(BaseRandomSampler):
@@ -328,14 +406,14 @@ class CycleSet(BaseRandomSampler):
     def get_cycle_length(self) -> int:
         return self._get_value_in_range(self.cycle_length_lb, self.cycle_length_ub)
     
-    def get_one_systemic_cycle(self, cycle_number: int, cycle_start_date):
+    def get_one_systemic_cycle(self, cycle_number: int, cycle_start_date, 
+                               ongoing_prob):
         within_cycle_administration = defaultdict(list)
         for trio in self.trios:
-            if trio.cycle_events.check_active_this_cycle(cycle_number):
-                days, component_part = trio.get_days_for_cycle()
-                dates = [cycle_start_date + pd.DateOffset(days=day) for day in days]
-                for date in dates:
-                    within_cycle_administration[date].append(component_part)
+            if trio.cycle_events.check_active_this_cycle(cycle_number, ongoing_prob):
+                within_cycle_administration = trio.add_to_deliveries(
+                    cycle_start_date, within_cycle_administration
+                    )
         return within_cycle_administration
 
     @staticmethod
@@ -343,6 +421,15 @@ class CycleSet(BaseRandomSampler):
         any_not_ongoing = any(trio.cycle_events.ongoing_step is None for trio in trios)
         # min_ongoing_step = 
         return None if any_not_ongoing else min(trio.cycle_events.ongoing_step for trio in trios)
+
+    def get_normally_active_this_cycle(self, cycle_number):
+        is_active = cycle_number in self.every
+        return is_active
+
+    def reset(self):
+        self._discontinued = False
+        for trio in self.trios:
+            trio.reset()
 
 
 # I made this when I was working on CycleSet population
@@ -376,13 +463,14 @@ class CycleEventValues(BaseModel):
 
 class SystemicPhase(BaseModel):
     cycle_sets: list[CycleSet]
-
+    original_context: OriginalContext
     @classmethod
     def from_component_sigs(cls, siglist: list) -> "SystemicPhase":
         if len(siglist)==1:
-            return cls(cycle_sets=[CycleSet.from_siglist(siglist)])
-        cyclesets = cls._get_CycleSets(siglist)
-        return cls(cycle_sets=cyclesets)
+            cyclesets = [CycleSet.from_siglist(siglist)]
+        else:
+            cyclesets = cls._get_CycleSets(siglist)
+        return cls(cycle_sets=cyclesets, original_context=OriginalContext.from_sig(siglist[0]))
 
     @staticmethod
     def _get_CycleSets(siglist):
@@ -411,26 +499,36 @@ class SystemicPhase(BaseModel):
         cycle_start_date = phase_start_date
         all_component_parts = {}
         while True:
-            was_cycle = False
+            was_cycle_any_set = False
             for cycle_set in self.cycle_sets:
-                if ((cycle_number in cycle_set.every) or (cycle_set.ongoing_step and
-                # TODO: Separate out, such that the whole-ongoing does not then get
-                # further reduced in probability by component-specific ongoing
-                consider_ongoing(cycle_set, cycle_number, WITHIN_CYCLESET_CONTINUE_PROB))):
-                    was_cycle = True
+                if (cycle_set.get_normally_active_this_cycle(cycle_number)):
+                    process_cycle = True
+                    ongoing_prob = None
+                elif (cycle_set.ongoing_step and
+                    consider_ongoing(cycle_set, cycle_number, WITHIN_CYCLESET_CONTINUE_PROB)):
+                    process_cycle = True
+                    ongoing_prob = 1
+                else:
+                    process_cycle = False
+                if process_cycle:
+                    was_cycle_any_set = True
                     cycle_increment = increment_cycle_date(
                         cycle_set.get_cycle_length(), cycle_set.cycle_len_unit
                         )
                     # TODO: Make robust to different portions having overlapping cycles
-                    all_component_parts = all_component_parts | cycle_set.get_one_systemic_cycle(cycle_number, cycle_start_date)
+                    all_component_parts = all_component_parts | cycle_set.get_one_systemic_cycle(cycle_number, cycle_start_date, ongoing_prob)
 
-            if not was_cycle:
+            if not was_cycle_any_set:
                 # TODO: Make robust to blank cycles?
                 break
 
             cycle_number += 1
             cycle_start_date += cycle_increment
         return all_component_parts
+
+    def reset(self):
+        for cycle_set in self.cycle_sets:
+            cycle_set.reset()
 
 
 
@@ -439,7 +537,6 @@ class ProtocolScheduler(BaseModel):
     """
     Full treatment roll out including multi-phase handling
     """
-    ...
 
 
 def increment_cycle_date(cycle_len: int, cycle_len_unit: str):
