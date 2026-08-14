@@ -8,9 +8,9 @@ method, attributes populated in this way MAY be validly overwritten if the
 over writing better serves the purpose of answering the question for which
 the object exists. 
 
-E.g. some RT sigs have alldays None. PerCycleDays exists to answer the question
+E.g. some RT sigs have alldays None. DayPattern exists to answer the question
 "on which days of the cycle is this ComponentPart rolled out?" therefore, it is
-valid to populate the attributes of PerCycleDays with lists of integers and not
+valid to populate the attributes of DayPattern with lists of integers and not
 have all attributes as None just because default population pulls from 
 sig.alldays.
 """
@@ -117,7 +117,7 @@ class DoseCap(BaseModel):
                    dosecapunit_cui=sig.dosecapunit_cui)
 
 
-class StandardDoseInfo(BaseRandomSampler):
+class DoseRule(BaseRandomSampler):
     """
     For not continuous. 
     """
@@ -184,7 +184,7 @@ class ComponentPart(BaseModel):
     # This belongs here but delaying until example
     # to guide implementation
     # seq_rel_info: Optional[SeqRelInfo]
-    dose_info: StandardDoseInfo | None
+    dose_info: DoseRule | None
     duration: Duration | None
     role: str 
     # target level belongs here too
@@ -200,7 +200,7 @@ class ComponentPart(BaseModel):
                    route=sig.route, route_cui=sig.route_cui,
                    frequency=sig.frequency,
                    frequency_cui=sig.frequency_cui,
-                   dose_info=try_attribute(StandardDoseInfo.from_sig, sig),
+                   dose_info=try_attribute(DoseRule.from_sig, sig),
                    duration=try_attribute(Duration.from_sig, sig),
                    role=sig.component_role,
                    class_field=sig.class_field,)
@@ -242,7 +242,7 @@ def split_ho_timing(ho_timing):
     return {"every":every, "base":base, "optional":optional, 
             "ongoing_step":get_continue(ho_timing)}
 
-class CycleEvents(BaseRandomSampler):
+class CycleWindow(BaseRandomSampler):
     """
     Essentially timing sequence
 
@@ -283,7 +283,7 @@ class CycleEvents(BaseRandomSampler):
     def reset(self):
         self._discontinued = False
 
-class PerCycleDays(BaseModel):
+class DayPattern(BaseModel):
     """
     Essentially allDays
 
@@ -315,20 +315,20 @@ class OtherSigInfo(BaseModel):
                    sig_id=sig.id, date_added=sig.date_added)
 
 
-class Trio(BaseModel):
+class SigSchedule(BaseModel):
     """
     Association of the three core elements for timing:
     which cycles, what component instructions, on which cycle days
     """
-    per_cycle_days: PerCycleDays
+    day_pattern: DayPattern
     component_part: ComponentPart
-    cycle_events: CycleEvents
+    cycle_window: CycleWindow
     other_info: OtherSigInfo
     @classmethod
     def from_sig(cls, sig, seed: int | None = None):
-        return cls(per_cycle_days=PerCycleDays.from_sig(sig),
+        return cls(day_pattern=DayPattern.from_sig(sig),
                    component_part= ComponentPart.from_sig(sig),
-                   cycle_events = CycleEvents.from_sig(sig, seed),
+                   cycle_window = CycleWindow.from_sig(sig, seed),
                    other_info = OtherSigInfo.from_sig(sig))
 
     def add_to_deliveries(self, cycle_start_date, within_cycle_deliveries):
@@ -340,10 +340,10 @@ class Trio(BaseModel):
 
     def get_days_for_cycle(self):
         # TODO: Make more sophisticated with ongoing, optional etc. 
-        return self.per_cycle_days.every, self.component_part
+        return self.day_pattern.every, self.component_part
 
     def reset(self):
-        self.cycle_events.reset()
+        self.cycle_window.reset()
     
 
 class OriginalContext(BaseModel):
@@ -377,7 +377,7 @@ class CycleSet(BaseRandomSampler):
     cycle_length_ub: int
     cycle_len_unit: str
     cycle_sigs: str
-    trios: list[Trio]
+    sig_schedules: list[SigSchedule]
     label: str
     every: set
     ongoing_step: int | None
@@ -385,22 +385,22 @@ class CycleSet(BaseRandomSampler):
 
     @classmethod
     def from_siglist(cls, siglist: list, cycle_set_seed: int | None = None,
-                     trio_seeds: list[int] | None = None) -> "CycleSet":
-        if trio_seeds:
-            trios = [Trio.from_sig(sig, seed) for sig, seed in zip(siglist, trio_seeds)]
+                     sig_schedule_seeds: list[int] | None = None) -> "CycleSet":
+        if sig_schedule_seeds:
+            sig_schedules = [SigSchedule.from_sig(sig, seed) for sig, seed in zip(siglist, sig_schedule_seeds)]
         else:
-            trios = [Trio.from_sig(sig) for sig in siglist]
+            sig_schedules = [SigSchedule.from_sig(sig) for sig in siglist]
         every = set()
-        for trio in trios:
-            every.update(trio.cycle_events.every)
+        for sig_schedule in sig_schedules:
+            every.update(sig_schedule.cycle_window.every)
         return cls(cycle_length_lb=siglist[0].cycle_length_lb, 
                    cycle_length_ub=siglist[0].cycle_length_ub, 
                    cycle_len_unit=siglist[0].cycle_length_unit, 
                    cycle_sigs=siglist[0].cyclesigs, 
                    label = siglist[0].portion, 
-                   trios=trios,
+                   sig_schedules=sig_schedules,
                    every = every,
-                   ongoing_step=cls._get_cycle_set_ongoing(trios),
+                   ongoing_step=cls._get_cycle_set_ongoing(sig_schedules),
                    seed=cycle_set_seed)
     
     def get_cycle_length(self) -> int:
@@ -409,18 +409,18 @@ class CycleSet(BaseRandomSampler):
     def get_one_systemic_cycle(self, cycle_number: int, cycle_start_date, 
                                ongoing_prob):
         within_cycle_administration = defaultdict(list)
-        for trio in self.trios:
-            if trio.cycle_events.check_active_this_cycle(cycle_number, ongoing_prob):
-                within_cycle_administration = trio.add_to_deliveries(
+        for sig_schedule in self.sig_schedules:
+            if sig_schedule.cycle_window.check_active_this_cycle(cycle_number, ongoing_prob):
+                within_cycle_administration = sig_schedule.add_to_deliveries(
                     cycle_start_date, within_cycle_administration
                     )
         return within_cycle_administration
 
     @staticmethod
-    def _get_cycle_set_ongoing(trios: list[Trio]) -> int | None:
-        any_not_ongoing = any(trio.cycle_events.ongoing_step is None for trio in trios)
+    def _get_cycle_set_ongoing(sig_schedules: list[SigSchedule]) -> int | None:
+        any_not_ongoing = any(sig_schedule.cycle_window.ongoing_step is None for sig_schedule in sig_schedules)
         # min_ongoing_step = 
-        return None if any_not_ongoing else min(trio.cycle_events.ongoing_step for trio in trios)
+        return None if any_not_ongoing else min(sig_schedule.cycle_window.ongoing_step for sig_schedule in sig_schedules)
 
     def get_normally_active_this_cycle(self, cycle_number):
         is_active = cycle_number in self.every
@@ -428,8 +428,8 @@ class CycleSet(BaseRandomSampler):
 
     def reset(self):
         self._discontinued = False
-        for trio in self.trios:
-            trio.reset()
+        for sig_schedule in self.sig_schedules:
+            sig_schedule.reset()
 
 
 # I made this when I was working on CycleSet population
@@ -445,7 +445,7 @@ class CycleEventValues(BaseModel):
 
     @classmethod
     def from_sig(cls, sig):
-        return cls(first_cycle=CycleEvents.from_sig(sig).first_event,
+        return cls(first_cycle=CycleWindow.from_sig(sig).first_event,
                  cycle_length_lb=sig.cycle_length_lb, cycle_length_ub=sig.cycle_length_ub,
                  cycle_length_unit=sig.cycle_length_unit)
     
@@ -461,11 +461,11 @@ class CycleEventValues(BaseModel):
         return DAYS_IN_UNIT[self.cycle_length_unit]*central_cycle_length
 
 
-class SystemicPhase(BaseModel):
+class PhaseSchedule(BaseModel):
     cycle_sets: list[CycleSet]
     original_context: OriginalContext
     @classmethod
-    def from_component_sigs(cls, siglist: list) -> "SystemicPhase":
+    def from_component_sigs(cls, siglist: list) -> "PhaseSchedule":
         if len(siglist)==1:
             cyclesets = [CycleSet.from_siglist(siglist)]
         else:
@@ -533,7 +533,7 @@ class SystemicPhase(BaseModel):
 
 
 
-class ProtocolScheduler(BaseModel):
+class ProtocolSchedule(BaseModel):
     """
     Full treatment roll out including multi-phase handling
     """

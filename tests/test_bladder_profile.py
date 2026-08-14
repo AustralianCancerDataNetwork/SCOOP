@@ -56,8 +56,8 @@ class BladderProfileTests(unittest.TestCase):
             self.assertGreater(len(graph.nodes), 0, graph_name)
 
     @unittest.skip(
-        "regimen_registry was replaced by protocol_registry.RegistryYaml (f318297). "
-        "Needs porting: RegistryYaml has no .disease/.entries, requires a session "
+        "regimen_registry was replaced by protocol_registry.RegistrySpec (f318297). "
+        "Needs porting: RegistrySpec has no .disease/.entries, requires a session "
         "argument, and bladder_regimen_registry.yaml is still in the old "
         "registry/disease/entries format."
     )

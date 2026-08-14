@@ -25,11 +25,11 @@ from scoop.vocabulary.modifier_map import ResolvedModifierConcept
 
 
 # The entries/alias/resolver layer left with the deleted legacy registry module
-# (f318297). RegistryYaml exposes source_phases/union_phases/protocols only, and
+# (f318297). RegistrySpec exposes source_phases/union_phases/protocols only, and
 # ProfileLoader no longer attaches a registry to SimulationContext, so anything
 # routing a graph endpoint through a registry entry cannot run yet.
 REGISTRY_LAYER_PENDING = (
-    "Pending registry redesign: RegistryYaml has no entries / get_entry / "
+    "Pending registry redesign: RegistrySpec has no entries / get_entry / "
     "resolve_alias / resolve_hemonc_bundle equivalent, and ProfileLoader no "
     "longer attaches a registry to SimulationContext."
 )

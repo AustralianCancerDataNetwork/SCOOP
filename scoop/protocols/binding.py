@@ -1,29 +1,29 @@
 from pydantic import BaseModel
 from abc import ABC, abstractmethod
-from scoop.protocols.spec import SourcePhaseYaml
+from scoop.protocols.spec import PhaseSpec
 
 
-class ResolvedPhase(BaseModel):
+class PhaseBinding(BaseModel):
     phase_id: str
     phase_type: str # i.e. sig.phase
 
     # Strictly for debugging/history-viewing
     # NOT for building logic
-    origin: SourcePhaseYaml
+    origin: PhaseSpec
     pass
 
 
-class SigbackedPhase(ABC, ResolvedPhase):
-    # change to this approach? sigbundles = list #List[SigBundle]
+class SigbackedBinding(ABC, PhaseBinding):
+    # change to this approach? candidates = list[RegimenCandidate]
     sql_artifacts: str
 
     @classmethod
     @abstractmethod
-    def _create_sigbundles(cls, SourcePhaseYaml, session):
+    def _create_candidates(cls, phase_spec, session):
         pass
 
 
-class VariantPhase(SigbackedPhase):
+class VariantBinding(SigbackedBinding):
     """
     Applies when HemOncKB regimen variants are defined.
 
@@ -33,11 +33,11 @@ class VariantPhase(SigbackedPhase):
     I.e. at least one systemic component.
     """
     @classmethod
-    def _create_sigbundles(cls, SourcePhaseYaml, session):
+    def _create_candidates(cls, phase_spec, session):
         pass
 
 
-class NonVariantPhase(SigbackedPhase):
+class NonVariantBinding(SigbackedBinding):
     """
     Applies when HemOncKB regimen variants are not defined.
 
@@ -47,23 +47,23 @@ class NonVariantPhase(SigbackedPhase):
     I.e. when no concurrent systemic component
     """
     @classmethod
-    def _create_sigbundles(cls, SourcePhaseYaml, session):
+    def _create_candidates(cls, phase_spec, session):
         pass
 
 
-class NonSigbackedPhase(ResolvedPhase):
+class NonSigbackedBinding(PhaseBinding):
     """
     Used whenever the HemOncKB is not/cannot be used for operationalising.
     """
     pass
 
 
-class SurgeryPhase(NonSigbackedPhase):
+class SurgeryBinding(NonSigbackedBinding):
     # until better differentiation based on pt these all lobectomies?
     pass
 
 
-class NullPhase(NonSigbackedPhase):
+class NullBinding(NonSigbackedBinding):
     """
     Placeholder phase for no implementation
     """

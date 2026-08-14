@@ -470,7 +470,7 @@ From there, the system can:
 
 An assembled treatment bundle is the runtime object representing one candidate non-variant treatment option.
 
-It is the production analogue of the exploratory `SigBundle` concept.
+It is the production analogue of the exploratory `RegimenCandidate` concept.
 
 ### How It Is Expressed
 
@@ -588,8 +588,8 @@ The exploratory notebooks used these major concepts:
 - `ComponentReqs`
 - `ScenarioYaml`
 - `TreatmentScenario`
-- `SigBundle`
-- `TreatmentGroup`
+- `RegimenCandidate`
+- `CandidateSet`
 - `combinations`
 
 ## Practical Rules Of Thumb

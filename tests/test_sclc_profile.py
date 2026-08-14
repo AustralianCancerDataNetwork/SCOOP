@@ -54,8 +54,8 @@ class SCLCProfileTests(unittest.TestCase):
             self.assertGreater(len(graph.nodes), 0, graph_name)
 
     @unittest.skip(
-        "regimen_registry was replaced by protocol_registry.RegistryYaml (f318297). "
-        "Needs porting: RegistryYaml has no .disease/.entries/.condition_sets or "
+        "regimen_registry was replaced by protocol_registry.RegistrySpec (f318297). "
+        "Needs porting: RegistrySpec has no .disease/.entries/.condition_sets or "
         "resolve_hemonc_bundle(), requires a session argument, and "
         "sclc_regimen_registry.yaml is still in the old registry/disease/entries format."
     )

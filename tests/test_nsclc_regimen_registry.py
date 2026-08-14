@@ -17,11 +17,11 @@ from scoop.profiles.manifest import (
 from scoop.protocols.spec import (
     DEFAULT_CATEGORY_RESTRICTIONS,
     EXCLUDE_RESTRICTION,
-    CategoryRestriction,
-    ComponentRequirements,
-    ProtocolYaml,
-    RegistryYaml,
-    SourcePhaseYaml,
+    CategoryRule,
+    ComponentRule,
+    ProtocolSpec,
+    RegistrySpec,
+    PhaseSpec,
     apply_default_component_requirements,
 )
 from scoop.patients.treatment_episode import extract_active_treatment_endpoints
@@ -53,11 +53,11 @@ class NSCLCRegistryTests(unittest.TestCase):
         with REGISTRY_PATH.open("r", encoding="utf-8") as handle:
             cls.raw = yaml.safe_load(handle)
         cls.registry = cls.raw["nsclc"]
-        # `entries` is a legacy block the new RegistryYaml does not parse. It is
+        # `entries` is a legacy block the new RegistrySpec does not parse. It is
         # still read directly from YAML by the graph-coverage test below.
         cls.entries = cls.registry["entries"]
         with patch(CUI_LOOKUP, return_value=list(STUB_CONDITION_CUIS)) as cui_lookup:
-            cls.loaded_registry = RegistryYaml.from_yaml_path(REGISTRY_PATH, STUB_SESSION)
+            cls.loaded_registry = RegistrySpec.from_yaml_path(REGISTRY_PATH, STUB_SESSION)
         cls.cui_lookup = cui_lookup
 
     # --- registry loading ---------------------------------------------------
@@ -106,7 +106,7 @@ class NSCLCRegistryTests(unittest.TestCase):
             target = Path(tmp) / "bladder_protocol_registry.yaml"
             target.write_text(yaml.safe_dump(relabelled), encoding="utf-8")
             with patch(CUI_LOOKUP, return_value=list(STUB_CONDITION_CUIS)):
-                registry = RegistryYaml.from_yaml_path(target, STUB_SESSION)
+                registry = RegistrySpec.from_yaml_path(target, STUB_SESSION)
         self.assertEqual(registry.label, "bladder")
         self.assertEqual(set(registry.protocols), set(self.loaded_registry.protocols))
 
@@ -114,19 +114,19 @@ class NSCLCRegistryTests(unittest.TestCase):
 
     def test_condition_names_are_resolved_through_the_session(self):
         with patch(CUI_LOOKUP, return_value=[7]) as lookup:
-            phase = SourcePhaseYaml.generate(
+            phase = PhaseSpec.generate(
                 {"conditions": "Lung cancer"}, "phase", [], STUB_SESSION
             )
         lookup.assert_called_once_with(["Lung cancer"], STUB_SESSION)
         self.assertEqual(phase.condition_cuis, [7])
 
     def test_condition_cuis_pass_through_without_a_session(self):
-        phase = SourcePhaseYaml.generate({"conditions": [11, 12]}, "phase", [], None)
+        phase = PhaseSpec.generate({"conditions": [11, 12]}, "phase", [], None)
         self.assertEqual(phase.condition_cuis, [11, 12])
 
     def test_condition_names_without_a_session_fail_validation(self):
         with self.assertRaises(ValidationError):
-            SourcePhaseYaml.generate({"conditions": ["Lung cancer"]}, "phase", [], None)
+            PhaseSpec.generate({"conditions": ["Lung cancer"]}, "phase", [], None)
 
     # --- component requirement defaults --------------------------------------
 
@@ -134,7 +134,7 @@ class NSCLCRegistryTests(unittest.TestCase):
         requirements = apply_default_component_requirements(None)
         self.assertEqual(
             requirements.category_restrictions,
-            {"chemotherapy": CategoryRestriction(type="min", amount=0)},
+            {"chemotherapy": CategoryRule(type="min", amount=0)},
         )
         self.assertEqual(requirements.component_lists, [])
 
@@ -144,7 +144,7 @@ class NSCLCRegistryTests(unittest.TestCase):
         )
         self.assertEqual(
             requirements.category_restrictions["surgery"],
-            CategoryRestriction(type="min", amount=1),
+            CategoryRule(type="min", amount=1),
         )
         for category in DEFAULT_CATEGORY_RESTRICTIONS:
             if category != "surgery":
@@ -173,11 +173,11 @@ class NSCLCRegistryTests(unittest.TestCase):
         )
 
     def test_categorise_returns_none_without_category_restrictions(self):
-        phase = SourcePhaseYaml.model_validate(
+        phase = PhaseSpec.model_validate(
             {
                 "study_restriction": None,
                 "type": None,
-                "component_requirements": ComponentRequirements(),
+                "component_requirements": ComponentRule(),
             }
         )
         self.assertIsNone(phase.categorise())
@@ -186,46 +186,46 @@ class NSCLCRegistryTests(unittest.TestCase):
 
     def test_component_lists_rescue_flat_list_and_scalar(self):
         self.assertEqual(
-            ComponentRequirements.model_validate(
+            ComponentRule.model_validate(
                 {"component_lists": ["carboplatin"]}
             ).component_lists,
             [["carboplatin"]],
         )
         self.assertEqual(
-            ComponentRequirements.model_validate(
+            ComponentRule.model_validate(
                 {"component_lists": "carboplatin"}
             ).component_lists,
             [["carboplatin"]],
         )
 
     def test_regimen_list_rescues_scalar_input(self):
-        phase = SourcePhaseYaml.model_validate(
+        phase = PhaseSpec.model_validate(
             {"study_restriction": None, "type": None, "regimens": "pembrolizumab"}
         )
         self.assertEqual(phase.regimens, ["pembrolizumab"])
 
     def test_source_phase_rejects_unknown_fields(self):
         with self.assertRaises(ValidationError):
-            SourcePhaseYaml.model_validate(
+            PhaseSpec.model_validate(
                 {"study_restriction": None, "type": None, "unexpected": True}
             )
 
     def test_component_requirements_reject_unknown_fields(self):
         with self.assertRaises(ValidationError):
-            ComponentRequirements.model_validate({"not_a_field": 1})
+            ComponentRule.model_validate({"not_a_field": 1})
 
     def test_invalid_category_restriction_key_is_rejected(self):
         with self.assertRaises(ValidationError):
-            ComponentRequirements.model_validate(
+            ComponentRule.model_validate(
                 {"category_restrictions": {"not_a_category": {"type": "min", "amount": 1}}}
             )
 
     def test_invalid_category_restriction_type_is_rejected(self):
         with self.assertRaises(ValidationError):
-            CategoryRestriction.model_validate({"type": "at_most", "amount": 1})
+            CategoryRule.model_validate({"type": "at_most", "amount": 1})
 
     def test_protocol_generate_reads_phases_and_optional_phases(self):
-        protocol = ProtocolYaml.generate("port_then_osi", {"phases": ["surgery_only", "port"]})
+        protocol = ProtocolSpec.generate("port_then_osi", {"phases": ["surgery_only", "port"]})
         self.assertEqual(protocol.protocol_id, "port_then_osi")
         self.assertEqual(protocol.source_phase_ids, ["surgery_only", "port"])
         self.assertIsNone(protocol.optional_phases)

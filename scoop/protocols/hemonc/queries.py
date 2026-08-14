@@ -209,9 +209,9 @@ def build_component_expressions(component_lists, categorised_components):
     return expressions
 
 
-def source_phase_to_sigdict(source_phase, session):
-    base_df = get_base_sigs_df(source_phase, session)
-    phase_filtered = subset_df_on_phase(base_df, source_phase.type)
+def phase_spec_to_sigdict(phase_spec, session):
+    base_df = get_base_sigs_df(phase_spec, session)
+    phase_filtered = subset_df_on_phase(base_df, phase_spec.type)
     sig_deduped = phase_filtered.drop_duplicates(subset=["id"])
     if sig_deduped.empty:
         return {}
@@ -276,18 +276,18 @@ def subquery_sigs_valid_groups(valid_groups_subquery, models):
 ).subquery()
 
 
-def get_base_sigs_df(source_phase, session, models: HemOncModels | None = None):
+def get_base_sigs_df(phase_spec, session, models: HemOncModels | None = None):
     """
     Df of sigs from phase-varcui-study groupings meeting component & curative intent 
     """
     models = models or _load_hemonc_models()
-    comp_reqs = source_phase.component_requirements
-    condition_cuis = source_phase.condition_cuis
+    comp_reqs = phase_spec.component_requirements
+    condition_cuis = phase_spec.condition_cuis
     components = get_sig_component_stmt(condition_cuis, models, 
-                                        non_curative=(not source_phase.curative_intent))
-    components = subset_components_by_study_stmt(source_phase.study_restriction,
+                                        non_curative=(not phase_spec.curative_intent))
+    components = subset_components_by_study_stmt(phase_spec.study_restriction,
                                                  condition_cuis, components)
-    components = subset_components_stmt_by_regimens(components, source_phase.regimens)
+    components = subset_components_stmt_by_regimens(components, phase_spec.regimens)
     categorised = categorise_components(components)
     valid_groups_subquery = get_siggroup_identifying_subquery(comp_reqs, categorised)
     sigs_for_valid_groups_subquery= subquery_sigs_valid_groups(valid_groups_subquery, models)

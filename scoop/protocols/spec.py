@@ -72,19 +72,19 @@ PhaseSubset = Annotated[list[str]| None, BeforeValidator(check_phases_are_subset
 
 # Class definitions ###########################################################
 
-class CategoryRestriction(BaseModel):
+class CategoryRule(BaseModel):
     type: Literal["exact", "min"]
     amount: int
 
     
-class ComponentRequirements(BaseModel):
+class ComponentRule(BaseModel):
     component_lists: ComponentLists = Field(default_factory=list)
-    category_restrictions: dict[BroadCategory, CategoryRestriction] = Field(default_factory=dict)
+    category_restrictions: dict[BroadCategory, CategoryRule] = Field(default_factory=dict)
     model_config = {"extra": "forbid"}
 
 # This doesn't use EXCLUDE_RESTRICTION because that would require changing
 # apply_default_component_requirements()
-DEFAULT_CATEGORY_RESTRICTIONS: Final[dict[BroadCategory, CategoryRestriction]] = {
+DEFAULT_CATEGORY_RESTRICTIONS: Final[dict[BroadCategory, CategoryRule]] = {
     "chemotherapy":  {"type": "exact", "amount": 0},
     "radiotherapy":  {"type": "exact", "amount": 0},
     "immunotherapy": {"type": "exact", "amount": 0},
@@ -92,11 +92,11 @@ DEFAULT_CATEGORY_RESTRICTIONS: Final[dict[BroadCategory, CategoryRestriction]] =
     # NOTE: "supportive" intentionally excluded
 }
 
-EXCLUDE_RESTRICTION = CategoryRestriction(type='exact', amount=0)
+EXCLUDE_RESTRICTION = CategoryRule(type='exact', amount=0)
 
 # BAD IDEA: WE WANT TO KNOW WHETHER VARIANTABLE OR NOT
 # class RegimenSpecifier(BaseModel):
-#     component_requirements: Optional[ComponentRequirements] = None
+#     component_requirements: Optional[ComponentRule] = None
 #     regimens: Optional[RegimenList] = None
 
 #     @model_validator(mode="after")
@@ -105,10 +105,10 @@ EXCLUDE_RESTRICTION = CategoryRestriction(type='exact', amount=0)
 #             raise ValueError("Must have component requirements or regimen list.")
 #         return self
 
-class SourcePhaseYaml(BaseModel):
+class PhaseSpec(BaseModel):
     source_phase_id: str | None = None
     condition_cuis: ConditionCuis = Field(default_factory=list)
-    component_requirements: ComponentRequirements = Field(default_factory=dict)
+    component_requirements: ComponentRule = Field(default_factory=dict)
     study_restriction: Literal["must_have_rt"] | None
     curative_intent: bool = True
     regimens: RegimenList | None = Field(default_factory=list)
@@ -123,9 +123,9 @@ class SourcePhaseYaml(BaseModel):
         label: str,
         default_conditions: ConditionCuis,
         session
-        ) -> SourcePhaseYaml:
+        ) -> PhaseSpec:
         """
-        Construct a SourcePhaseYaml, inheriting treatment-group default
+        Construct a PhaseSpec, inheriting treatment-group default
         conditions when not explicitly provided.
         """
         conditions = phase_data.get("conditions", default_conditions)
@@ -153,7 +153,7 @@ class SourcePhaseYaml(BaseModel):
         return broad_categories
 
 
-class PhaseUnionYaml(BaseModel):
+class PhaseChoiceSpec(BaseModel):
     phase_id: str
     source_phase_ids: list[str]
 
@@ -165,7 +165,7 @@ class OptionalPhaseCriteria(BaseModel):
     as_phase: str # should be a phase_id in source_phase_ids
 
 
-class ProtocolYaml(BaseModel):
+class ProtocolSpec(BaseModel):
     protocol_id: str
     source_phase_ids: list[str]
     # is this really the best structure?
@@ -179,13 +179,13 @@ class ProtocolYaml(BaseModel):
                    optional_phases=optional_phases)
     
 
-class RegistryYaml(BaseModel):
+class RegistrySpec(BaseModel):
     label: str
     default_conditions: ConditionCuis
     version: float
-    source_phases: dict[str, SourcePhaseYaml]
-    union_phases:  dict[str, PhaseUnionYaml]
-    protocols:     dict[str, ProtocolYaml]
+    source_phases: dict[str, PhaseSpec]
+    union_phases:  dict[str, PhaseChoiceSpec]
+    protocols:     dict[str, ProtocolSpec]
 
     @classmethod
     def from_yaml_path(cls, yaml_path, session):
@@ -196,15 +196,15 @@ class RegistryYaml(BaseModel):
         registry_data = raw[label]
         default_conditions = registry_data["conditions"]
         source_phases = {
-            label: SourcePhaseYaml.generate(source_phase, label, default_conditions, session) 
+            label: PhaseSpec.generate(source_phase, label, default_conditions, session)
             for label, source_phase in registry_data["source_phases"].items()
             }
         protocols = {
-            label: ProtocolYaml.generate(label, protocol_data) 
+            label: ProtocolSpec.generate(label, protocol_data)
             for label, protocol_data in raw["nsclc"]["protocols"].items()
             }
         phase_unions = {
-            label: PhaseUnionYaml(phase_id=label, source_phase_ids=union_data["source_phases"])
+            label: PhaseChoiceSpec(phase_id=label, source_phase_ids=union_data["source_phases"])
             for label, union_data in raw["nsclc"]["phase_combinations"].items()
         }
         data = {
@@ -223,7 +223,7 @@ class RegistryYaml(BaseModel):
 
 def apply_default_component_requirements(
     raw_component_requirements: dict | None,
-) -> ComponentRequirements:
+) -> ComponentRule:
     """
     Apply component requirement defaults during YAML generation.
 
@@ -242,19 +242,19 @@ def apply_default_component_requirements(
 
     if raw_category_restrictions:
         category_restrictions = {
-            k: CategoryRestriction(**v)
+            k: CategoryRule(**v)
             for k, v in DEFAULT_CATEGORY_RESTRICTIONS.items()
         }
 
         for k, v in raw_category_restrictions.items():
-            category_restrictions[k] = CategoryRestriction(**v)
+            category_restrictions[k] = CategoryRule(**v)
 
     else:
         category_restrictions = {
-            "chemotherapy": CategoryRestriction(type="min", amount=0)
+            "chemotherapy": CategoryRule(type="min", amount=0)
         }
 
-    return ComponentRequirements(
+    return ComponentRule(
         component_lists=raw_component_requirements.get("component_lists", []),
         category_restrictions=category_restrictions,
     )

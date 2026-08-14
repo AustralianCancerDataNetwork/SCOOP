@@ -11,8 +11,8 @@ import sqlalchemy.orm as so
 from dataclasses import dataclass
 
 from ..spec import (
-    ComponentRequirements,
-    SourcePhaseYaml,
+    ComponentRule,
+    PhaseSpec,
     ConditionCuis,
 )
 from scoop.protocols.hemonc.models import (
@@ -35,7 +35,7 @@ class VariantQueryArtifacts:
     """Intermediate SQL artifacts for inspecting how a variant query was built."""
 
     # resolved_query: ResolvedHemOncQuery
-    # source_phase_yaml: SourcePhaseYaml
+    # phase_spec: PhaseSpec
     components_subquery: Any
     categorised_components_subquery: Any
     variant_cuis_subquery: Any
@@ -81,7 +81,7 @@ def convert_conditions(conditions: list, session: so.Session):
     return condition_cuis
 
 def build_variant_cui_subquery(
-    component_requirements: ComponentRequirements,
+    component_requirements: ComponentRule,
     condition_cuis: ConditionCuis,
     session: so.Session,
     models: HemOncModels | None = None,
@@ -109,7 +109,7 @@ def get_variant_objects(subquery, session, models: HemOncModels | None = None):
     return chosen_variants
 
 def build_variant_statement(
-    component_requirements: ComponentRequirements,
+    component_requirements: ComponentRule,
     condition_cuis: ConditionCuis,
     session: so.Session,
     models: HemOncModels | None = None,
@@ -126,7 +126,7 @@ def build_variant_statement(
 
 
 def build_variant_query_artifacts(
-    component_requirements: ComponentRequirements,
+    component_requirements: ComponentRule,
     condition_cuis: ConditionCuis,
     models: HemOncModels | None = None,
 ) -> VariantQueryArtifacts:
@@ -160,13 +160,13 @@ def build_variant_statement_for_entry():
 
 def execute_variant_query(
     session: so.Session,
-    source_phase_yaml: SourcePhaseYaml,
+    phase_spec: PhaseSpec,
     models: HemOncModels | None = None,
 ) -> list[Any]:
     """Execute a resolved variant query and return ORM variant rows."""
     # TODO: Change approach, split up build_variant_statement
-    stmt = build_variant_statement(source_phase_yaml.component_requirements,
-                                   source_phase_yaml.conditions, models=models, session=session)
+    stmt = build_variant_statement(phase_spec.component_requirements,
+                                   phase_spec.conditions, models=models, session=session)
     return session.execute(stmt).unique().scalars().all()
 
 
