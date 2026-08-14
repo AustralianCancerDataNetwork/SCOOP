@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from typing import Any
 
+from ..schedule.rollout import ProtocolSchedule
+from ..vocabulary.gateway import VocabularyGateway
+
 
 def as_datetime(value: date | datetime | None) -> datetime | None:
     if value is None:
@@ -31,3 +34,14 @@ class OmopExportBundle:
         self.measurements.extend(other.measurements)
         self.observations.extend(other.observations)
         return self
+
+
+def export(
+    schedule: ProtocolSchedule,
+    gateway: VocabularyGateway,
+) -> OmopExportBundle:
+    """Declare the export boundary without emitting OMOP rows yet."""
+
+    raise NotImplementedError(
+        "OMOP export is intentionally deferred to Phase 8."
+    )

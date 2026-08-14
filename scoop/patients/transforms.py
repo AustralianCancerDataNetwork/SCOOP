@@ -1,6 +1,6 @@
 from typing import Any, Callable
 
-from scoop.vocabulary.gateway import measurement_mapper, observation_mapper
+from scoop.vocabulary.legacy import measurement_mapper, observation_mapper
 from pydantic import BaseModel
 
 

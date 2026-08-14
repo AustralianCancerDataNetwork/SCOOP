@@ -533,12 +533,6 @@ class PhaseSchedule(BaseModel):
 
 
 
-class ProtocolSchedule(BaseModel):
-    """
-    Full treatment roll out including multi-phase handling
-    """
-
-
 def increment_cycle_date(cycle_len: int, cycle_len_unit: str):
     cycle_increment_size = {
         "day":pd.DateOffset(days=cycle_len),

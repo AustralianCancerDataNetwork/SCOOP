@@ -1,6 +1,56 @@
-from typing import Dict, Any
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, Mapping
+
 from pydantic import BaseModel, field_validator
-from .graph import BaseDistribution
+from .graph import BaseDistribution, TransformationGraph
+
+
+@dataclass(frozen=True)
+class GuidelineSample:
+    """Typed boundary for one sampled guideline state."""
+
+    values: Mapping[str, object]
+    source_profile: str
+    seed: int | None = None
+
+
+@dataclass(frozen=True)
+class TreatmentDecision:
+    """The single treatment endpoint selected by a guideline sample."""
+
+    decision_id: str
+    graph_endpoint: str
+    modifiers: Mapping[str, object]
+    source_profile: str
+    raw_sample: GuidelineSample
+
+
+@dataclass(frozen=True)
+class NoDecision:
+    """Typed absence of a treatment decision."""
+
+    reason: str
+    source_profile: str | None = None
+
+
+def sample(graph: "TransformationGraph", seed: int) -> GuidelineSample:
+    """Declare the guideline sampling boundary without activating sampling yet."""
+
+    raise NotImplementedError(
+        "Guideline sampling is intentionally deferred to the Phase 4 port."
+    )
+
+
+def decide(sample: GuidelineSample) -> TreatmentDecision | NoDecision:
+    """Declare the decision boundary without deriving a decision implicitly."""
+
+    raise NotImplementedError(
+        "Treatment decision extraction is intentionally deferred to Phase 5."
+    )
+
+
 
 class ObjectConfig(BaseModel):
     """

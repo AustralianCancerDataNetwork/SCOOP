@@ -1,73 +1,47 @@
+"""I/O-free vocabulary gateway contracts."""
+
 from __future__ import annotations
 
-from .concept_map import ConceptMapper
-from .condition_map import ConditionMapper
-from .episode_map import EpisodeMapper
-from .fields import MeasurementMapper, ObservationMapper
-from .modifier_map import ModifierMapper
-from .database import get_omop_engine
-from ..profiles.paths import (
-    CONDITION_MAP_PATH,
-    CONCEPT_MAP_PATH,
-    EPISODE_MAP_PATH,
-    MEASUREMENT_MAP_PATH,
-    MODIFIER_MAP_PATH,
-    OBSERVATION_MAP_PATH,
-)
-
-_CONCEPT_MAP_PATH = CONCEPT_MAP_PATH
-_MEASUREMENT_MAP_PATH = MEASUREMENT_MAP_PATH
-_OBSERVATION_MAP_PATH = OBSERVATION_MAP_PATH
-_CONDITION_MAP_PATH = CONDITION_MAP_PATH
-_MODIFIER_MAP_PATH = MODIFIER_MAP_PATH
-_EPISODE_MAP_PATH = EPISODE_MAP_PATH
-
-try:
-    concept_mapper = ConceptMapper(_CONCEPT_MAP_PATH)
-except FileNotFoundError as e:
-    raise RuntimeError(f"Concept map file not found: {_CONCEPT_MAP_PATH}") from e
-
-try:
-    modifier_mapper = ModifierMapper(
-        _MODIFIER_MAP_PATH,
-        engine=get_omop_engine(),
-    )
-except FileNotFoundError as e:
-    raise RuntimeError(f"Modifier map file not found: {_MODIFIER_MAP_PATH}") from e
-
-try:
-    episode_mapper = EpisodeMapper(_EPISODE_MAP_PATH)
-except FileNotFoundError as e:
-    raise RuntimeError(f"Episode map file not found: {_EPISODE_MAP_PATH}") from e
-
-try:
-    measurement_mapper = MeasurementMapper(
-        _MEASUREMENT_MAP_PATH,
-        concept_mapper,
-        modifier_mapper,
-    )
-except FileNotFoundError as e:
-    raise RuntimeError(f"Measurement map file not found: {_MEASUREMENT_MAP_PATH}") from e
-
-try:
-    observation_mapper = ObservationMapper(_OBSERVATION_MAP_PATH, concept_mapper)
-except FileNotFoundError as e:
-    raise RuntimeError(f"Observation map file not found: {_OBSERVATION_MAP_PATH}") from e
-
-try:
-    condition_mapper = ConditionMapper(
-        _CONDITION_MAP_PATH,
-        engine=get_omop_engine(),
-    )
-except FileNotFoundError as e:
-    raise RuntimeError(f"Condition map file not found: {_CONDITION_MAP_PATH}") from e
+from dataclasses import dataclass, field
+from typing import Mapping, Protocol, Sequence, runtime_checkable
 
 
-__all__ = [
-    "concept_mapper",
-    "measurement_mapper",
-    "observation_mapper",
-    "condition_mapper",
-    "modifier_mapper",
-    "episode_mapper",
-]
+@runtime_checkable
+class VocabularyGateway(Protocol):
+    """Injectable boundary for vocabulary and concept resolution."""
+
+    def resolve_condition_names(self, names: Sequence[str]) -> Sequence[int]:
+        """Resolve declared condition names when a caller explicitly requests it."""
+
+    def resolve_condition_cuis(self, cuis: Sequence[int]) -> Sequence[int]:
+        """Resolve or validate declared condition CUIs."""
+
+    def resolve_concept(self, domain: str, value: str) -> int:
+        """Resolve one named concept in a declared domain."""
+
+    def sample_modifier(self, label: str, seed: int) -> str:
+        """Sample a modifier with an explicit seed."""
+
+
+@dataclass
+class FakeVocabularyGateway:
+    """Deterministic in-memory vocabulary gateway for isolated tests."""
+
+    condition_names: Mapping[str, int] = field(default_factory=dict)
+    concepts: Mapping[tuple[str, str], int] = field(default_factory=dict)
+    modifiers: Mapping[str, str] = field(default_factory=dict)
+
+    def resolve_condition_names(self, names: Sequence[str]) -> tuple[int, ...]:
+        return tuple(self.condition_names[name] for name in names)
+
+    def resolve_condition_cuis(self, cuis: Sequence[int]) -> tuple[int, ...]:
+        return tuple(cuis)
+
+    def resolve_concept(self, domain: str, value: str) -> int:
+        return self.concepts[(domain, value)]
+
+    def sample_modifier(self, label: str, seed: int) -> str:
+        return self.modifiers[label]
+
+
+__all__ = ["VocabularyGateway", "FakeVocabularyGateway"]

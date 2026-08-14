@@ -9,6 +9,7 @@ from .condition_occurrence import Condition_Occurrence
 from .condition_episode import Condition_Episode
 from .episode_base import Episode_Base
 from .treatment_episode import Treatment_Episode, build_graph_outcome
+from .contracts import PatientBuildInput, PatientBuildOutput
 
 from ..profiles.context import get_active_simulation_context
 
@@ -16,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 MAX_GRAPH_SAMPLE_ATTEMPTS = 25
+
+
+def build_case(input: PatientBuildInput) -> PatientBuildOutput:
+    """Declare the explicit patient-build boundary without composing legacy stages yet."""
+
+    raise NotImplementedError(
+        "Explicit patient construction is intentionally deferred to Phase 8."
+    )
 
 
 @dataclass(frozen=True)

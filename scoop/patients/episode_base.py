@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, model_validator
 
-from scoop.vocabulary.gateway import episode_mapper
+from scoop.vocabulary.legacy import episode_mapper
 from .ids import episode_id_seq
 from ..export.omop import OmopExportBundle, as_datetime
 from .transforms import TransformableBase

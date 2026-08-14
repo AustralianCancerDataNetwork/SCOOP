@@ -4,7 +4,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 from pydantic import Field, model_validator
 from .transforms import TransformableBase
-from scoop.vocabulary.gateway import modifier_mapper
+from scoop.vocabulary.legacy import modifier_mapper
 from .ids import condition_id_seq
 from ..schedule.timing import random_date
 from ..vocabulary.condition_resolver import get_condition_concept_resolver

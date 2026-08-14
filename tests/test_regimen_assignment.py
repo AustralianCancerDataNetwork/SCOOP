@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import scoop
 from omop_alchemy.cdm import model as omop_model
-from scoop.vocabulary.gateway import modifier_mapper
+from scoop.vocabulary.legacy import modifier_mapper
 from scoop.profiles.manifest import (
     ProfileLoader,
     get_profile_config,

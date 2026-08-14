@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import Field, model_validator
 from datetime import date
 from scoop.patients.transforms import TransformableBase
-from scoop.vocabulary.gateway import concept_mapper
+from scoop.vocabulary.legacy import concept_mapper
 from scoop.patients.ids import person_id_seq
 from ..export.omop import OmopExportBundle
 if TYPE_CHECKING:

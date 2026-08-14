@@ -3,7 +3,8 @@ from typing import Optional, Dict, List
 from collections import defaultdict
 import scoop.protocols.descriptions as desc
 from scoop.protocols.hemonc.queries import phase_spec_to_sigdict
-# import scoop.protocols.spec 
+from scoop.protocols.hemonc.gateway import HemOncGateway
+from scoop.protocols.spec import ProtocolSpec
 
 class RegimenCandidate(BaseModel):
     """
@@ -212,6 +213,14 @@ class CandidateSet(BaseModel):
             data_attrs={"group": self.name},
             open_by_default=False
         )
+
+
+def assemble(spec: ProtocolSpec, gateway: HemOncGateway) -> list[ProtocolCandidate]:
+    """Declare candidate assembly without activating the legacy query cascade."""
+
+    raise NotImplementedError(
+        "Protocol candidate assembly is intentionally deferred to Phase 4."
+    )
 
 
 def render_collapsible(header, children=None, count=None, color="#fdfdfd",
