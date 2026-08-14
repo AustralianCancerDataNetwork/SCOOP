@@ -402,10 +402,10 @@ def create_phase_candidates(protocol_spec, restricted_candidate_lists: Dict[str,
         if source_phase_id in phase_choices.keys():
             conditions = get_union_phase_conditions(source_phase_id, phase_choices, phase_specs)
             categories = {category for source_phase_id in phase_choices[source_phase_id].source_phase_ids
-                          for category in phase_specs[source_phase_id].categorise()}
+                          for category in phase_specs[source_phase_id].delivered_categories()}
         else:
             conditions = phase_specs[source_phase_id].condition_cuis
-            categories = phase_specs[source_phase_id].categorise()
+            categories = phase_specs[source_phase_id].delivered_categories()
         phase_candidates = PhaseCandidates(index = phase_index, label = source_phase_id,
                             options=candidate_list, conditions=conditions, categories=categories)
         phases.append(phase_candidates)

@@ -29,5 +29,12 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["scoop*"]
 
+[tool.setuptools.data-files]
+"schema/linkml" = [
+    "schema/linkml/regimen_spec.yaml",
+    "schema/linkml/README.md",
+    "schema/linkml/examples/nsclc_registry.yaml",
+]
+
 [tool.uv.sources]
 hemonc-import = { path = "../hemonc_import/hemonc_import", editable = true }

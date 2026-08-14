@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -19,7 +20,6 @@ from typing import (
     List,
     Tuple,
     Optional,
-    Literal,
 )
 
 def mermaid_html(mermaid_source: str) -> str:
@@ -38,12 +38,11 @@ def mermaid_html(mermaid_source: str) -> str:
 </script>
 """
 
-MermaidEdgeKind = Literal[
-    "probabilistic",
-    "transform",
-    "branch",
-    "activation",
-]
+class MermaidEdgeKind(StrEnum):
+    PROBABILISTIC = "probabilistic"
+    TRANSFORM = "transform"
+    BRANCH = "branch"
+    ACTIVATION = "activation"
 
 MermaidEdge = Tuple[
     str,              # src
@@ -83,7 +82,7 @@ def make_mermaid(graph: "TransformationGraph") -> str:
                     name,
                     "range",        # label in graph
                     None,           # no CPT summary
-                    "transform",    # edge type
+                    MermaidEdgeKind.TRANSFORM,
                 )
             )
     branch_edges: List[MermaidEdge] = []
@@ -106,7 +105,7 @@ def make_mermaid(graph: "TransformationGraph") -> str:
                         name,
                         "branch",
                         None,
-                        "branch",   # edge kind
+                        MermaidEdgeKind.BRANCH,
                     )
                 )
 
@@ -127,7 +126,7 @@ def make_mermaid(graph: "TransformationGraph") -> str:
                     name,
                     "active",
                     None,
-                    "activation",   # edge kind
+                        MermaidEdgeKind.ACTIVATION,
                 )
             )
 
@@ -140,7 +139,9 @@ def make_mermaid(graph: "TransformationGraph") -> str:
         else:
             tooltip = ", ".join(map(str, keys))
         label = edge.using
-        full_edges.append((edge.from_, edge.to, edge.using, tooltip, "probabilistic"))
+        full_edges.append(
+            (edge.from_, edge.to, edge.using, tooltip, MermaidEdgeKind.PROBABILISTIC)
+        )
 
     combined_edges = full_edges + implicit_edges + branch_edges + activation_edges
     
@@ -251,11 +252,11 @@ def make_mermaid(graph: "TransformationGraph") -> str:
             edge_label = label
 
         
-        if kind == "probabilistic":
+        if kind == MermaidEdgeKind.PROBABILISTIC:
             arrow = "-->"
-        elif kind == "transform":
+        elif kind == MermaidEdgeKind.TRANSFORM:
             arrow = "-.->"
-        elif kind == "activation":
+        elif kind == MermaidEdgeKind.ACTIVATION:
             arrow = "--o"
         else:
             arrow = "==>"

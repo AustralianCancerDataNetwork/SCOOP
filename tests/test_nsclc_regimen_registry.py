@@ -3,8 +3,6 @@ import random
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
-
 from pydantic import ValidationError
 import yaml
 
@@ -15,16 +13,18 @@ from scoop.profiles.manifest import (
     load_transformation_graph,
 )
 from scoop.protocols.spec import (
-    DEFAULT_CATEGORY_RESTRICTIONS,
+    DEFAULT_CATEGORY_RULES,
     EXCLUDE_RESTRICTION,
     CategoryRule,
+    ConditionRef,
     ComponentRule,
+    PhaseChoiceSpec,
     ProtocolSpec,
     RegistrySpec,
     PhaseSpec,
-    apply_default_component_requirements,
 )
 from scoop.patients.treatment_episode import extract_active_treatment_endpoints
+from scoop.vocabulary.gateway import FakeVocabularyGateway
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,14 +39,6 @@ STAGE_SPECIFIC_GRAPHS = [
 ]
 NON_REGISTRY_TREATMENT_STATE_NODES = {"resection_margin"}
 
-# The registry resolves condition names to HemOnc CUIs through a live session.
-# These tests stub that lookup so registry parsing can be exercised without a
-# database; the values are arbitrary sentinels, not real CUIs.
-CUI_LOOKUP = "scoop.protocols.spec.condition_cuis_by_names"
-STUB_CONDITION_CUIS = [900001, 900002]
-STUB_SESSION = object()
-
-
 class NSCLCRegistryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -56,9 +48,7 @@ class NSCLCRegistryTests(unittest.TestCase):
         # `entries` is a legacy block the new RegistrySpec does not parse. It is
         # still read directly from YAML by the graph-coverage test below.
         cls.entries = cls.registry["entries"]
-        with patch(CUI_LOOKUP, return_value=list(STUB_CONDITION_CUIS)) as cui_lookup:
-            cls.loaded_registry = RegistrySpec.from_yaml_path(REGISTRY_PATH, STUB_SESSION)
-        cls.cui_lookup = cui_lookup
+        cls.loaded_registry = RegistrySpec.from_path(REGISTRY_PATH)
 
     # --- registry loading ---------------------------------------------------
 
@@ -72,9 +62,11 @@ class NSCLCRegistryTests(unittest.TestCase):
         self.assertEqual(set(registry.union_phases), set(self.registry["phase_combinations"]))
         self.assertEqual(set(registry.protocols), set(self.registry["protocols"]))
 
-    def test_default_conditions_resolved_through_session(self):
-        self.assertEqual(self.loaded_registry.default_conditions, STUB_CONDITION_CUIS)
-        self.cui_lookup.assert_called()
+    def test_default_conditions_are_preserved(self):
+        self.assertEqual(
+            self.loaded_registry.default_conditions.names,
+            self.registry["conditions"],
+        )
 
     def test_source_phases_are_labelled_from_yaml_keys(self):
         for phase_id, phase in self.loaded_registry.source_phases.items():
@@ -83,7 +75,11 @@ class NSCLCRegistryTests(unittest.TestCase):
     def test_source_phases_inherit_default_conditions_when_omitted(self):
         for phase_id, phase in self.loaded_registry.source_phases.items():
             if "conditions" not in (self.registry["source_phases"][phase_id] or {}):
-                self.assertEqual(phase.condition_cuis, STUB_CONDITION_CUIS, phase_id)
+                self.assertEqual(
+                    phase.conditions,
+                    self.loaded_registry.default_conditions,
+                    phase_id,
+                )
 
     def test_protocols_reference_known_source_phases(self):
         known = set(self.loaded_registry.source_phases)
@@ -99,39 +95,59 @@ class NSCLCRegistryTests(unittest.TestCase):
             for phase_id in union.source_phase_ids:
                 self.assertIn(phase_id, known, f"{union_id} -> {phase_id}")
 
-    def test_from_yaml_path_is_not_hardcoded_to_nsclc(self):
+    def test_from_path_is_not_hardcoded_to_nsclc(self):
         """Registry parsing keys off the top-level label, not a fixed profile."""
         relabelled = {"bladder": self.raw["nsclc"]}
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "bladder_protocol_registry.yaml"
             target.write_text(yaml.safe_dump(relabelled), encoding="utf-8")
-            with patch(CUI_LOOKUP, return_value=list(STUB_CONDITION_CUIS)):
-                registry = RegistrySpec.from_yaml_path(target, STUB_SESSION)
+            registry = RegistrySpec.from_path(target)
         self.assertEqual(registry.label, "bladder")
         self.assertEqual(set(registry.protocols), set(self.loaded_registry.protocols))
 
     # --- condition resolution -----------------------------------------------
 
-    def test_condition_names_are_resolved_through_the_session(self):
-        with patch(CUI_LOOKUP, return_value=[7]) as lookup:
-            phase = PhaseSpec.generate(
-                {"conditions": "Lung cancer"}, "phase", [], STUB_SESSION
-            )
-        lookup.assert_called_once_with(["Lung cancer"], STUB_SESSION)
-        self.assertEqual(phase.condition_cuis, [7])
+    def test_condition_names_are_preserved_until_resolution(self):
+        phase = PhaseSpec.generate(
+            {"conditions": "Lung cancer"},
+            "phase",
+            self.loaded_registry.default_conditions,
+        )
+        self.assertEqual(phase.conditions.names, ["Lung cancer"])
 
-    def test_condition_cuis_pass_through_without_a_session(self):
-        phase = PhaseSpec.generate({"conditions": [11, 12]}, "phase", [], None)
-        self.assertEqual(phase.condition_cuis, [11, 12])
+    def test_condition_cuis_are_preserved_until_resolution(self):
+        phase = PhaseSpec.generate(
+            {"conditions": [11, 12]},
+            "phase",
+            self.loaded_registry.default_conditions,
+        )
+        self.assertEqual(phase.conditions.cuis, [11, 12])
 
-    def test_condition_names_without_a_session_fail_validation(self):
-        with self.assertRaises(ValidationError):
-            PhaseSpec.generate({"conditions": ["Lung cancer"]}, "phase", [], None)
+    def test_condition_names_do_not_require_a_session(self):
+        phase = PhaseSpec.generate(
+            {"conditions": ["Lung cancer"]},
+            "phase",
+            self.loaded_registry.default_conditions,
+        )
+        self.assertEqual(phase.conditions.names, ["Lung cancer"])
+
+    def test_condition_ref_resolves_only_through_an_explicit_gateway(self):
+        ref = ConditionRef(names=["Lung cancer"])
+        gateway = FakeVocabularyGateway(condition_names={"Lung cancer": 123})
+        self.assertEqual(ref.resolve(gateway), (123,))
+        self.assertEqual(ConditionRef(cuis=[456]).resolve(gateway), (456,))
+
+    def test_registry_round_trips_through_canonical_yaml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "round_trip.yaml"
+            target.write_text(self.loaded_registry.to_yaml(), encoding="utf-8")
+            round_tripped = RegistrySpec.from_path(target)
+        self.assertEqual(round_tripped, self.loaded_registry)
 
     # --- component requirement defaults --------------------------------------
 
     def test_omitted_category_restrictions_use_neutral_anchor(self):
-        requirements = apply_default_component_requirements(None)
+        requirements = ComponentRule.with_defaults(None)
         self.assertEqual(
             requirements.category_restrictions,
             {"chemotherapy": CategoryRule(type="min", amount=0)},
@@ -139,28 +155,28 @@ class NSCLCRegistryTests(unittest.TestCase):
         self.assertEqual(requirements.component_lists, [])
 
     def test_provided_category_restrictions_overlay_full_defaults(self):
-        requirements = apply_default_component_requirements(
+        requirements = ComponentRule.with_defaults(
             {"category_restrictions": {"surgery": {"type": "min", "amount": 1}}}
         )
         self.assertEqual(
             requirements.category_restrictions["surgery"],
             CategoryRule(type="min", amount=1),
         )
-        for category in DEFAULT_CATEGORY_RESTRICTIONS:
+        for category in DEFAULT_CATEGORY_RULES:
             if category != "surgery":
                 self.assertEqual(
                     requirements.category_restrictions[category], EXCLUDE_RESTRICTION, category
                 )
 
     def test_supportive_is_never_excluded_by_default(self):
-        self.assertNotIn("supportive", DEFAULT_CATEGORY_RESTRICTIONS)
-        requirements = apply_default_component_requirements(
+        self.assertNotIn("supportive", DEFAULT_CATEGORY_RULES)
+        requirements = ComponentRule.with_defaults(
             {"category_restrictions": {"surgery": {"type": "min", "amount": 1}}}
         )
         self.assertNotIn("supportive", requirements.category_restrictions)
 
     def test_component_lists_survive_default_application(self):
-        requirements = apply_default_component_requirements(
+        requirements = ComponentRule.with_defaults(
             {"component_lists": [["cisplatin", "etoposide"]]}
         )
         self.assertEqual(requirements.component_lists, [["cisplatin", "etoposide"]])
@@ -169,7 +185,9 @@ class NSCLCRegistryTests(unittest.TestCase):
 
     def test_categorise_reports_only_non_excluded_categories(self):
         self.assertEqual(
-            self.loaded_registry.source_phases["surgery_only"].categorise(), {"surgery"}
+            self.loaded_registry.source_phases["surgery_only"]
+            .delivered_categories(),
+            {"surgery"},
         )
 
     def test_categorise_returns_none_without_category_restrictions(self):
@@ -177,10 +195,11 @@ class NSCLCRegistryTests(unittest.TestCase):
             {
                 "study_restriction": None,
                 "type": None,
+                "conditions": [],
                 "component_requirements": ComponentRule(),
             }
         )
-        self.assertIsNone(phase.categorise())
+        self.assertIsNone(phase.delivered_categories())
 
     # --- input coercion and validation ---------------------------------------
 
@@ -197,6 +216,10 @@ class NSCLCRegistryTests(unittest.TestCase):
             ).component_lists,
             [["carboplatin"]],
         )
+
+    def test_empty_component_list_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            ComponentRule.model_validate({"component_lists": [[]]})
 
     def test_regimen_list_rescues_scalar_input(self):
         phase = PhaseSpec.model_validate(
@@ -229,6 +252,30 @@ class NSCLCRegistryTests(unittest.TestCase):
         self.assertEqual(protocol.protocol_id, "port_then_osi")
         self.assertEqual(protocol.source_phase_ids, ["surgery_only", "port"])
         self.assertIsNone(protocol.optional_phases)
+
+    def test_phase_references_are_validated_at_registry_load(self):
+        with self.assertRaises(ValidationError) as error:
+            RegistrySpec.model_validate(
+                {
+                    "label": "fixture",
+                    "default_conditions": {"cuis": [1]},
+                    "version": 1,
+                    "source_phases": {
+                        "known": {"conditions": {"cuis": [1]}},
+                    },
+                    "union_phases": {},
+                    "protocols": {
+                        "broken": {"protocol_id": "broken", "source_phase_ids": ["missing"]},
+                    },
+                }
+            )
+        self.assertIn("broken", str(error.exception))
+
+    def test_phase_choice_requires_two_distinct_members(self):
+        with self.assertRaises(ValidationError):
+            PhaseChoiceSpec.model_validate(
+                {"phase_id": "choice", "source_phase_ids": ["one", "one"]}
+            )
 
     # --- profile wiring -------------------------------------------------------
 

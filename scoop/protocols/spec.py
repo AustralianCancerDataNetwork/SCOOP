@@ -1,260 +1,377 @@
-""""
-In development. Script for reading protocol registry.
-"""
+"""Offline, typed loading of protocol registry specifications."""
+
 from __future__ import annotations
-from typing import Annotated, Literal, Final, Any
-from pydantic import BaseModel, Field, BeforeValidator, ValidationInfo
-from yaml import safe_load
-from scoop.protocols.hemonc.models import condition_cuis_by_names
 
-BroadCategory = Literal["chemotherapy", "radiotherapy", "immunotherapy", 
-                        "surgery", "supportive",]
+from enum import StrEnum
+from pathlib import Path
+from typing import Annotated, Any, Final, Literal, Mapping, TYPE_CHECKING
 
-def rescue_input_to_list(input):
-    if isinstance(input, (int, str)):
-        return [input]
-    return input
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    BeforeValidator,
+    Field,
+    field_validator,
+    model_validator,
+)
+from yaml import safe_dump, safe_load
 
-
-StringOrCuiList = Annotated[list[int] | list[str], BeforeValidator(rescue_input_to_list)]
-# I thought it was a bad idea but consider bringing back the old condition validation approach...
-# don't want to be passing convert checks everywhere
-# ConditionList = StringOrCuiList
-# TODO: Standardise like conditions
-RegimenList = StringOrCuiList
+if TYPE_CHECKING:
+    from scoop.vocabulary.gateway import VocabularyGateway
 
 
-def condition_db_validation(condition_input: Any, info: ValidationInfo) -> Any:
-    context = info.context or {}
-    session = context.get("session")
-    if session:
-        condition_cuis = rescue_condition_input(condition_input, session)
-    return condition_cuis
+class BroadCategory(StrEnum):
+    CHEMOTHERAPY = "chemotherapy"
+    RADIOTHERAPY = "radiotherapy"
+    IMMUNOTHERAPY = "immunotherapy"
+    SURGERY = "surgery"
+    SUPPORTIVE = "supportive"
 
 
-def rescue_condition_input(condition_input, session):
-    if isinstance(condition_input, str):
-        condition_cuis = condition_cuis_by_names([condition_input], session)
-    elif isinstance(condition_input, list) and all(isinstance(value, str) for value in condition_input):
-            condition_cuis = condition_cuis_by_names(condition_input, session)
-    else:
-        condition_cuis = condition_input
-    return condition_cuis
-
-ConditionCuis = Annotated[list[int], BeforeValidator(condition_db_validation)]
+class CategoryRuleType(StrEnum):
+    EXACT = "exact"
+    MIN = "min"
 
 
-def rescue_component_input(component_input):
-    if isinstance(component_input, list) and all(isinstance(value, str) for value in component_input):
-        component_lists = [component_input]
-    elif isinstance(component_input, str):
-        component_lists = [[component_input]]
-    else:
-        component_lists=component_input
-    return component_lists
+RegimenList = list[int] | list[str]
+
+
+class ConditionRef(BaseModel):
+    """A condition declaration preserved until vocabulary resolution is requested."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    names: list[str] | None = None
+    cuis: list[int] | None = None
+
+    @model_validator(mode="after")
+    def exactly_one_reference_form(self) -> "ConditionRef":
+        if self.names is not None and self.cuis is not None:
+            raise ValueError("ConditionRef must contain names or cuis, not both")
+        if self.names is None and self.cuis is None:
+            raise ValueError("ConditionRef must contain names or cuis")
+        return self
+
+    @classmethod
+    def from_value(cls, value: Any) -> "ConditionRef":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls.model_validate(value)
+        if isinstance(value, str):
+            return cls(names=[value])
+        if isinstance(value, list):
+            if all(isinstance(item, str) for item in value):
+                return cls(names=value)
+            if all(isinstance(item, int) and not isinstance(item, bool) for item in value):
+                return cls(cuis=value)
+        raise TypeError("conditions must be a name/CUI or a homogeneous list")
+
+    def resolve(self, gateway: "VocabularyGateway") -> tuple[int, ...]:
+        """Resolve this declaration through an explicitly supplied gateway."""
+        if self.names is not None:
+            return tuple(gateway.resolve_condition_names(self.names))
+        assert self.cuis is not None
+        return tuple(gateway.resolve_condition_cuis(self.cuis))
+
+    def to_value(self) -> list[str] | list[int]:
+        """Return the compact list representation used by registry YAML."""
+        return list(self.names) if self.names is not None else list(self.cuis or [])
+
+
+def rescue_component_input(value: Any) -> Any:
+    if value is None or value == []:
+        return []
+    if isinstance(value, str):
+        return [[value]]
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return [value]
+    return value
+
 
 ComponentLists = Annotated[list[list[str]], BeforeValidator(rescue_component_input)]
 
 
-def check_phases_are_subset(v: list[str] | None | Literal["all", "none"], info) -> list[str]:
-    if v == "all":
-        v = info.data.get("source_phase_ids", [])
-    if v == "none":
-        v = None
-    if v:
-        source_phase_ids = set(info.data.get("source_phase_ids", []))
-        if not set(v).issubset(source_phase_ids):
-            raise ValueError(f"{info.field_name} must be a subset of source_phases")
-    return v
-
-PhaseSubset = Annotated[list[str]| None, BeforeValidator(check_phases_are_subset)]
-
-
-# Class definitions ###########################################################
-
 class CategoryRule(BaseModel):
-    type: Literal["exact", "min"]
+    type: CategoryRuleType
     amount: int
 
-    
+    model_config = ConfigDict(extra="forbid")
+
+
+DEFAULT_CATEGORY_RULES: Final[dict[BroadCategory, CategoryRule]] = {
+    BroadCategory.CHEMOTHERAPY: CategoryRule(type=CategoryRuleType.EXACT, amount=0),
+    BroadCategory.RADIOTHERAPY: CategoryRule(type=CategoryRuleType.EXACT, amount=0),
+    BroadCategory.IMMUNOTHERAPY: CategoryRule(type=CategoryRuleType.EXACT, amount=0),
+    BroadCategory.SURGERY: CategoryRule(type=CategoryRuleType.EXACT, amount=0),
+}
+
+EXCLUDE_RESTRICTION = CategoryRule(type=CategoryRuleType.EXACT, amount=0)
+
+
 class ComponentRule(BaseModel):
     component_lists: ComponentLists = Field(default_factory=list)
     category_restrictions: dict[BroadCategory, CategoryRule] = Field(default_factory=dict)
-    model_config = {"extra": "forbid"}
 
-# This doesn't use EXCLUDE_RESTRICTION because that would require changing
-# apply_default_component_requirements()
-DEFAULT_CATEGORY_RESTRICTIONS: Final[dict[BroadCategory, CategoryRule]] = {
-    "chemotherapy":  {"type": "exact", "amount": 0},
-    "radiotherapy":  {"type": "exact", "amount": 0},
-    "immunotherapy": {"type": "exact", "amount": 0},
-    "surgery":       {"type": "exact", "amount": 0},
-    # NOTE: "supportive" intentionally excluded
-}
+    model_config = ConfigDict(extra="forbid")
 
-EXCLUDE_RESTRICTION = CategoryRule(type='exact', amount=0)
+    @field_validator("component_lists")
+    @classmethod
+    def reject_empty_component_lists(cls, value: list[list[str]]) -> list[list[str]]:
+        if any(not components for components in value):
+            raise ValueError("component_lists cannot contain empty lists")
+        return value
 
-# BAD IDEA: WE WANT TO KNOW WHETHER VARIANTABLE OR NOT
-# class RegimenSpecifier(BaseModel):
-#     component_requirements: Optional[ComponentRule] = None
-#     regimens: Optional[RegimenList] = None
+    @classmethod
+    def with_defaults(cls, raw: Mapping[str, Any] | None = None) -> "ComponentRule":
+        """Apply the registry's explicit category defaulting rules."""
+        raw_rule = cls.model_validate(raw or {})
+        category_restrictions: dict[BroadCategory, CategoryRule]
+        if raw_rule.category_restrictions:
+            if set(raw_rule.category_restrictions) == set(DEFAULT_CATEGORY_RULES):
+                category_restrictions = dict(raw_rule.category_restrictions)
+            else:
+                category_restrictions = {
+                    category: CategoryRule.model_validate(rule)
+                    for category, rule in DEFAULT_CATEGORY_RULES.items()
+                }
+                category_restrictions.update(raw_rule.category_restrictions)
+        else:
+            category_restrictions = {
+                BroadCategory.CHEMOTHERAPY: CategoryRule(
+                    type=CategoryRuleType.MIN,
+                    amount=0,
+                )
+            }
+        return cls(
+            component_lists=raw_rule.component_lists,
+            category_restrictions=category_restrictions,
+        )
 
-#     @model_validator(mode="after")
-#     def _has_at_least_one(self):
-#         if not self.component_requirements and not self.regimens:
-#             raise ValueError("Must have component requirements or regimen list.")
-#         return self
+    def delivered_categories(self) -> set[BroadCategory] | None:
+        if not self.category_restrictions:
+            return None
+        return {
+            category
+            for category, rule in self.category_restrictions.items()
+            if rule != EXCLUDE_RESTRICTION
+        }
+
 
 class PhaseSpec(BaseModel):
     source_phase_id: str | None = None
-    condition_cuis: ConditionCuis = Field(default_factory=list)
-    component_requirements: ComponentRule = Field(default_factory=dict)
-    study_restriction: Literal["must_have_rt"] | None
+    conditions: ConditionRef = Field(default_factory=lambda: ConditionRef(cuis=[]))
+    component_requirements: ComponentRule = Field(default_factory=ComponentRule)
+    study_restriction: Literal["must_have_rt"] | None = None
     curative_intent: bool = True
     regimens: RegimenList | None = Field(default_factory=list)
-    type: str | None
+    type: str | None = None
     standalone: bool = True
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("conditions", mode="before")
+    @classmethod
+    def parse_conditions(cls, value: Any) -> ConditionRef:
+        return ConditionRef.from_value(value)
+
+    @field_validator("regimens", mode="before")
+    @classmethod
+    def normalize_regimens(cls, value: Any) -> Any:
+        if isinstance(value, (int, str)) and not isinstance(value, bool):
+            return [value]
+        return value
 
     @classmethod
-    def generate(cls,
-        phase_data: dict,
+    def generate(
+        cls,
+        phase_data: Mapping[str, Any],
         label: str,
-        default_conditions: ConditionCuis,
-        session
-        ) -> PhaseSpec:
-        """
-        Construct a PhaseSpec, inheriting treatment-group default
-        conditions when not explicitly provided.
-        """
-        conditions = phase_data.get("conditions", default_conditions)
-        if not conditions:
-            conditions = default_conditions
-        data = {"condition_cuis": conditions,
-            "component_requirements":apply_default_component_requirements(phase_data.get("component_requirements")),
-            # "optional_reqs":phase_data.get("optional_reqs"),
-            "study_restriction":phase_data.get("study_restriction"),
-            "source_phase_id":label,
-            "type":phase_data.get("type"),
-            "regimens":phase_data.get("regimens"),
-            "curative_intent": phase_data.get("curative_intent", True),
-            "standalone": phase_data.get("standalone", True)}
-        return cls.model_validate(
-            data, context = {"session": session}
+        default_conditions: ConditionRef,
+    ) -> "PhaseSpec":
+        """Construct a phase, inheriting the registry's condition declaration."""
+        data = dict(phase_data)
+        data["conditions"] = ConditionRef.from_value(
+            phase_data.get("conditions", default_conditions)
         )
-    
-    def categorise(self):
-        broad_categories = None
-        category_restrictions = self.component_requirements.category_restrictions
-        if category_restrictions:
-            broad_categories = {broad_category for broad_category in category_restrictions 
-                                if category_restrictions[broad_category] != EXCLUDE_RESTRICTION}
-        return broad_categories
+        data["component_requirements"] = ComponentRule.with_defaults(
+            phase_data.get("component_requirements")
+        )
+        data["source_phase_id"] = label
+        return cls.model_validate(data)
+
+    def delivered_categories(self) -> set[BroadCategory] | None:
+        return self.component_requirements.delivered_categories()
 
 
 class PhaseChoiceSpec(BaseModel):
     phase_id: str
-    source_phase_ids: list[str]
+    source_phase_ids: list[str] = Field(min_length=2)
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("source_phase_ids")
+    @classmethod
+    def require_distinct_members(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("phase choice members must be distinct")
+        return value
 
 
 class OptionalPhaseCriteria(BaseModel):
     shared: Literal["component"]
-    as_phase: str # should be a phase_id in source_phase_ids
+    as_phase: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class OptionalPhaseSpec(BaseModel):
+    criteria: OptionalPhaseCriteria
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ProtocolSpec(BaseModel):
     protocol_id: str
     source_phase_ids: list[str]
-    # is this really the best structure?
-    optional_phases: dict[str, dict[Literal["criteria"], OptionalPhaseCriteria]] | None
+    optional_phases: dict[str, OptionalPhaseSpec] | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @classmethod
-    def generate(cls, label:str, protocol_data:dict):
-        phases = protocol_data["phases"]
-        optional_phases = protocol_data.get("optional_phases", None)
-        return cls(protocol_id=label, source_phase_ids=phases,  
-                   optional_phases=optional_phases)
-    
-
-class RegistrySpec(BaseModel):
-    label: str
-    default_conditions: ConditionCuis
-    version: float
-    source_phases: dict[str, PhaseSpec]
-    union_phases:  dict[str, PhaseChoiceSpec]
-    protocols:     dict[str, ProtocolSpec]
-
-    @classmethod
-    def from_yaml_path(cls, yaml_path, session):
-        with yaml_path.open("r", encoding="utf-8") as handle:
-            raw = safe_load(handle)
-
-        label, = raw.keys()
-        registry_data = raw[label]
-        default_conditions = registry_data["conditions"]
-        source_phases = {
-            label: PhaseSpec.generate(source_phase, label, default_conditions, session)
-            for label, source_phase in registry_data["source_phases"].items()
-            }
-        protocols = {
-            label: ProtocolSpec.generate(label, protocol_data)
-            for label, protocol_data in raw["nsclc"]["protocols"].items()
-            }
-        phase_unions = {
-            label: PhaseChoiceSpec(phase_id=label, source_phase_ids=union_data["source_phases"])
-            for label, union_data in raw["nsclc"]["phase_combinations"].items()
-        }
-        data = {
-                "label": label,
-                "default_conditions": default_conditions, 
-                "version": registry_data["version"],
-                "source_phases": source_phases,
-                "union_phases": phase_unions,
-                "protocols": protocols,
-        }
-        return cls.model_validate(
-            data, context = {"session": session}
+    def generate(cls, label: str, protocol_data: Mapping[str, Any]) -> "ProtocolSpec":
+        unknown = set(protocol_data) - {"phases", "optional_phases"}
+        if unknown:
+            raise ValueError(
+                f"protocol {label!r} has unknown field(s): {sorted(unknown)}"
+            )
+        return cls(
+            protocol_id=label,
+            source_phase_ids=protocol_data["phases"],
+            optional_phases=protocol_data.get("optional_phases"),
         )
 
 
+class RegistrySpec(BaseModel):
+    label: str
+    default_conditions: ConditionRef
+    version: int | float
+    source_phases: dict[str, PhaseSpec]
+    union_phases: dict[str, PhaseChoiceSpec]
+    protocols: dict[str, ProtocolSpec]
 
-def apply_default_component_requirements(
-    raw_component_requirements: dict | None,
-) -> ComponentRule:
-    """
-    Apply component requirement defaults during YAML generation.
+    model_config = ConfigDict(extra="forbid")
 
-    Rules:
-    1. If ANY category_restrictions are provided by the user:
-       - Apply full default exclusions
-       - Overlay user-provided restrictions
-    2. If NO category_restrictions are provided:
-       - Do NOT apply defaults
-       - Add a neutral anchoring restriction:
-         chemotherapy min 0
-    """
-    raw_component_requirements = raw_component_requirements or {}
+    @classmethod
+    def from_path(cls, path: str | Path) -> "RegistrySpec":
+        """Load one registry without opening a database or resolving vocabulary."""
+        path = Path(path)
+        with path.open("r", encoding="utf-8") as handle:
+            raw = safe_load(handle)
 
-    raw_category_restrictions = raw_component_requirements.get("category_restrictions")
+        if not isinstance(raw, dict) or len(raw) != 1:
+            raise ValueError("registry YAML must contain exactly one profile mapping")
+        label, registry_data = next(iter(raw.items()))
+        if not isinstance(registry_data, dict):
+            raise ValueError(f"registry {label!r} must contain a mapping")
 
-    if raw_category_restrictions:
-        category_restrictions = {
-            k: CategoryRule(**v)
-            for k, v in DEFAULT_CATEGORY_RESTRICTIONS.items()
+        required = {"version", "conditions", "source_phases", "protocols"}
+        missing = required - registry_data.keys()
+        if missing:
+            raise ValueError(f"registry {label!r} is missing: {sorted(missing)}")
+        allowed = required | {"phase_combinations", "entries"}
+        unknown = set(registry_data) - allowed
+        if unknown:
+            raise ValueError(
+                f"registry {label!r} has unknown field(s): {sorted(unknown)}"
+            )
+
+        default_conditions = ConditionRef.from_value(registry_data["conditions"])
+        source_phases = {
+            phase_id: PhaseSpec.generate(
+                phase_data or {}, phase_id, default_conditions
+            )
+            for phase_id, phase_data in registry_data["source_phases"].items()
         }
-
-        for k, v in raw_category_restrictions.items():
-            category_restrictions[k] = CategoryRule(**v)
-
-    else:
-        category_restrictions = {
-            "chemotherapy": CategoryRule(type="min", amount=0)
+        protocols = {
+            protocol_id: ProtocolSpec.generate(protocol_id, protocol_data)
+            for protocol_id, protocol_data in registry_data["protocols"].items()
         }
+        union_phases = {}
+        for union_id, union_data in registry_data.get("phase_combinations", {}).items():
+            unknown = set(union_data) - {"source_phases"}
+            if unknown:
+                raise ValueError(
+                    f"phase choice {union_id!r} has unknown field(s): {sorted(unknown)}"
+                )
+            union_phases[union_id] = PhaseChoiceSpec(
+                phase_id=union_id,
+                source_phase_ids=union_data["source_phases"],
+            )
+        return cls.model_validate(
+            {
+                "label": label,
+                "default_conditions": default_conditions,
+                "version": registry_data["version"],
+                "source_phases": source_phases,
+                "union_phases": union_phases,
+                "protocols": protocols,
+            }
+        )
 
-    return ComponentRule(
-        component_lists=raw_component_requirements.get("component_lists", []),
-        category_restrictions=category_restrictions,
-    )
+    @model_validator(mode="after")
+    def validate_phase_references(self) -> "RegistrySpec":
+        declared = set(self.source_phases)
+        for protocol_id, protocol in self.protocols.items():
+            unknown = set(protocol.source_phase_ids) - declared
+            if unknown:
+                raise ValueError(
+                    f"protocol {protocol_id!r} references unknown phase(s): "
+                    f"{sorted(unknown)}"
+                )
+            for optional_id, optional in (protocol.optional_phases or {}).items():
+                as_phase = optional.criteria.as_phase
+                if as_phase not in declared:
+                    raise ValueError(
+                        f"protocol {protocol_id!r} optional phase {optional_id!r} "
+                        f"references unknown phase {as_phase!r}"
+                    )
+        for choice_id, choice in self.union_phases.items():
+            unknown = set(choice.source_phase_ids) - declared
+            if unknown:
+                raise ValueError(
+                    f"phase choice {choice_id!r} references unknown phase(s): "
+                    f"{sorted(unknown)}"
+                )
+        return self
+
+    def to_dict(self) -> dict[str, dict[str, Any]]:
+        """Return the canonical single-profile YAML structure."""
+        data = self.model_dump(mode="json")
+        data.pop("label")
+        data.pop("default_conditions")
+        data["conditions"] = self.default_conditions.to_value()
+
+        for phase_id, phase in data["source_phases"].items():
+            phase.pop("source_phase_id", None)
+            phase["conditions"] = self.source_phases[phase_id].conditions.to_value()
+            restrictions = phase["component_requirements"]["category_restrictions"]
+            neutral_default = restrictions == {
+                "chemotherapy": {"type": "min", "amount": 0}
+            }
+            if neutral_default:
+                phase["component_requirements"]["category_restrictions"] = {}
+
+        for protocol in data["protocols"].values():
+            protocol.pop("protocol_id", None)
+            protocol["phases"] = protocol.pop("source_phase_ids")
+
+        phase_combinations = {
+            choice_id: {"source_phases": choice["source_phase_ids"]}
+            for choice_id, choice in data.pop("union_phases").items()
+        }
+        data["phase_combinations"] = phase_combinations
+        return {self.label: data}
+
+    def to_yaml(self) -> str:
+        return safe_dump(self.to_dict(), sort_keys=False)

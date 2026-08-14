@@ -1,0 +1,196 @@
+id: https://w3id.org/scoop/regimen-spec
+name: scoop_regimen_spec
+title: SCOOP regimen specification
+description: >-
+  The author-facing, canonical schema for a SCOOP treatment-regimen
+  specification. Runtime loading may adapt the current wrapped YAML spelling
+  into this typed shape, but the concepts and constraints are defined here.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  scoop: https://w3id.org/scoop/
+
+default_prefix: scoop
+default_range: string
+imports:
+  - linkml:types
+
+enums:
+  BroadCategory:
+    permissible_values:
+      chemotherapy: {}
+      radiotherapy: {}
+      immunotherapy: {}
+      surgery: {}
+      supportive: {}
+
+  CategoryRuleType:
+    permissible_values:
+      exact: {}
+      min: {}
+
+  StudyRestriction:
+    permissible_values:
+      must_have_rt: {}
+
+  SharedCriterion:
+    permissible_values:
+      component: {}
+
+classes:
+  RegistrySpec:
+    tree_root: true
+    description: A complete, typed regimen registry for one profile.
+    attributes:
+      label:
+        identifier: true
+        required: true
+        range: string
+      version:
+        required: true
+        range: integer
+      default_conditions:
+        required: true
+        range: ConditionRef
+      source_phases:
+        required: true
+        multivalued: true
+        inlined: true
+        range: PhaseSpec
+      union_phases:
+        multivalued: true
+        inlined: true
+        range: PhaseChoiceSpec
+      protocols:
+        required: true
+        multivalued: true
+        inlined: true
+        range: ProtocolSpec
+
+  ConditionRef:
+    description: A condition declaration, resolved only through a vocabulary gateway.
+    exactly_one_of:
+      - slot_conditions:
+          names:
+            required: true
+      - slot_conditions:
+          cuis:
+            required: true
+    attributes:
+      names:
+        multivalued: true
+        range: string
+      cuis:
+        multivalued: true
+        range: integer
+
+  PhaseSpec:
+    description: One declared treatment phase.
+    attributes:
+      source_phase_id:
+        identifier: true
+        required: true
+        range: string
+      conditions:
+        required: true
+        range: ConditionRef
+      component_requirements:
+        required: true
+        range: ComponentRule
+      study_restriction:
+        range: StudyRestriction
+      curative_intent:
+        range: boolean
+      regimens:
+        multivalued: true
+        range: string
+        description: Named regimen references; numeric CUI shorthand remains runtime input.
+      type:
+        range: string
+      standalone:
+        range: boolean
+
+  ComponentRule:
+    description: Component alternatives and broad-category restrictions for a phase.
+    attributes:
+      component_lists:
+        multivalued: true
+        inlined_as_list: true
+        range: ComponentAlternative
+      category_restrictions:
+        multivalued: true
+        inlined_as_list: true
+        range: CategoryRestriction
+
+  ComponentAlternative:
+    description: One alternative component list; alternatives are OR-ed.
+    attributes:
+      components:
+        required: true
+        multivalued: true
+        range: string
+        minimum_cardinality: 1
+
+  CategoryRestriction:
+    description: A restriction keyed by one broad delivery category.
+    attributes:
+      category:
+        identifier: true
+        required: true
+        range: BroadCategory
+      type:
+        required: true
+        range: CategoryRuleType
+      amount:
+        required: true
+        range: integer
+
+  PhaseChoiceSpec:
+    description: An explicit OR over at least two declared phases.
+    attributes:
+      phase_id:
+        identifier: true
+        required: true
+        range: string
+      source_phase_ids:
+        required: true
+        multivalued: true
+        range: string
+        minimum_cardinality: 2
+
+  ProtocolSpec:
+    description: An ordered protocol composed of declared source phases.
+    attributes:
+      protocol_id:
+        identifier: true
+        required: true
+        range: string
+      source_phase_ids:
+        required: true
+        multivalued: true
+        range: string
+        minimum_cardinality: 1
+      optional_phases:
+        multivalued: true
+        inlined_as_list: true
+        range: OptionalPhaseSpec
+
+  OptionalPhaseSpec:
+    description: An optional protocol phase and its inclusion criterion.
+    attributes:
+      phase_id:
+        identifier: true
+        required: true
+        range: string
+      criteria:
+        required: true
+        range: OptionalPhaseCriteria
+
+  OptionalPhaseCriteria:
+    attributes:
+      shared:
+        required: true
+        range: SharedCriterion
+      as_phase:
+        required: true
+        range: string

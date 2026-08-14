@@ -1,0 +1,53 @@
+label: nsclc
+version: 1
+default_conditions:
+  names:
+    - Lung cancer
+    - Non-small cell lung cancer
+source_phases:
+  surgery_only:
+    source_phase_id: surgery_only
+    conditions:
+      names:
+        - Lung cancer
+        - Non-small cell lung cancer
+    component_requirements:
+      category_restrictions:
+        - category: surgery
+          type: min
+          amount: 1
+    type: definitive
+    curative_intent: true
+    standalone: true
+  adjuvant_ici:
+    source_phase_id: adjuvant_ici
+    conditions:
+      names:
+        - Lung cancer
+        - Non-small cell lung cancer
+    component_requirements:
+      component_lists:
+        - components:
+            - nivolumab
+            - pembrolizumab
+            - durvalumab
+            - tislelizumab
+      category_restrictions:
+        - category: immunotherapy
+          type: exact
+          amount: 1
+    type: adjuvant
+    curative_intent: true
+    standalone: true
+union_phases:
+  ici_choice:
+    phase_id: ici_choice
+    source_phase_ids:
+      - surgery_only
+      - adjuvant_ici
+protocols:
+  surgery_then_ici:
+    protocol_id: surgery_then_ici
+    source_phase_ids:
+      - surgery_only
+      - adjuvant_ici

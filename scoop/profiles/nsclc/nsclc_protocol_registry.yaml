@@ -53,13 +53,15 @@ nsclc:
                     amount: 1
         type: neoadjuvant
     adjuvant_ici:
+      # Phase 4A cleanup: keep category restrictions inside the component rule,
+      # matching the other source phases and the typed RegistrySpec model.
       component_requirements:
         component_lists: [["nivolumab", "pembrolizumab", "durvalumab", "tislelizumab"]]
+        category_restrictions:
+          immunotherapy:
+            type: exact
+            amount: 1
       type: adjuvant
-      category_restrictions:
-        immunotherapy:
-          type: exact
-          amount: 1
     adjuvant_pembrolizumab:
         component_requirements:
             component_lists: "pembrolizumab" # autocorrected to [["pembrolizumab"]] in processing
