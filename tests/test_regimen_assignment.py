@@ -20,6 +20,7 @@ from scoop.patients.person import Person
 from scoop.patients.treatment_episode import build_graph_outcome
 from scoop.vocabulary import condition_resolver as condition_resolver_module
 from scoop.vocabulary.condition_map import ResolvedConditionConcept
+from scoop.vocabulary.gateway import DefaultVocabularyGateway
 from scoop.vocabulary.modifier_map import ResolvedModifierConcept
 
 
@@ -112,7 +113,13 @@ class RegimenAssignmentTests(unittest.TestCase):
         cls._condition_map_patch.start()
         cls.root = Path(__file__).resolve().parents[1]
         cls.config_root = cls.root / "scoop"
-        loader = ProfileLoader(cls.config_root)
+        loader = ProfileLoader(
+            cls.config_root,
+            vocabulary_gateway=DefaultVocabularyGateway(
+                cls.config_root,
+                engine_factory=lambda: None,
+            ),
+        )
         cls.context = loader.load(
             get_profile_config(
                 "nsclc",

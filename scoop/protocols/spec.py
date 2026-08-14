@@ -235,11 +235,20 @@ class ProtocolSpec(BaseModel):
     protocol_id: str
     source_phase_ids: list[str]
     optional_phases: dict[str, OptionalPhaseSpec] | None = None
+    source_phases: dict[str, PhaseSpec] = Field(default_factory=dict)
+    phase_choices: dict[str, PhaseChoiceSpec] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 
     @classmethod
-    def generate(cls, label: str, protocol_data: Mapping[str, Any]) -> "ProtocolSpec":
+    def generate(
+        cls,
+        label: str,
+        protocol_data: Mapping[str, Any],
+        *,
+        source_phases: Mapping[str, PhaseSpec] | None = None,
+        phase_choices: Mapping[str, PhaseChoiceSpec] | None = None,
+    ) -> "ProtocolSpec":
         unknown = set(protocol_data) - {"phases", "optional_phases"}
         if unknown:
             raise ValueError(
@@ -249,7 +258,15 @@ class ProtocolSpec(BaseModel):
             protocol_id=label,
             source_phase_ids=protocol_data["phases"],
             optional_phases=protocol_data.get("optional_phases"),
+            source_phases=dict(source_phases or {}),
+            phase_choices=dict(phase_choices or {}),
         )
+
+    @property
+    def phase_specs(self) -> dict[str, PhaseSpec]:
+        """Compatibility spelling for callers that use the old generator vocabulary."""
+
+        return self.source_phases
 
 
 class RegistrySpec(BaseModel):
@@ -293,10 +310,6 @@ class RegistrySpec(BaseModel):
             )
             for phase_id, phase_data in registry_data["source_phases"].items()
         }
-        protocols = {
-            protocol_id: ProtocolSpec.generate(protocol_id, protocol_data)
-            for protocol_id, protocol_data in registry_data["protocols"].items()
-        }
         union_phases = {}
         for union_id, union_data in registry_data.get("phase_combinations", {}).items():
             unknown = set(union_data) - {"source_phases"}
@@ -308,6 +321,15 @@ class RegistrySpec(BaseModel):
                 phase_id=union_id,
                 source_phase_ids=union_data["source_phases"],
             )
+        protocols = {
+            protocol_id: ProtocolSpec.generate(
+                protocol_id,
+                protocol_data,
+                source_phases=source_phases,
+                phase_choices=union_phases,
+            )
+            for protocol_id, protocol_data in registry_data["protocols"].items()
+        }
         return cls.model_validate(
             {
                 "label": label,
@@ -322,8 +344,9 @@ class RegistrySpec(BaseModel):
     @model_validator(mode="after")
     def validate_phase_references(self) -> "RegistrySpec":
         declared = set(self.source_phases)
+        choices = set(self.union_phases)
         for protocol_id, protocol in self.protocols.items():
-            unknown = set(protocol.source_phase_ids) - declared
+            unknown = set(protocol.source_phase_ids) - (declared | choices)
             if unknown:
                 raise ValueError(
                     f"protocol {protocol_id!r} references unknown phase(s): "
@@ -331,7 +354,7 @@ class RegistrySpec(BaseModel):
                 )
             for optional_id, optional in (protocol.optional_phases or {}).items():
                 as_phase = optional.criteria.as_phase
-                if as_phase not in declared:
+                if as_phase not in (declared | choices):
                     raise ValueError(
                         f"protocol {protocol_id!r} optional phase {optional_id!r} "
                         f"references unknown phase {as_phase!r}"
@@ -364,6 +387,8 @@ class RegistrySpec(BaseModel):
 
         for protocol in data["protocols"].values():
             protocol.pop("protocol_id", None)
+            protocol.pop("source_phases", None)
+            protocol.pop("phase_choices", None)
             protocol["phases"] = protocol.pop("source_phase_ids")
 
         phase_combinations = {

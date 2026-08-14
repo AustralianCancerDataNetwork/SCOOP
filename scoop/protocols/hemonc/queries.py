@@ -209,8 +209,26 @@ def build_component_expressions(component_lists, categorised_components):
     return expressions
 
 
-def phase_spec_to_sigdict(phase_spec, session):
-    base_df = get_base_sigs_df(phase_spec, session)
+def phase_spec_to_sigdict(
+    phase_spec,
+    session,
+    *,
+    condition_cuis: list[int] | None = None,
+    models: HemOncModels | None = None,
+):
+    """Execute the phase query and return the legacy grouped SIG shape.
+
+    Condition references are resolved by the gateway before this function is called;
+    keeping that resolution outside the query helper avoids a hidden database lookup
+    in candidate assembly.
+    """
+
+    base_df = get_base_sigs_df(
+        phase_spec,
+        session,
+        condition_cuis=condition_cuis,
+        models=models,
+    )
     phase_filtered = subset_df_on_phase(base_df, phase_spec.type)
     sig_deduped = phase_filtered.drop_duplicates(subset=["id"])
     if sig_deduped.empty:
@@ -276,13 +294,23 @@ def subquery_sigs_valid_groups(valid_groups_subquery, models):
 ).subquery()
 
 
-def get_base_sigs_df(phase_spec, session, models: HemOncModels | None = None):
+def get_base_sigs_df(
+    phase_spec,
+    session,
+    models: HemOncModels | None = None,
+    *,
+    condition_cuis: list[int] | None = None,
+):
     """
     Df of sigs from phase-varcui-study groupings meeting component & curative intent 
     """
     models = models or _load_hemonc_models()
     comp_reqs = phase_spec.component_requirements
-    condition_cuis = phase_spec.condition_cuis
+    condition_cuis = (
+        list(condition_cuis)
+        if condition_cuis is not None
+        else list(getattr(phase_spec, "condition_cuis", ()))
+    )
     components = get_sig_component_stmt(condition_cuis, models, 
                                         non_curative=(not phase_spec.curative_intent))
     components = subset_components_by_study_stmt(phase_spec.study_restriction,
@@ -328,4 +356,3 @@ def subset_df_on_phase(df, target_phase):
     except KeyError: # empty df case
             # TODO: logging
         return df
-

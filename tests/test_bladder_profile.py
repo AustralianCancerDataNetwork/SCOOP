@@ -9,6 +9,7 @@ from scoop.profiles.manifest import (
     load_transformation_graph,
 )
 from scoop.patients.treatment_episode import extract_active_treatment_endpoints
+from scoop.vocabulary.gateway import DefaultVocabularyGateway
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,7 +70,14 @@ class BladderProfileTests(unittest.TestCase):
         self.assertIn("erdafitinib", registry.entries)
 
     def test_bladder_routed_runtime_loads(self):
-        runtime = load_routed_profile("bladder", base_dir=CONFIG_ROOT)
+        runtime = load_routed_profile(
+            "bladder",
+            base_dir=CONFIG_ROOT,
+            vocabulary_gateway=DefaultVocabularyGateway(
+                CONFIG_ROOT,
+                engine_factory=lambda: None,
+            ),
+        )
         self.assertEqual(runtime.entry_graph_name, "bladder")
         self.assertIn("bladder_nmibc", runtime.pathway_to_graph)
         self.assertIn("bladder_nmibc", runtime.tail_contexts)

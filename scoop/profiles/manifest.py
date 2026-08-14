@@ -360,11 +360,12 @@ def load_profile(
     graph_name: str | None = None,
     *,
     base_dir: Path | None = None,
+    vocabulary_gateway: VocabularyGateway | None = None,
 ) -> SimulationContext:
     """Load a single graph context for a profile and optional graph name."""
 
     config_root = resolve_config_root(base_dir)
-    loader = ProfileLoader(config_root)
+    loader = ProfileLoader(config_root, vocabulary_gateway=vocabulary_gateway)
     return loader.load(
         get_profile_config(profile_id, graph_name=graph_name, base_dir=config_root)
     )
@@ -374,6 +375,7 @@ def load_routed_profile(
     profile_id: str,
     *,
     base_dir: Path | None = None,
+    vocabulary_gateway: VocabularyGateway | None = None,
 ) -> RoutedProfileRuntime:
     """Load a routed runtime for profiles that declare an entry graph and pathways."""
 
@@ -392,9 +394,15 @@ def load_routed_profile(
         profile_id,
         manifest.entry_graph,
         base_dir=config_root,
+        vocabulary_gateway=vocabulary_gateway,
     )
     tail_contexts = {
-        graph_name: load_profile(profile_id, graph_name, base_dir=config_root)
+        graph_name: load_profile(
+            profile_id,
+            graph_name,
+            base_dir=config_root,
+            vocabulary_gateway=vocabulary_gateway,
+        )
         for graph_name in sorted(set(manifest.pathways.values()))
     }
     return RoutedProfileRuntime(

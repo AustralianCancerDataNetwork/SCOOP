@@ -6,8 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
-    "omop-alchemy>=0.9.0,<1.0.0",
+    "omop-alchemy>=1.0.0,<2.0.0",
     "omop-graph>=0.1.3",
+    "oa-configurator>=1.0.0,<2.0.0",
     "pandas>=3.0.2",
     "psycopg2-binary>=2.9.11",
     "pydantic>=2.12.3",
@@ -22,6 +23,7 @@ authoring = [
     "linkml-runtime>=1.9.5",
 ]
 dev = [
+    "oa-configurator[dev,postgres]>=1.0.0,<2.0.0",
     "pytest>=9.0.3",
 ]
 
@@ -40,5 +42,10 @@ include = ["scoop*"]
     "schema/linkml/examples/nsclc_registry.yaml",
 ]
 
+[project.entry-points."omop.config"]
+scoop = "scoop.config:ScoopConfig"
+
 [tool.uv.sources]
 hemonc-import = { path = "../hemonc_import/hemonc_import", editable = true }
+oa-configurator = { path = "../../core-stack/oa-configurator", editable = true }
+omop-alchemy = { path = "../../core-stack/omop-alchemy", editable = true }

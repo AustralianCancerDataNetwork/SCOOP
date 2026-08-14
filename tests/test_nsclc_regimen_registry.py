@@ -25,6 +25,7 @@ from scoop.protocols.spec import (
 )
 from scoop.patients.treatment_episode import extract_active_treatment_endpoints
 from scoop.vocabulary.gateway import FakeVocabularyGateway
+from scoop.vocabulary.gateway import DefaultVocabularyGateway
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -291,7 +292,14 @@ class NSCLCRegistryTests(unittest.TestCase):
         self.assertIn("nsclc", list_profiles(ROOT / "scoop"))
 
     def test_routed_runtime_loads_for_nsclc(self):
-        runtime = load_routed_profile("nsclc", base_dir=ROOT / "scoop")
+        runtime = load_routed_profile(
+            "nsclc",
+            base_dir=ROOT / "scoop",
+            vocabulary_gateway=DefaultVocabularyGateway(
+                ROOT / "scoop",
+                engine_factory=lambda: None,
+            ),
+        )
         self.assertEqual(runtime.entry_graph_name, "nsclc")
         self.assertIn("nsclc_stage1", runtime.pathway_to_graph)
         self.assertIn("nsclc_stg1", runtime.tail_contexts)

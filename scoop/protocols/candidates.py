@@ -1,10 +1,35 @@
+from dataclasses import dataclass
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, List
+from typing import Any, Optional, Dict, List
 from collections import defaultdict
 import scoop.protocols.descriptions as desc
-from scoop.protocols.hemonc.queries import phase_spec_to_sigdict
 from scoop.protocols.hemonc.gateway import HemOncGateway
-from scoop.protocols.spec import ProtocolSpec
+from scoop.protocols.spec import ConditionRef, PhaseChoiceSpec, PhaseSpec, ProtocolSpec
+
+
+@dataclass(frozen=True)
+class SharedComponent:
+    """Reason for a candidate created by an optional shared-component phase."""
+
+    component: str
+
+
+@dataclass(frozen=True)
+class OptionalPhaseOmitted:
+    """Reason for retaining the protocol without its optional phase."""
+
+    phase_id: str
+
+
+FanOutReason = SharedComponent | OptionalPhaseOmitted
+
+
+@dataclass(frozen=True)
+class NoCandidates:
+    """Typed evidence that one phase query returned no operational candidates."""
+
+    phase_id: str
+    query: str = "HemOncGateway.candidates_for_phase"
 
 class RegimenCandidate(BaseModel):
     """
@@ -14,9 +39,13 @@ class RegimenCandidate(BaseModel):
     """
     name: str
     variant_cui: Optional[int]
-    sigs: list
+    sigs: list[Any]
     regimen: str
-    components: set
+    components: set[str]
+    phase: str | None = None
+    study: str | None = None
+    variant: str | None = None
+    source_phase_id: str | None = None
     # NOTE: Rarely has the surgery sig been included w/ a hemonc variant
     # surgery component sig will need to be added in majority of cases
     # Options: context-dependent? independent? How much more restrictive is dependency?
@@ -70,8 +99,9 @@ class PhaseCandidates(BaseModel):
     # original_options: Optional[tuple[RegimenCandidate, ...]] = None
     # filters_passed: Optional[dict[str, Any]] = Field(default_factory=dict)
     # filters_failed: Optional[dict[str, Any]] = Field(default_factory=dict)
-    conditions: list
-    categories: set | None = None
+    conditions: list[Any]
+    categories: set[str] | None = None
+    no_candidates: NoCandidates | None = None
 
 
     @classmethod
@@ -148,6 +178,7 @@ class ProtocolCandidate(BaseModel):
     phases: list[PhaseCandidates]
     requirement_type: str | None = None
     requirement_element: str | None = None
+    fan_out_reason: FanOutReason | None = None
 
     @classmethod
     def from_yaml(cls, name: str, 
@@ -216,11 +247,209 @@ class CandidateSet(BaseModel):
 
 
 def assemble(spec: ProtocolSpec, gateway: HemOncGateway) -> list[ProtocolCandidate]:
-    """Declare candidate assembly without activating the legacy query cascade."""
+    """Assemble protocol candidates using only the injected HemOnc gateway.
 
-    raise NotImplementedError(
-        "Protocol candidate assembly is intentionally deferred to Phase 4."
+    The function deliberately owns no SQL knowledge. It resolves source phases once,
+    preserves choice provenance, and makes optional-phase fan-out explicit.
+    """
+
+    if spec is None:
+        raise NotImplementedError(
+            "Protocol candidate assembly requires a ProtocolSpec in Phase 4C."
+        )
+
+    phase_specs = getattr(spec, "source_phases", {}) or {}
+    phase_choices = getattr(spec, "phase_choices", {}) or {}
+    resolved: dict[str, PhaseCandidates] = {}
+
+    def source_phase(phase_id: str) -> PhaseSpec:
+        return phase_specs.get(phase_id, PhaseSpec(source_phase_id=phase_id))
+
+    def candidates_for(phase_id: str) -> list[RegimenCandidate]:
+        phase = source_phase(phase_id)
+        candidates = list(gateway.candidates_for_phase(phase))
+        return _group_candidates(candidates, source_phase_id=phase_id)
+
+    def phase_for(phase_id: str) -> PhaseCandidates:
+        if phase_id in resolved:
+            return resolved[phase_id].model_copy(deep=True)
+        options = candidates_for(phase_id)
+        phase = source_phase(phase_id)
+        result = PhaseCandidates(
+            index=1,
+            label=phase_id,
+            options=options,
+            conditions=phase.conditions.to_value(),
+            categories=phase.delivered_categories(),
+            no_candidates=NoCandidates(phase_id=phase_id) if not options else None,
+        )
+        resolved[phase_id] = result
+        return result.model_copy(deep=True)
+
+    def choice_phase(choice_id: str, choice: PhaseChoiceSpec) -> PhaseCandidates:
+        member_phases = [phase_for(member_id) for member_id in choice.source_phase_ids]
+        options = [
+            candidate.model_copy(update={"source_phase_id": member_id})
+            for member_id, member_phase in zip(choice.source_phase_ids, member_phases)
+            for candidate in member_phase.options
+        ]
+        conditions = _union_conditions(
+            source_phase(member_id).conditions for member_id in choice.source_phase_ids
+        )
+        categories = {
+            category
+            for member_id in choice.source_phase_ids
+            for category in (source_phase(member_id).delivered_categories() or set())
+        }
+        return PhaseCandidates(
+            index=1,
+            label=choice_id,
+            options=options,
+            conditions=conditions,
+            categories=categories or None,
+            no_candidates=NoCandidates(phase_id=choice_id) if not options else None,
+        )
+
+    def phase_for_protocol(phase_id: str) -> PhaseCandidates:
+        choice = phase_choices.get(phase_id)
+        return choice_phase(phase_id, choice) if choice is not None else phase_for(phase_id)
+
+    base_phases = {
+        phase_id: phase_for_protocol(phase_id)
+        for phase_id in spec.source_phase_ids
+    }
+
+    optional = spec.optional_phases or {}
+    if not optional:
+        return [
+            ProtocolCandidate(
+                name=spec.protocol_id,
+                phases=_ordered_phases(spec.source_phase_ids, base_phases),
+            )
+        ]
+
+    optional_id, optional_spec = next(iter(optional.items()))
+    required_id = optional_spec.criteria.as_phase
+    optional_phase = base_phases.get(optional_id)
+    if optional_phase is None:
+        optional_phase = phase_for_protocol(optional_id)
+    shared_components = sorted(
+        {
+            component
+            for candidate in optional_phase.options
+            for component in candidate.components
+        }
     )
+
+    fan_out: list[ProtocolCandidate] = []
+    for component in shared_components:
+        restricted = {
+            phase_id: _restrict_phase(phase, component)
+            if phase_id in {required_id, optional_id}
+            else phase.model_copy(deep=True)
+            for phase_id, phase in base_phases.items()
+        }
+        fan_out.append(
+            ProtocolCandidate(
+                name=spec.protocol_id,
+                phases=_ordered_phases(spec.source_phase_ids, restricted),
+                fan_out_reason=SharedComponent(component),
+            )
+        )
+
+    omitted = {
+        phase_id: phase.model_copy(deep=True)
+        for phase_id, phase in base_phases.items()
+        if phase_id != optional_id
+    }
+    fan_out.append(
+        ProtocolCandidate(
+            name=spec.protocol_id,
+            phases=_ordered_phases(
+                [phase_id for phase_id in spec.source_phase_ids if phase_id != optional_id],
+                omitted,
+            ),
+            fan_out_reason=OptionalPhaseOmitted(optional_id),
+        )
+    )
+    return fan_out
+
+
+def _candidate_identity(candidate: RegimenCandidate) -> tuple[Any, ...]:
+    """Return the stable grouping key for one candidate row."""
+
+    return (
+        candidate.phase or candidate.source_phase_id,
+        candidate.variant_cui,
+        candidate.study,
+        candidate.regimen,
+        candidate.variant,
+    )
+
+
+def _group_candidates(
+    candidates: list[RegimenCandidate],
+    *,
+    source_phase_id: str,
+) -> list[RegimenCandidate]:
+    grouped: dict[tuple[Any, ...], RegimenCandidate] = {}
+    for candidate in candidates:
+        candidate = candidate.model_copy(
+            update={
+                "source_phase_id": candidate.source_phase_id or source_phase_id,
+                "components": set(candidate.components),
+                "sigs": list(candidate.sigs),
+            },
+            deep=True,
+        )
+        key = _candidate_identity(candidate)
+        if key not in grouped:
+            grouped[key] = candidate
+            continue
+        existing = grouped[key]
+        grouped[key] = existing.model_copy(
+            update={
+                "sigs": [*existing.sigs, *candidate.sigs],
+                "components": existing.components | candidate.components,
+            },
+            deep=True,
+        )
+    return list(grouped.values())
+
+
+def _restrict_phase(phase: PhaseCandidates, component: str) -> PhaseCandidates:
+    options = [
+        candidate
+        for candidate in phase.options
+        if component in candidate.components
+    ]
+    return phase.model_copy(
+        update={
+            "options": options,
+            "no_candidates": NoCandidates(phase_id=phase.label or "")
+            if not options
+            else None,
+        },
+        deep=True,
+    )
+
+
+def _ordered_phases(
+    phase_ids: list[str], phases: dict[str, PhaseCandidates]
+) -> list[PhaseCandidates]:
+    return [
+        phases[phase_id].model_copy(update={"index": index}, deep=True)
+        for index, phase_id in enumerate(phase_ids, start=1)
+    ]
+
+
+def _union_conditions(condition_refs: Any) -> list[Any]:
+    values: list[Any] = []
+    for condition_ref in condition_refs:
+        for value in condition_ref.to_value():
+            if value not in values:
+                values.append(value)
+    return values
 
 
 def render_collapsible(header, children=None, count=None, color="#fdfdfd",
@@ -299,13 +528,22 @@ class ProtocolGenerator(BaseModel):
         return phase_candidate_lists
 
     def phase_spec_to_candidate_list(self, phase_spec, session):
-        cached_sigdict = self.sigdict_cache.get(phase_spec.source_phase_id)
-        if cached_sigdict:
-            return get_regimen_candidate_list(cached_sigdict)
+        phase_id = phase_spec.source_phase_id
+        cached_candidates = self.sigdict_cache.get(phase_id)
+        if cached_candidates is not None:
+            return list(cached_candidates)
+        if hasattr(session, "candidates_for_phase"):
+            gateway = session
         else:
-            new_sigdict = phase_spec_to_sigdict(phase_spec, session)
-            self.sigdict_cache[phase_spec.source_phase_id] = new_sigdict
-            return get_regimen_candidate_list(new_sigdict)
+            from scoop.protocols.hemonc.gateway import SqlHemOncGateway
+
+            gateway = SqlHemOncGateway(session)
+        candidates = _group_candidates(
+            list(gateway.candidates_for_phase(phase_spec)),
+            source_phase_id=phase_id or "",
+        )
+        self.sigdict_cache[phase_id] = candidates
+        return list(candidates)
 
     def protocols_from_candidate_lists(self, protocol_spec, phase_candidate_lists):
         if protocol_spec.optional_phases:
@@ -339,8 +577,15 @@ def get_regimen_candidate_list(sigdict):
         components = {sig.component for sig in siglist}
         regimen_candidate_list.append(RegimenCandidate(name=name, sigs=siglist,
                                         variant_cui=variant_cui,
-                                        regimen=regimen, components=components))
+                                        regimen=regimen, components=components,
+                                        phase=_none_if_string(phase),
+                                        study=_none_if_string(study),
+                                        variant=_none_if_string(variant_name)))
     return regimen_candidate_list
+
+
+def _none_if_string(value: Any) -> Any:
+    return None if value in (None, "None") else value
 
 def create_protocols_by_shared_component(protocol_spec, components_in_optional: set, candidate_lists_by_phase: Dict[str, list],
                                          req_sharing_phase: str, optional_phase:str, phase_specs):
