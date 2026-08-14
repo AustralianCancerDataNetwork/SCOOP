@@ -12,7 +12,7 @@ This module is the main entry point for:
 import yaml
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Mapping, TYPE_CHECKING
 
 from ..vocabulary.gateway import (
     DefaultVocabularyGateway,
@@ -34,6 +34,7 @@ from .paths import (
 from .context import set_active_simulation_context
 # from .regimen_registry import RegimenRegistry, load_regimen_registry
 from ..guidelines.graph import TransformationGraph
+from ..guidelines.sampling import GuidelineSample
 
 if TYPE_CHECKING:
     from ..patients.treatment_episode import GraphOutcome
@@ -85,10 +86,33 @@ class SimulationContext:
     def sample_patient(
         self,
         initial_state: dict[str, Any] | None = None,
+        *,
+        seed: int | None = None,
     ) -> dict[str, Any]:
-        """Sample one graph realization, optionally from inherited upstream state."""
+        """Compatibility adapter returning the legacy mapping sample shape."""
 
-        return self.graph.sample_one(initial_state=initial_state)
+        if seed is None:
+            return dict(self.graph.sample_one(initial_state=initial_state))
+        return self.sample_guideline(
+            seed=seed,
+            initial_state=initial_state,
+        ).as_dict
+
+    def sample_guideline(
+        self,
+        seed: int,
+        initial_state: Mapping[str, object] | None = None,
+    ) -> GuidelineSample:
+        """Sample one typed guideline state with explicit seed and profile provenance."""
+
+        from ..guidelines.sampling import sample
+
+        return sample(
+            self.graph,
+            seed,
+            source_profile=self.profile_name,
+            initial_state=initial_state,
+        )
 
     def sample_regimen_outcome(self) -> "GraphOutcome":
         """Sample one patient and normalize active treatment endpoints to one outcome."""
@@ -115,6 +139,8 @@ class RoutedPatientSample:
     final_sample: dict[str, Any]
     graph_outcome: "GraphOutcome | None"
     outcome_error: str | None
+    entry_guideline: GuidelineSample | None = None
+    final_guideline: GuidelineSample | None = None
 
 
 @dataclass
@@ -145,13 +171,25 @@ class RoutedProfileRuntime:
     def sample_routed_patient(
         self,
         initial_state: dict[str, Any] | None = None,
+        *,
+        seed: int | None = None,
     ) -> RoutedPatientSample:
-        """Sample the entry graph, route by pathway, then sample the selected tail graph."""
+        """Sample and route graphs, retaining typed samples plus legacy mappings."""
 
         from ..patients.treatment_episode import build_graph_outcome
+        import random
 
-        entry_sample = self.entry_context.sample_patient(initial_state=initial_state)
-        pathway = entry_sample.get("condition_episode.pathway")
+        rng = random.Random(seed) if seed is not None else None
+        entry_values = self.entry_context.graph.sample_one(
+            initial_state=initial_state,
+            rng=rng,
+        )
+        entry_guideline = GuidelineSample(
+            values=dict(entry_values),
+            source_profile=self.entry_context.profile_name,
+            seed=seed,
+        )
+        pathway = entry_guideline.values.get("condition_episode.pathway")
         if pathway is None:
             raise ValueError(
                 f"Entry graph '{self.entry_graph_name}' did not produce "
@@ -165,21 +203,31 @@ class RoutedProfileRuntime:
                 entry_graph_name=self.entry_graph_name,
                 pathway=pathway,
                 tail_graph_name=None,
-                entry_sample=entry_sample,
-                final_sample=dict(entry_sample),
+                entry_sample=entry_guideline.as_dict,
+                final_sample=entry_guideline.as_dict,
                 graph_outcome=None,
                 outcome_error=(
                     f"No tail graph mapping declared for pathway '{pathway}' "
                     f"in profile '{self.profile_id}'."
                 ),
+                entry_guideline=entry_guideline,
+                final_guideline=entry_guideline,
             )
 
         tail_context = self.tail_contexts[tail_graph_name]
-        final_sample = tail_context.sample_patient(initial_state=entry_sample)
+        final_values = tail_context.graph.sample_one(
+            initial_state=entry_guideline.as_dict,
+            rng=rng,
+        )
+        final_guideline = GuidelineSample(
+            values=dict(final_values),
+            source_profile=tail_context.profile_name,
+            seed=seed,
+        )
         try:
             graph_outcome = build_graph_outcome(
-                final_sample,
-                registry=tail_context.regimen_registry,
+                final_guideline.as_dict,
+                registry=getattr(tail_context, "regimen_registry", None),
                 source_profile=tail_context.profile_name,
             )
             outcome_error = None
@@ -192,10 +240,12 @@ class RoutedProfileRuntime:
             entry_graph_name=self.entry_graph_name,
             pathway=pathway,
             tail_graph_name=tail_graph_name,
-            entry_sample=entry_sample,
-            final_sample=final_sample,
+            entry_sample=entry_guideline.as_dict,
+            final_sample=final_guideline.as_dict,
             graph_outcome=graph_outcome,
             outcome_error=outcome_error,
+            entry_guideline=entry_guideline,
+            final_guideline=final_guideline,
         )
 
 

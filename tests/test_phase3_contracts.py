@@ -121,7 +121,7 @@ def test_spine_placeholders_fail_closed_without_legacy_fallbacks():
         raw_sample=GuidelineSample({}, "fixture"),
     )
 
-    with pytest.raises(NotImplementedError, match="Phase 4"):
+    with pytest.raises(TypeError, match="TransformationGraph"):
         sample(None, seed=1)
     with pytest.raises(NotImplementedError, match="Phase 5"):
         decide(GuidelineSample({}, "fixture"))

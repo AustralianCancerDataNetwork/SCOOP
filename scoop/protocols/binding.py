@@ -1,21 +1,71 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Callable
+
+from pydantic import BaseModel, ConfigDict
+
 from scoop.protocols.spec import PhaseSpec
+
+
+SYSTEMIC_CATEGORIES = frozenset({"chemotherapy", "immunotherapy"})
+
+
+def _positive_categories(phase_spec: PhaseSpec) -> set[str]:
+    return {
+        category.value
+        for category, rule in phase_spec.component_requirements.category_restrictions.items()
+        if rule.amount > 0
+    }
+
+
+def _has_explicit_components(phase_spec: PhaseSpec) -> bool:
+    return bool(phase_spec.component_requirements.component_lists)
+
+
+def _has_systemic_component(phase_spec: PhaseSpec) -> bool:
+    categories = _positive_categories(phase_spec)
+    return bool(categories & SYSTEMIC_CATEGORIES) or _has_explicit_components(phase_spec)
+
+
+def _has_sigbacked_component(phase_spec: PhaseSpec) -> bool:
+    categories = _positive_categories(phase_spec)
+    return bool(categories - {"surgery", "supportive"}) or _has_explicit_components(phase_spec)
+
+
+def _is_surgery_only(phase_spec: PhaseSpec) -> bool:
+    categories = _positive_categories(phase_spec)
+    return "surgery" in categories and not _has_systemic_component(phase_spec) and not (
+        categories - {"surgery"}
+    )
+
+
+def _is_null(phase_spec: PhaseSpec) -> bool:
+    return not (
+        _positive_categories(phase_spec) - {"supportive"}
+    ) and not _has_explicit_components(phase_spec)
+
+
+def _is_nonvariant_sig_backed(phase_spec: PhaseSpec) -> bool:
+    return _has_sigbacked_component(phase_spec) and not _has_systemic_component(
+        phase_spec
+    )
 
 
 class PhaseBinding(BaseModel):
     phase_id: str
-    phase_type: str # i.e. sig.phase
+    phase_type: str | None = None
 
     # Strictly for debugging/history-viewing
     # NOT for building logic
     origin: PhaseSpec
-    pass
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
 
 class SigbackedBinding(ABC, PhaseBinding):
     # change to this approach? candidates = list[RegimenCandidate]
-    sql_artifacts: str
+    sql_artifacts: str | None = None
 
     @classmethod
     @abstractmethod
@@ -69,3 +119,47 @@ class NullBinding(NonSigbackedBinding):
     """
     # No implementation of Best Supportive Care atm. 
     pass
+
+
+@dataclass(frozen=True)
+class BindingRule:
+    """One declared shape-to-binding rule."""
+
+    name: str
+    matches: Callable[[PhaseSpec], bool]
+    binding_type: type[PhaseBinding]
+
+
+BINDING_RULES: tuple[BindingRule, ...] = (
+    BindingRule(
+        "systemic_sig_backed",
+        _has_systemic_component,
+        VariantBinding,
+    ),
+    BindingRule(
+        "nonvariant_sig_backed",
+        _is_nonvariant_sig_backed,
+        NonVariantBinding,
+    ),
+    BindingRule("surgery_only", _is_surgery_only, SurgeryBinding),
+    BindingRule("nothing_operationalisable", _is_null, NullBinding),
+)
+
+
+def bind(phase_spec: PhaseSpec) -> PhaseBinding:
+    """Classify a phase from its declaration, without querying or using provenance."""
+
+    if not isinstance(phase_spec, PhaseSpec):
+        raise TypeError("bind() requires a PhaseSpec")
+
+    for rule in BINDING_RULES:
+        if rule.matches(phase_spec):
+            return rule.binding_type(
+                phase_id=phase_spec.source_phase_id or "",
+                phase_type=phase_spec.type,
+                origin=phase_spec,
+            )
+
+    raise ValueError(
+        f"No binding rule matched phase {phase_spec.source_phase_id!r}"
+    )

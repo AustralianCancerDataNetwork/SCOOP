@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping
 
@@ -14,6 +15,12 @@ class GuidelineSample:
     values: Mapping[str, object]
     source_profile: str
     seed: int | None = None
+
+    @property
+    def as_dict(self) -> dict[str, object]:
+        """Return a copy for callers that still consume the legacy mapping shape."""
+
+        return dict(self.values)
 
 
 @dataclass(frozen=True)
@@ -35,11 +42,25 @@ class NoDecision:
     source_profile: str | None = None
 
 
-def sample(graph: "TransformationGraph", seed: int) -> GuidelineSample:
-    """Declare the guideline sampling boundary without activating sampling yet."""
+def sample(
+    graph: "TransformationGraph",
+    seed: int,
+    *,
+    source_profile: str = "",
+    initial_state: Mapping[str, object] | None = None,
+) -> GuidelineSample:
+    """Sample one graph realization with an isolated, explicit random seed."""
 
-    raise NotImplementedError(
-        "Guideline sampling is intentionally deferred to the Phase 4 port."
+    if graph is None:
+        raise TypeError("sample() requires a TransformationGraph")
+    values = graph.sample_one(
+        initial_state=dict(initial_state or {}),
+        rng=random.Random(seed),
+    )
+    return GuidelineSample(
+        values=dict(values),
+        source_profile=source_profile,
+        seed=seed,
     )
 
 

@@ -20,7 +20,7 @@ class GraphValidationIssue:
 class BaseDistribution(BaseModel):
     """Base class for all distribution types."""
     name: Optional[str] = None
-    def sample(self) -> Any:
+    def sample(self, rng: random.Random | None = None) -> Any:
         raise NotImplementedError
     
     def __repr__(self) -> str:
@@ -44,14 +44,15 @@ class NumericDistribution(BaseDistribution):
     as_int: bool = False
     kind: Literal["numeric"] = "numeric"
 
-    def sample(self):
+    def sample(self, rng: random.Random | None = None):
+        rng = rng or random
         # Uniform if no sd
         if not self.sd:
             if self.min_value is None or self.max_value is None:
                 raise ValueError(f"Uniform sampling requires min_value and max_value: {self.name}")
-            val = random.uniform(self.min_value, self.max_value)
+            val = rng.uniform(self.min_value, self.max_value)
         else:
-            val = random.gauss(self.mean, self.sd)
+            val = rng.gauss(self.mean, self.sd)
 
         # clip
         if self.min_value is not None:
@@ -91,9 +92,10 @@ class DiscreteDistribution(BaseDistribution):
             raise ValueError(f"Probabilities must sum to 1 (got {total}) for {cls.name}")
         return v
 
-    def sample(self) -> Union[int, float, str]:
+    def sample(self, rng: random.Random | None = None) -> Union[int, float, str]:
+        rng = rng or random
         vals, weights = zip(*self.probs.items())
-        return random.choices(vals, weights=weights, k=1)[0] 
+        return rng.choices(vals, weights=weights, k=1)[0]
     
 
     def __repr__(self) -> str:
@@ -160,12 +162,17 @@ class ConditionalDiscreteDistribution(BaseDistribution):
         probs = [p / total for p in probs]
         return dict(zip(self.labels, probs))
 
-    def sample_given(self, parent_values: Dict[str, Any]) -> Any:
+    def sample_given(
+        self,
+        parent_values: Dict[str, Any],
+        rng: random.Random | None = None,
+    ) -> Any:
+        rng = rng or random
         probs = self.get_probs(parent_values)
         vals, weights = zip(*probs.items())
-        return random.choices(vals, weights=weights, k=1)[0]
+        return rng.choices(vals, weights=weights, k=1)[0]
 
-    def sample(self) -> Any:
+    def sample(self, rng: random.Random | None = None) -> Any:
         # Not meaningful without parent values
         raise RuntimeError("Use sample_given(parent_values) for conditional distributions.")
     
@@ -236,7 +243,11 @@ class BaseGraphNode(BaseModel):
             return True
         return all(sampled.get(k) == v for k, v in active_when.items())
 
-    def sample(self, parent_values: Optional[Dict[str, Any]] = None) -> Any:
+    def sample(
+        self,
+        parent_values: Optional[Dict[str, Any]] = None,
+        rng: random.Random | None = None,
+    ) -> Any:
         if not self.built_distribution:
             raise ValueError(f"Distribution not built yet for node {self.name}")
 
@@ -245,9 +256,9 @@ class BaseGraphNode(BaseModel):
                 raise ValueError(
                     f"Node {self.name} has conditional distribution; parent values required."
                 )
-            return self.built_distribution.sample_given(parent_values)
+            return self.built_distribution.sample_given(parent_values, rng=rng)
         else:
-            return self.built_distribution.sample()
+            return self.built_distribution.sample(rng=rng)
     
     def to_html(self) -> str:
         name = self.name or "<?>"
@@ -376,7 +387,11 @@ class NumericRangeNode(BaseGraphNode):
         )
 
 
-    def sample(self, parent_values: Optional[Dict[str, Any]] = None) -> Any:
+    def sample(
+        self,
+        parent_values: Optional[Dict[str, Any]] = None,
+        rng: random.Random | None = None,
+    ) -> Any:
         if parent_values is None:
             raise ValueError("NumericRangeNode requires parent_values to sample.")
         if self.from_ not in parent_values:
@@ -450,7 +465,11 @@ class BranchNode(BaseGraphNode):
     default: str
 
 
-    def sample(self, parent_values: Optional[Dict[str, Any]] = None) -> Any:
+    def sample(
+        self,
+        parent_values: Optional[Dict[str, Any]] = None,
+        rng: random.Random | None = None,
+    ) -> Any:
         if parent_values is None:
             raise ValueError("BranchNode requires parent_values to sample.")        
         # Simple rule language: [{"if": {"operable": True}, "then": "surgery"}, ...]
@@ -660,6 +679,8 @@ class TransformationGraph(BaseModel):
     def sample_one(
         self,
         initial_state: Optional[Dict[str, Any]] = None,
+        *,
+        rng: random.Random | None = None,
     ) -> Dict[str, Any]:
         """
         Sample a single joint assignment for all nodes,
@@ -681,13 +702,13 @@ class TransformationGraph(BaseModel):
                 continue
 
             if isinstance(node, BranchNode):
-                sampled[name] = node.sample(parent_values=sampled)
+                sampled[name] = node.sample(parent_values=sampled, rng=rng)
             elif isinstance(node.built_distribution, ConditionalDiscreteDistribution):
-                sampled[name] = node.sample(parent_values=sampled)
+                sampled[name] = node.sample(parent_values=sampled, rng=rng)
             elif isinstance(node, NumericRangeNode):
-                sampled[name] = node.sample(parent_values=sampled)
+                sampled[name] = node.sample(parent_values=sampled, rng=rng)
             else:
-                sampled[name] = node.sample()
+                sampled[name] = node.sample(rng=rng)
             
         return sampled
 
@@ -695,9 +716,14 @@ class TransformationGraph(BaseModel):
         self,
         n: int,
         initial_state: Optional[Dict[str, Any]] = None,
+        *,
+        rng: random.Random | None = None,
     ) -> List[Dict[str, Any]]:
         """Convenience: draw n independent samples."""
-        return [self.sample_one(initial_state=initial_state) for _ in range(n)]
+        return [
+            self.sample_one(initial_state=initial_state, rng=rng)
+            for _ in range(n)
+        ]
     
 
     def describe(self) -> str:
