@@ -3,16 +3,22 @@ name = "scoop"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
-    "omop-alchemy>=0.2.6",
+    "omop-alchemy>=0.9.0,<1.0.0",
     "omop-graph>=0.1.3",
     "pandas>=3.0.2",
     "psycopg2-binary>=2.9.11",
     "pydantic>=2.12.3",
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
+    "hemonc-import",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3",
 ]
 
 [build-system]
@@ -22,3 +28,6 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["scoop"]
+
+[tool.uv.sources]
+hemonc-import = { path = "../hemonc_import/hemonc_import", editable = true }
