@@ -67,12 +67,12 @@ If the answer is yes, it is probably a good registry entry.
 
 ### 3. Create The Profile Folder Structure
 
-For a new disease area, create a peer directory under [`scoop/configuration/profiles/`](../scoop/configuration/profiles).
+For a new disease area, create a peer directory under [`scoop/profiles/`](../scoop/profiles).
 
 For example:
 
 ```text
-scoop/configuration/profiles/<disease>/
+scoop/profiles/<disease>/
   profile.yaml
   <disease>_stg1.yaml
   <disease>_advanced.yaml
@@ -94,7 +94,7 @@ If your disease does not divide naturally by stage, divide by the same clinical 
 
 ### 4. Build The Transformation Graphs
 
-Graph files are loaded through the transformation graph system in [`transformation_graph.py`](../scoop/configuration/transformation_graph.py).
+Graph files are loaded through the transformation graph system in [`graph.py`](../scoop/guidelines/graph.py).
 
 Current node types are:
 

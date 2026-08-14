@@ -8,7 +8,7 @@ Current pages:
 - [HemOnc Grouping Model](./hemonc_grouping_model.md)
 - [Lung Profile Config Map](./lung_profile_config_map.md)
 
-The project currently has its most developed example under [`scoop/configuration/profiles/nsclc/`](/Users/z3061723/Documents/CODE/SCOOP/scoop/configuration/profiles/nsclc), where the NSCLC work shows the current pattern:
+The project currently has its most developed example under [`scoop/profiles/nsclc/`](../scoop/profiles/nsclc), where the NSCLC work shows the current pattern:
 
 - stage-specific transformation graphs
 - a regimen registry

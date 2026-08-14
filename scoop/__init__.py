@@ -35,6 +35,6 @@ try:
 except OSError:
     logger.debug("Skipping file logging because the log directory is not writable.")
 
-from .schema.person import Person  # noqa: E402
-from .schema.condition_occurrence import Condition_Occurrence  # noqa: E402
-from .schema.treatment_episode import Treatment_Episode  # noqa: E402
+from .patients.person import Person  # noqa: E402
+from .patients.condition_occurrence import Condition_Occurrence  # noqa: E402
+from .patients.treatment_episode import Treatment_Episode  # noqa: E402

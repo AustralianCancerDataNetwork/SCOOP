@@ -6,25 +6,25 @@ from unittest.mock import patch
 
 import scoop
 from omop_alchemy.cdm import model as omop_model
-from scoop.configuration import modifier_mapper
-from scoop.configuration.config_loader import (
+from scoop.vocabulary.gateway import modifier_mapper
+from scoop.profiles.manifest import (
     ProfileLoader,
     get_profile_config,
 )
-from scoop.schema import condition_occurrence as condition_occurrence_module
-from scoop.schema.condition_episode import Condition_Episode
-from scoop.schema import episode_base as episode_base_module
-from scoop.schema.episode_base import Episode_Base
-from scoop.schema.condition_occurrence import Condition_Occurrence
-from scoop.schema.object_factories import build_case_bundle, build_condition_episode
-from scoop.schema.person import Person
-from scoop.schema.treatment_episode import build_graph_outcome
-from scoop.utils import condition_resolver as condition_resolver_module
-from scoop.utils.condition_map import ResolvedConditionConcept
-from scoop.utils.modifier_map import ResolvedModifierConcept
+from scoop.patients import condition_occurrence as condition_occurrence_module
+from scoop.patients.condition_episode import Condition_Episode
+from scoop.patients import episode_base as episode_base_module
+from scoop.patients.episode_base import Episode_Base
+from scoop.patients.condition_occurrence import Condition_Occurrence
+from scoop.patients.build import build_case_bundle, build_condition_episode
+from scoop.patients.person import Person
+from scoop.patients.treatment_episode import build_graph_outcome
+from scoop.vocabulary import condition_resolver as condition_resolver_module
+from scoop.vocabulary.condition_map import ResolvedConditionConcept
+from scoop.vocabulary.modifier_map import ResolvedModifierConcept
 
 
-# The entries/alias/resolver layer left with scoop.configuration.regimen_registry
+# The entries/alias/resolver layer left with the deleted legacy registry module
 # (f318297). RegistryYaml exposes source_phases/union_phases/protocols only, and
 # ProfileLoader no longer attaches a registry to SimulationContext, so anything
 # routing a graph endpoint through a registry entry cannot run yet.
@@ -124,7 +124,7 @@ class RegimenAssignmentTests(unittest.TestCase):
         cls._stage_modifier_patch.start()
         cls._metastasis_modifier_patch.start()
         cls.root = Path(__file__).resolve().parents[1]
-        cls.config_root = cls.root / "scoop" / "configuration"
+        cls.config_root = cls.root / "scoop"
         loader = ProfileLoader(cls.config_root)
         cls.context = loader.load(
             get_profile_config(

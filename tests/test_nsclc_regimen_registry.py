@@ -8,13 +8,13 @@ from unittest.mock import patch
 from pydantic import ValidationError
 import yaml
 
-from scoop.configuration.config_loader import (
+from scoop.profiles.manifest import (
     list_profiles,
     load_routed_profile,
     load_profile_manifest,
     load_transformation_graph,
 )
-from scoop.configuration.protocol_registry import (
+from scoop.protocols.spec import (
     DEFAULT_CATEGORY_RESTRICTIONS,
     EXCLUDE_RESTRICTION,
     CategoryRestriction,
@@ -24,12 +24,12 @@ from scoop.configuration.protocol_registry import (
     SourcePhaseYaml,
     apply_default_component_requirements,
 )
-from scoop.schema.treatment_episode import extract_active_treatment_endpoints
+from scoop.patients.treatment_episode import extract_active_treatment_endpoints
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY_PATH = ROOT / "scoop" / "configuration" / "profiles" / "nsclc" / "nsclc_protocol_registry.yaml"
-GRAPH_DIR = ROOT / "scoop" / "configuration" / "profiles" / "nsclc"
+REGISTRY_PATH = ROOT / "scoop" / "profiles" / "nsclc" / "nsclc_protocol_registry.yaml"
+GRAPH_DIR = ROOT / "scoop" / "profiles" / "nsclc"
 STAGE_SPECIFIC_GRAPHS = [
     "nsclc_stg1.yaml",
     "nsclc_stg23_resectable.yaml",
@@ -42,7 +42,7 @@ NON_REGISTRY_TREATMENT_STATE_NODES = {"resection_margin"}
 # The registry resolves condition names to HemOnc CUIs through a live session.
 # These tests stub that lookup so registry parsing can be exercised without a
 # database; the values are arbitrary sentinels, not real CUIs.
-CUI_LOOKUP = "scoop.configuration.protocol_registry.condition_cuis_by_names"
+CUI_LOOKUP = "scoop.protocols.spec.condition_cuis_by_names"
 STUB_CONDITION_CUIS = [900001, 900002]
 STUB_SESSION = object()
 
@@ -233,7 +233,7 @@ class NSCLCRegistryTests(unittest.TestCase):
     # --- profile wiring -------------------------------------------------------
 
     def test_profile_manifest_loads(self):
-        manifest = load_profile_manifest("nsclc", base_dir=ROOT / "scoop" / "configuration")
+        manifest = load_profile_manifest("nsclc", base_dir=ROOT / "scoop")
         self.assertEqual(manifest.profile_id, "nsclc")
         self.assertIn("nsclc_stg4_driver", manifest.graphs)
         self.assertEqual(manifest.entry_graph, "nsclc")
@@ -241,10 +241,10 @@ class NSCLCRegistryTests(unittest.TestCase):
             manifest.pathways["nsclc_stage4_nodrivers"],
             "nsclc_stg4_nodrivers",
         )
-        self.assertIn("nsclc", list_profiles(ROOT / "scoop" / "configuration"))
+        self.assertIn("nsclc", list_profiles(ROOT / "scoop"))
 
     def test_routed_runtime_loads_for_nsclc(self):
-        runtime = load_routed_profile("nsclc", base_dir=ROOT / "scoop" / "configuration")
+        runtime = load_routed_profile("nsclc", base_dir=ROOT / "scoop")
         self.assertEqual(runtime.entry_graph_name, "nsclc")
         self.assertIn("nsclc_stage1", runtime.pathway_to_graph)
         self.assertIn("nsclc_stg1", runtime.tail_contexts)

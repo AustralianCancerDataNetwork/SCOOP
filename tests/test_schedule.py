@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from scoop.utils.scheduling import StandardDoseInfo, SystemicPhase
+from scoop.schedule.systemic import StandardDoseInfo, SystemicPhase
 
 SAMPLE_DATE = pd.to_datetime("2020-01-01")
 NUM_SCHEDULES_TO_TRY = 40

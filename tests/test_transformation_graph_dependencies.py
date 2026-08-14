@@ -1,6 +1,6 @@
 import unittest
 
-from scoop.configuration.transformation_graph import TransformationGraph
+from scoop.guidelines.graph import TransformationGraph
 
 
 class TransformationGraphDependencyTests(unittest.TestCase):
