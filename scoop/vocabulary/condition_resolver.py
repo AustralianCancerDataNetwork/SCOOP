@@ -40,9 +40,11 @@ _lung_condition_map = None
 def _get_lung_condition_map():
     global _lung_condition_map
     if _lung_condition_map is None:
-        from scoop.vocabulary.legacy import condition_mapper
+        from scoop.vocabulary.gateway import get_active_vocabulary_mappers
 
-        _lung_condition_map = condition_mapper("lung")
+        _lung_condition_map = get_active_vocabulary_mappers().condition_mapper(
+            "lung"
+        )
     return _lung_condition_map
 
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import Field, model_validator
 from datetime import date
 from scoop.patients.transforms import TransformableBase
-from scoop.vocabulary.legacy import concept_mapper
+from scoop.vocabulary.gateway import get_active_vocabulary_mappers
 from scoop.patients.ids import person_id_seq
 from ..export.omop import OmopExportBundle
 if TYPE_CHECKING:
@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-gender_map = concept_mapper('sex')
+
+def _gender_concept_id(value: str) -> int:
+    return get_active_vocabulary_mappers().concept_mapper("sex")(value)
 
 class Person(TransformableBase):
 
@@ -62,7 +64,7 @@ class Person(TransformableBase):
         },
         "gender_concept_id": {
             "inputs": ["sex"],
-            "transform": lambda p: gender_map(p.sex),
+            "transform": lambda p: _gender_concept_id(p.sex),
             "drop": True,
         },
         # todo: consider extending with mapper for race field
@@ -74,7 +76,7 @@ class Person(TransformableBase):
         return omop_model.Person(
             person_id=self.person_id,
             year_of_birth=date.today().year - self.age,
-            gender_concept_id=gender_map(self.sex),
+            gender_concept_id=_gender_concept_id(self.sex),
             race_concept_id=self.race_concept_id,
             ethnicity_concept_id=self.ethnicity_concept_id,
             gender_source_value=self.sex,

@@ -1,6 +1,6 @@
 from typing import Any, Callable
 
-from scoop.vocabulary.legacy import measurement_mapper, observation_mapper
+from scoop.vocabulary.gateway import get_active_vocabulary_mappers
 from pydantic import BaseModel
 
 
@@ -56,13 +56,18 @@ class TransformableBase(BaseModel):
             value = spec["transform"](self)
             setattr(self, out_field, value)
 
-    def _collect_emitted_outputs(self) -> tuple[dict[str, Any], list[Any], list[Any], set[str]]:
+    def _collect_emitted_outputs(
+        self,
+        transformations: dict[str, dict] | None = None,
+    ) -> tuple[dict[str, Any], list[Any], list[Any], set[str]]:
+        if transformations is None:
+            transformations = self._transformations_for(get_active_vocabulary_mappers())
         field_updates: dict[str, Any] = {}
         measurements = []
         observations = []
         dropped_inputs: set[str] = set()
 
-        for out_field, spec in self.__transformations__.items():
+        for out_field, spec in transformations.items():
             fn: Callable = spec["transform"]
             drop: bool = spec.get("drop", False)
             val = fn(self)
@@ -89,20 +94,31 @@ class TransformableBase(BaseModel):
         return field_updates, measurements, observations, dropped_inputs
 
     def model_dump(self, *args, **kwargs):
+        vocabulary_gateway = kwargs.pop("vocabulary_gateway", None)
         data = super().model_dump(*args, **kwargs)
-        field_updates, measurements, observations, dropped_inputs = self._collect_emitted_outputs()
+        mappers = (
+            vocabulary_gateway.get_mappers()
+            if vocabulary_gateway is not None
+            else get_active_vocabulary_mappers()
+        )
+        transformations = self._transformations_for(mappers)
+        field_updates, measurements, observations, dropped_inputs = (
+            self._collect_emitted_outputs(transformations)
+        )
 
         data.update(field_updates)
         for field_name in dropped_inputs:
             data.pop(field_name, None)
 
         has_measurement_output = any(
-            (spec.get("kind") == "measurement") or ("measurement" in out_field and spec.get("kind") is None)
-            for out_field, spec in self.__transformations__.items()
+            (spec.get("kind") == "measurement")
+            or ("measurement" in out_field and spec.get("kind") is None)
+            for out_field, spec in transformations.items()
         )
         has_observation_output = any(
-            (spec.get("kind") == "observation") or ("observation" in out_field and spec.get("kind") is None)
-            for out_field, spec in self.__transformations__.items()
+            (spec.get("kind") == "observation")
+            or ("observation" in out_field and spec.get("kind") is None)
+            for out_field, spec in transformations.items()
         )
 
         if has_measurement_output:
@@ -114,15 +130,11 @@ class TransformableBase(BaseModel):
     
 
     @classmethod
-    def __pydantic_init_subclass__(cls, **kwargs):
-        """Called automatically after Pydantic has finished initializing the subclass."""
-        super().__pydantic_init_subclass__(**kwargs)
+    def _transformations_for(cls, mappers) -> dict[str, dict]:
+        """Build vocabulary-backed transforms only when a model is serialized."""
 
         emitted = getattr(cls, "__emitted_transforms__", {}) or {}
         base = getattr(cls, "__base_transformations__", {}) or {}
-        emitted_transforms = {**base, **emitted}
-
-        # Build measurement and observation transforms for declared fields
         measurement_transforms = {
             f"{name}_measurement": {
                 "inputs": [name],
@@ -131,7 +143,7 @@ class TransformableBase(BaseModel):
                 "drop": field.drop,
                 "kind": "measurement",
             }
-            for name, field in measurement_mapper.fields.items()
+            for name, field in mappers.measurement_mapper.fields.items()
             if name in cls.model_fields  
         }
 
@@ -143,12 +155,14 @@ class TransformableBase(BaseModel):
                 "drop": field.drop,
                 "kind": "observation",
             }
-            for name, field in observation_mapper.fields.items()
+            for name, field in mappers.observation_mapper.fields.items()
             if name in cls.model_fields  
         }
 
         cls.__transformations__ = {
-            **emitted_transforms,
+            **base,
+            **emitted,
             **measurement_transforms,
             **observation_transforms,
         }
+        return cls.__transformations__

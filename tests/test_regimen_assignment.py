@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import scoop
 from omop_alchemy.cdm import model as omop_model
-from scoop.vocabulary.legacy import modifier_mapper
 from scoop.profiles.manifest import (
     ProfileLoader,
     get_profile_config,
@@ -110,19 +109,7 @@ class RegimenAssignmentTests(unittest.TestCase):
             "_get_lung_condition_map",
             return_value=SimpleNamespace(resolve=fake_resolve),
         )
-        cls._stage_modifier_patch = patch.object(
-            modifier_mapper("cancer_stage"),
-            "sample",
-            side_effect=fake_stage_sample,
-        )
-        cls._metastasis_modifier_patch = patch.object(
-            modifier_mapper("metastasis"),
-            "sample",
-            side_effect=fake_metastasis_sample,
-        )
         cls._condition_map_patch.start()
-        cls._stage_modifier_patch.start()
-        cls._metastasis_modifier_patch.start()
         cls.root = Path(__file__).resolve().parents[1]
         cls.config_root = cls.root / "scoop"
         loader = ProfileLoader(cls.config_root)
@@ -133,6 +120,18 @@ class RegimenAssignmentTests(unittest.TestCase):
                 base_dir=cls.config_root,
             )
         )
+        cls._stage_modifier_patch = patch.object(
+            cls.context.vocabulary_mappers.modifier_mapper("cancer_stage"),
+            "sample",
+            side_effect=fake_stage_sample,
+        )
+        cls._metastasis_modifier_patch = patch.object(
+            cls.context.vocabulary_mappers.modifier_mapper("metastasis"),
+            "sample",
+            side_effect=fake_metastasis_sample,
+        )
+        cls._stage_modifier_patch.start()
+        cls._metastasis_modifier_patch.start()
         cls.registry = getattr(cls.context, "regimen_registry", None)
 
     @classmethod

@@ -14,6 +14,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
+from ..vocabulary.gateway import (
+    DefaultVocabularyGateway,
+    VocabularyGateway,
+    VocabularyMappers,
+)
 from ..vocabulary.concept_map import ConceptMapper
 from ..vocabulary.fields import MeasurementMapper, ObservationMapper
 from ..vocabulary.modifier_map import ModifierMapper
@@ -21,14 +26,11 @@ from .paths import (
     DEFAULT_PROFILE_CONCEPT_MAP_RELPATH,
     DEFAULT_PROFILE_MEASUREMENT_MAP_RELPATH,
     DEFAULT_PROFILE_OBSERVATION_MAP_RELPATH,
-    MAPPERS_DIRNAME,
-    MODIFIER_MAP_FILENAME,
     profile_artifact_relpath,
     profile_manifest_path,
     PROFILES_DIRNAME,
     resolve_config_root,
 )
-from ..vocabulary.database import get_omop_engine
 from .context import set_active_simulation_context
 # from .regimen_registry import RegimenRegistry, load_regimen_registry
 from ..guidelines.graph import TransformationGraph
@@ -72,6 +74,8 @@ class SimulationContext:
     profile_id: str
     profile_name: str
     graph: TransformationGraph
+    vocabulary_gateway: VocabularyGateway
+    vocabulary_mappers: VocabularyMappers
     # regimen_registry: RegimenRegistry
     concept_mapper: ConceptMapper
     modifier_mapper: ModifierMapper
@@ -198,29 +202,23 @@ class RoutedProfileRuntime:
 class ProfileLoader:
     """Loader that materializes mappers, graphs, and registries under one config root."""
 
-    def __init__(self, base_dir: Path):
+    def __init__(
+        self,
+        base_dir: Path,
+        vocabulary_gateway: VocabularyGateway | None = None,
+    ):
         self.base_dir = base_dir
+        self.vocabulary_gateway = vocabulary_gateway or DefaultVocabularyGateway(
+            base_dir
+        )
 
     def load(self, profile: ProfileConfig) -> SimulationContext:
         """Load one graph context and register it as the active simulation context."""
 
-        concept_mapper = ConceptMapper(
-            self.base_dir / profile.concept_map_relpath
-        )
-        modifier_mapper = ModifierMapper(
-            self.base_dir / MAPPERS_DIRNAME / MODIFIER_MAP_FILENAME,
-            engine=get_omop_engine(),
-        )
-
-        measurement_mapper = MeasurementMapper(
-            self.base_dir / profile.measurement_map_relpath,
-            concept_mapper,
-            modifier_mapper,
-        )
-
-        observation_mapper = ObservationMapper(
-            self.base_dir / profile.observation_map_relpath,
-            concept_mapper,
+        vocabulary_mappers = self.vocabulary_gateway.get_mappers(
+            concept_path=self.base_dir / profile.concept_map_relpath,
+            measurement_path=self.base_dir / profile.measurement_map_relpath,
+            observation_path=self.base_dir / profile.observation_map_relpath,
         )
 
         graph = load_transformation_graph(
@@ -234,11 +232,13 @@ class ProfileLoader:
             profile_id=profile.profile_id,
             profile_name=profile.profile_name,
             graph=graph,
+            vocabulary_gateway=self.vocabulary_gateway,
+            vocabulary_mappers=vocabulary_mappers,
             # regimen_registry=regimen_registry,
-            concept_mapper=concept_mapper,
-            modifier_mapper=modifier_mapper,
-            measurement_mapper=measurement_mapper,
-            observation_mapper=observation_mapper,
+            concept_mapper=vocabulary_mappers.concept_mapper,
+            modifier_mapper=vocabulary_mappers.modifier_mapper,
+            measurement_mapper=vocabulary_mappers.measurement_mapper,
+            observation_mapper=vocabulary_mappers.observation_mapper,
         )
         set_active_simulation_context(context)
         return context

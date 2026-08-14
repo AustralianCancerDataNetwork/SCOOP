@@ -4,7 +4,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 from pydantic import Field, model_validator
 from .transforms import TransformableBase
-from scoop.vocabulary.legacy import modifier_mapper
+from scoop.vocabulary.gateway import get_active_vocabulary_mappers
 from .ids import condition_id_seq
 from ..schedule.timing import random_date
 from ..vocabulary.condition_resolver import get_condition_concept_resolver
@@ -12,8 +12,6 @@ from ..export.omop import OmopExportBundle, as_datetime
 if TYPE_CHECKING:
     from .build import assign_regimen
     from .condition_episode import Condition_Episode
-
-metastasis_modifier_map = modifier_mapper("metastasis")
 
 def _resolved_year_of_diagnosis(condition: "Condition_Occurrence") -> int | None:
     if condition.year_of_diagnosis is not None:
@@ -41,7 +39,9 @@ def _build_metastasis_measurement(condition: "Condition_Occurrence") -> "Measure
     if _stage_label(condition) != "stage_iv":
         return None
 
-    sampled_metastasis = metastasis_modifier_map.sample("stage_iv")
+    sampled_metastasis = get_active_vocabulary_mappers().modifier_mapper(
+        "metastasis"
+    ).sample("stage_iv")
     return Measurement(
         person_id=condition.person_id,
         measurement_concept_id=sampled_metastasis.concept_id,

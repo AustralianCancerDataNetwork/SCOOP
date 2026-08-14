@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, model_validator
 
-from scoop.vocabulary.legacy import episode_mapper
+from scoop.vocabulary.gateway import get_active_vocabulary_mappers
 from .ids import episode_id_seq
 from ..export.omop import OmopExportBundle, as_datetime
 from .transforms import TransformableBase
@@ -133,7 +133,7 @@ class Episode_Base(TransformableBase):
 
     @classmethod
     def _episode_spec(cls):
-        return episode_mapper(cls._episode_mapper_key)
+        return get_active_vocabulary_mappers().episode_mapper(cls._episode_mapper_key)
 
     @classmethod
     def from_object(cls, source_object: Any, **kwargs: Any) -> "Episode_Base":
