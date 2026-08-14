@@ -2645,6 +2645,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+authoring = [
+    { name = "linkml" },
+    { name = "linkml-runtime" },
+]
 dev = [
     { name = "pytest" },
 ]
@@ -2653,6 +2657,8 @@ dev = [
 requires-dist = [
     { name = "hemonc-import", editable = "../hemonc_import/hemonc_import" },
     { name = "ipykernel", specifier = ">=7.1.0" },
+    { name = "linkml", marker = "extra == 'authoring'", specifier = ">=1.9.6" },
+    { name = "linkml-runtime", marker = "extra == 'authoring'", specifier = ">=1.9.5" },
     { name = "omop-alchemy", specifier = ">=0.9.0,<1.0.0" },
     { name = "omop-graph", specifier = ">=0.1.3" },
     { name = "pandas", specifier = ">=3.0.2" },
@@ -2662,7 +2668,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["authoring", "dev"]
 
 [[package]]
 name = "setuptools"

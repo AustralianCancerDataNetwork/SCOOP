@@ -17,6 +17,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+authoring = [
+    "linkml>=1.9.6",
+    "linkml-runtime>=1.9.5",
+]
 dev = [
     "pytest>=9.0.3",
 ]

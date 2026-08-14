@@ -22,10 +22,17 @@ SCLC registry formats.
 From the repository root:
 
 ```bash
-linkml-validate \
-  --schema schema/linkml/regimen_spec.yaml \
-  schema/linkml/examples/nsclc_registry.yaml
+uv run --extra authoring python schema/linkml/validate.py
 ```
+
+Pass one or more authoring files to validate them instead of the canonical example:
+
+```bash
+uv run --extra authoring python schema/linkml/validate.py path/to/registry.yaml
+```
+
+The `authoring` extra contains the LinkML validator and runtime packages. LinkML is
+intentionally not part of SCOOP's runtime dependencies.
 
 The schema covers structural constraints and vocabulary. Runtime rules such as resolving
 phase references, applying category defaults, and resolving condition names through a
