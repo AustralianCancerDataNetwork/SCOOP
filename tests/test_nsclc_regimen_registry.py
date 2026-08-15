@@ -45,10 +45,13 @@ class NSCLCRegistryTests(unittest.TestCase):
     def setUpClass(cls):
         with REGISTRY_PATH.open("r", encoding="utf-8") as handle:
             cls.raw = yaml.safe_load(handle)
-        cls.registry = cls.raw["nsclc"]
-        # `entries` is a legacy block the new RegistrySpec does not parse. It is
-        # still read directly from YAML by the graph-coverage test below.
-        cls.entries = cls.registry["entries"]
+        cls.registry = cls.raw
+        intervention_path = REGISTRY_PATH.with_name("nsclc_interventions.yaml")
+        with intervention_path.open("r", encoding="utf-8") as handle:
+            interventions = yaml.safe_load(handle)
+        cls.interventions = {
+            item["intervention_id"] for item in interventions["interventions"]
+        }
         cls.loaded_registry = RegistrySpec.from_path(REGISTRY_PATH)
 
     # --- registry loading ---------------------------------------------------
@@ -60,13 +63,13 @@ class NSCLCRegistryTests(unittest.TestCase):
     def test_registry_populates_every_section(self):
         registry = self.loaded_registry
         self.assertEqual(set(registry.source_phases), set(self.registry["source_phases"]))
-        self.assertEqual(set(registry.union_phases), set(self.registry["phase_combinations"]))
+        self.assertEqual(set(registry.union_phases), set(self.registry["union_phases"]))
         self.assertEqual(set(registry.protocols), set(self.registry["protocols"]))
 
     def test_default_conditions_are_preserved(self):
         self.assertEqual(
             self.loaded_registry.default_conditions.names,
-            self.registry["conditions"],
+            self.registry["default_conditions"]["names"],
         )
 
     def test_source_phases_are_labelled_from_yaml_keys(self):
@@ -75,12 +78,8 @@ class NSCLCRegistryTests(unittest.TestCase):
 
     def test_source_phases_inherit_default_conditions_when_omitted(self):
         for phase_id, phase in self.loaded_registry.source_phases.items():
-            if "conditions" not in (self.registry["source_phases"][phase_id] or {}):
-                self.assertEqual(
-                    phase.conditions,
-                    self.loaded_registry.default_conditions,
-                    phase_id,
-                )
+            raw_conditions = self.registry["source_phases"][phase_id]["conditions"]
+            self.assertEqual(phase.conditions, ConditionRef.model_validate(raw_conditions))
 
     def test_protocols_reference_known_source_phases(self):
         known = set(self.loaded_registry.source_phases)
@@ -97,8 +96,9 @@ class NSCLCRegistryTests(unittest.TestCase):
                 self.assertIn(phase_id, known, f"{union_id} -> {phase_id}")
 
     def test_from_path_is_not_hardcoded_to_nsclc(self):
-        """Registry parsing keys off the top-level label, not a fixed profile."""
-        relabelled = {"bladder": self.raw["nsclc"]}
+        """Registry parsing uses the declared label, not a fixed profile."""
+        relabelled = dict(self.raw)
+        relabelled["label"] = "bladder"
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "bladder_protocol_registry.yaml"
             target.write_text(yaml.safe_dump(relabelled), encoding="utf-8")
@@ -249,7 +249,13 @@ class NSCLCRegistryTests(unittest.TestCase):
             CategoryRule.model_validate({"type": "at_most", "amount": 1})
 
     def test_protocol_generate_reads_phases_and_optional_phases(self):
-        protocol = ProtocolSpec.generate("port_then_osi", {"phases": ["surgery_only", "port"]})
+        protocol = ProtocolSpec.generate(
+            "port_then_osi",
+            {
+                "protocol_id": "port_then_osi",
+                "source_phase_ids": ["surgery_only", "port"],
+            },
+        )
         self.assertEqual(protocol.protocol_id, "port_then_osi")
         self.assertEqual(protocol.source_phase_ids, ["surgery_only", "port"])
         self.assertIsNone(protocol.optional_phases)
@@ -306,7 +312,7 @@ class NSCLCRegistryTests(unittest.TestCase):
 
     def test_stage_specific_graph_endpoints_are_covered(self):
         pattern = re.compile(r"^\s+treatment_episode\.([A-Za-z0-9_]+):", re.MULTILINE)
-        covered = set(self.entries)
+        covered = self.interventions
         for graph_name in STAGE_SPECIFIC_GRAPHS:
             text = (GRAPH_DIR / graph_name).read_text(encoding="utf-8")
             endpoints = set(pattern.findall(text))
@@ -408,7 +414,7 @@ class NSCLCRegistryTests(unittest.TestCase):
         )
         cases = [
             (
-                "neoadjuvant_chemo_ici",
+                "neoadjuvant_or_perioperative_ici_w_chemo",
                 {
                     "person.chemo_ici_eligible": "eligible",
                     "condition_occurrence.biomarker": "none",

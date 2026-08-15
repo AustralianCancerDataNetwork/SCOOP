@@ -170,6 +170,10 @@ classes:
         multivalued: true
         range: string
         minimum_cardinality: 1
+      selection_requires:
+        multivalued: true
+        range: string
+        description: Graph fields that must be present before candidate selection.
       optional_phases:
         multivalued: true
         inlined_as_list: true

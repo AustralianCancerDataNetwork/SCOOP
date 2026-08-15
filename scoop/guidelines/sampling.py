@@ -15,6 +15,7 @@ class GuidelineSample:
     values: Mapping[str, object]
     source_profile: str
     seed: int | None = None
+    state_node_exemptions: frozenset[str] = frozenset()
 
     @property
     def as_dict(self) -> dict[str, object]:
@@ -42,12 +43,24 @@ class NoDecision:
     source_profile: str | None = None
 
 
+class AmbiguousDecision(ValueError):
+    """Raised when a guideline sample activates more than one intervention endpoint."""
+
+    def __init__(self, endpoints: list[str] | tuple[str, ...]):
+        self.endpoints = tuple(sorted(endpoints))
+        super().__init__(
+            "Ambiguous treatment decision; active endpoints: "
+            + ", ".join(self.endpoints)
+        )
+
+
 def sample(
     graph: "TransformationGraph",
     seed: int,
     *,
     source_profile: str = "",
     initial_state: Mapping[str, object] | None = None,
+    state_node_exemptions: frozenset[str] = frozenset(),
 ) -> GuidelineSample:
     """Sample one graph realization with an isolated, explicit random seed."""
 
@@ -61,14 +74,43 @@ def sample(
         values=dict(values),
         source_profile=source_profile,
         seed=seed,
+        state_node_exemptions=state_node_exemptions,
     )
 
 
 def decide(sample: GuidelineSample) -> TreatmentDecision | NoDecision:
-    """Declare the decision boundary without deriving a decision implicitly."""
+    """Extract one explicit treatment endpoint from a typed graph sample."""
 
-    raise NotImplementedError(
-        "Treatment decision extraction is intentionally deferred to Phase 5."
+    if not isinstance(sample, GuidelineSample):
+        raise TypeError("decide() requires a GuidelineSample")
+
+    endpoints = sorted(
+        key.split(".", 1)[1]
+        for key, value in sample.values.items()
+        if key.startswith("treatment_episode.")
+        and value is not None
+        and key.split(".", 1)[1] not in sample.state_node_exemptions
+    )
+    if not endpoints:
+        return NoDecision(
+            reason="no active treatment endpoint",
+            source_profile=sample.source_profile,
+        )
+    if len(endpoints) > 1:
+        raise AmbiguousDecision(endpoints)
+
+    endpoint = endpoints[0]
+    modifiers = {
+        key: value
+        for key, value in sample.values.items()
+        if not key.startswith("treatment_episode.") and value is not None
+    }
+    return TreatmentDecision(
+        decision_id=endpoint,
+        graph_endpoint=endpoint,
+        modifiers=modifiers,
+        source_profile=sample.source_profile,
+        raw_sample=sample,
     )
 
 

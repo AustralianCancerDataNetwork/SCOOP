@@ -123,14 +123,12 @@ def test_spine_placeholders_fail_closed_without_legacy_fallbacks():
 
     with pytest.raises(TypeError, match="TransformationGraph"):
         sample(None, seed=1)
-    with pytest.raises(NotImplementedError, match="Phase 5"):
-        decide(GuidelineSample({}, "fixture"))
-    with pytest.raises(NotImplementedError, match="Phase 5"):
+    assert isinstance(decide(GuidelineSample({}, "fixture")), NoDecision)
+    with pytest.raises(TypeError, match="InterventionBridge"):
         resolve(None, decision, context)
     with pytest.raises(NotImplementedError, match="Phase 4"):
         assemble(None, FakeHemOncGateway())
-    with pytest.raises(NotImplementedError, match="Phase 5"):
-        select([], context, seed=1)
+    assert isinstance(select([], context, seed=1), NoSelection)
     with pytest.raises(NotImplementedError, match="Phase 7"):
         schedule(None, date(2026, 1, 1), seed=1)
     with pytest.raises(NotImplementedError, match="Phase 8"):

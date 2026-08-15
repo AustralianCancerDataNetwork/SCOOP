@@ -34,7 +34,9 @@ from .paths import (
 from .context import set_active_simulation_context
 # from .regimen_registry import RegimenRegistry, load_regimen_registry
 from ..guidelines.graph import TransformationGraph
-from ..guidelines.sampling import GuidelineSample
+from ..guidelines.sampling import GuidelineSample, sample
+from ..protocols.spec import RegistrySpec
+from ..selection.interventions import InterventionCatalog
 
 if TYPE_CHECKING:
     from ..patients.treatment_episode import GraphOutcome
@@ -51,6 +53,7 @@ class ProfileConfig:
     concept_map_relpath: Path
     measurement_map_relpath: Path
     observation_map_relpath: Path
+    interventions_relpath: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +69,7 @@ class ProfileManifest:
     observation_map: Path
     entry_graph: str | None = None
     pathways: dict[str, str] | None = None
+    interventions: Path | None = None
 
 
 @dataclass
@@ -82,6 +86,7 @@ class SimulationContext:
     modifier_mapper: ModifierMapper
     measurement_mapper: MeasurementMapper
     observation_mapper: ObservationMapper
+    intervention_catalog: InterventionCatalog | None = None
 
     def sample_patient(
         self,
@@ -112,6 +117,11 @@ class SimulationContext:
             seed,
             source_profile=self.profile_name,
             initial_state=initial_state,
+            state_node_exemptions=(
+                self.intervention_catalog.state_node_exemptions
+                if self.intervention_catalog is not None
+                else frozenset()
+            ),
         )
 
     def sample_regimen_outcome(self) -> "GraphOutcome":
@@ -188,6 +198,11 @@ class RoutedProfileRuntime:
             values=dict(entry_values),
             source_profile=self.entry_context.profile_name,
             seed=seed,
+            state_node_exemptions=(
+                self.entry_context.intervention_catalog.state_node_exemptions
+                if self.entry_context.intervention_catalog is not None
+                else frozenset()
+            ),
         )
         pathway = entry_guideline.values.get("condition_episode.pathway")
         if pathway is None:
@@ -223,6 +238,11 @@ class RoutedProfileRuntime:
             values=dict(final_values),
             source_profile=tail_context.profile_name,
             seed=seed,
+            state_node_exemptions=(
+                tail_context.intervention_catalog.state_node_exemptions
+                if tail_context.intervention_catalog is not None
+                else frozenset()
+            ),
         )
         try:
             graph_outcome = build_graph_outcome(
@@ -278,6 +298,16 @@ class ProfileLoader:
         #     self.base_dir / profile.regimen_registry_relpath
         # )
 
+        intervention_catalog = None
+        if profile.interventions_relpath is not None:
+            registry = RegistrySpec.from_path(
+                self.base_dir / profile.regimen_registry_relpath
+            )
+            intervention_catalog = InterventionCatalog.from_path(
+                self.base_dir / profile.interventions_relpath,
+                protocols=registry.protocols,
+            )
+
         context = SimulationContext(
             profile_id=profile.profile_id,
             profile_name=profile.profile_name,
@@ -289,6 +319,7 @@ class ProfileLoader:
             modifier_mapper=vocabulary_mappers.modifier_mapper,
             measurement_mapper=vocabulary_mappers.measurement_mapper,
             observation_mapper=vocabulary_mappers.observation_mapper,
+            intervention_catalog=intervention_catalog,
         )
         set_active_simulation_context(context)
         return context
@@ -320,11 +351,28 @@ def load_profile_manifest(
     with manifest_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
 
-    manifest = raw.get("profile", raw)
-    graphs = {
-        graph_name: Path(graph_path)
-        for graph_name, graph_path in manifest["graphs"].items()
-    }
+    if not isinstance(raw, dict) or set(raw) != {"profile"}:
+        raise ValueError("profile manifest must contain exactly one profile field")
+    manifest = raw["profile"]
+    if not isinstance(manifest, dict):
+        raise ValueError("profile manifest profile must be a mapping")
+    if profile_id == "nsclc":
+        graphs = {
+            graph["graph_id"]: Path(graph["path"])
+            for graph in manifest["graphs"]
+        }
+        pathways = {
+            pathway["pathway_id"]: pathway["graph_id"]
+            for pathway in manifest.get("pathways", [])
+        }
+    else:
+        # Bladder and SCLC remain on their pre-cutover manifest spelling until
+        # their own profile migrations. Keep this boundary explicit and local.
+        graphs = {
+            graph_name: Path(graph_path)
+            for graph_name, graph_path in manifest["graphs"].items()
+        }
+        pathways = dict(manifest.get("pathways", {}))
     if manifest["default_graph"] not in graphs:
         raise ValueError(
             f"Profile '{profile_id}' default graph '{manifest['default_graph']}' "
@@ -347,7 +395,12 @@ def load_profile_manifest(
             mappers.get("observation_map", DEFAULT_PROFILE_OBSERVATION_MAP_RELPATH)
         ),
         entry_graph=manifest.get("entry_graph"),
-        pathways=dict(manifest.get("pathways", {})),
+        pathways=pathways,
+        interventions=(
+            Path(manifest["interventions"])
+            if manifest.get("interventions") is not None
+            else None
+        ),
     )
     if loaded.profile_id != profile_id:
         raise ValueError(
@@ -365,6 +418,7 @@ def load_profile_manifest(
                 f"Profile '{profile_id}' pathway '{pathway}' points to unknown "
                 f"graph '{graph_name}'."
             )
+    _validate_declared_interventions(loaded, config_root)
     return loaded
 
 
@@ -401,6 +455,11 @@ def get_profile_config(
         ),
         observation_map_relpath=profile_artifact_relpath(
             profile_id, manifest.observation_map
+        ),
+        interventions_relpath=(
+            profile_artifact_relpath(profile_id, manifest.interventions)
+            if manifest.interventions is not None
+            else None
         ),
     )
 
@@ -472,3 +531,38 @@ def load_transformation_graph(yaml_path: str) -> TransformationGraph:
 
     tg = TransformationGraph.model_validate(raw['graph'])#(**raw['graph'])
     return tg
+
+
+def _validate_declared_interventions(
+    manifest: ProfileManifest,
+    config_root: Path,
+) -> None:
+    if manifest.interventions is None:
+        return
+    registry_path = profile_artifact_relpath(
+        manifest.profile_id,
+        manifest.regimen_registry,
+    )
+    catalog = InterventionCatalog.from_path(
+        config_root / profile_artifact_relpath(
+            manifest.profile_id,
+            manifest.interventions,
+        ),
+        protocols=RegistrySpec.from_path(config_root / registry_path).protocols,
+    )
+    if catalog.profile_id != manifest.profile_id:
+        raise ValueError(
+            f"Intervention profile id mismatch: expected {manifest.profile_id!r}, "
+            f"found {catalog.profile_id!r}"
+        )
+
+    graph_nodes: set[str] = set()
+    for graph_path in manifest.graphs.values():
+        path = config_root / profile_artifact_relpath(
+            manifest.profile_id,
+            graph_path,
+        )
+        with path.open("r", encoding="utf-8") as handle:
+            raw = yaml.safe_load(handle) or {}
+        graph_nodes.update((raw.get("graph", {}).get("nodes", {}) or {}).keys())
+    catalog.validate_coverage(graph_nodes=graph_nodes)

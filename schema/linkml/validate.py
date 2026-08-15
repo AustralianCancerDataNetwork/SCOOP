@@ -1,9 +1,16 @@
-"""Validate canonical regimen specifications with the LinkML runtime.
+"""Validate canonical SCOOP authoring documents with the LinkML runtime.
 
 This is authoring tooling rather than a runtime SCOOP dependency. Run it from the
 repository root with::
 
     uv run --extra authoring python schema/linkml/validate.py
+
+For a different authoring schema, provide both the schema and its tree-root class::
+
+    uv run --extra authoring python schema/linkml/validate.py \
+        --schema schema/linkml/intervention_spec.yaml \
+        --target-class InterventionCatalog \
+        schema/linkml/examples/nsclc_interventions.yaml
 """
 
 from __future__ import annotations
@@ -20,7 +27,7 @@ SCHEMA_PATH = Path(__file__).with_name("regimen_spec.yaml")
 EXAMPLE_PATH = Path(__file__).parent / "examples" / "nsclc_registry.yaml"
 
 
-def validate_registry(
+def validate_document(
     data_path: Path,
     *,
     schema_path: Path = SCHEMA_PATH,
@@ -42,15 +49,30 @@ def validate_registry(
     return validate(instance, str(schema_path), target_class=target_class)
 
 
+def validate_registry(
+    data_path: Path,
+    *,
+    schema_path: Path = SCHEMA_PATH,
+    target_class: str = "RegistrySpec",
+) -> Any:
+    """Backward-compatible name for validating a regimen registry."""
+
+    return validate_document(
+        data_path,
+        schema_path=schema_path,
+        target_class=target_class,
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate canonical SCOOP regimen YAML with LinkML."
+        description="Validate canonical SCOOP authoring YAML with LinkML."
     )
     parser.add_argument(
         "paths",
         nargs="*",
         type=Path,
-        help="YAML files to validate (defaults to the canonical NSCLC example).",
+        help="YAML files to validate (defaults to the canonical registry example).",
     )
     parser.add_argument(
         "--schema",
@@ -73,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for path in paths:
         try:
-            report = validate_registry(
+            report = validate_document(
                 path,
                 schema_path=args.schema,
                 target_class=args.target_class,

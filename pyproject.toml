@@ -38,8 +38,13 @@ include = ["scoop*"]
 [tool.setuptools.data-files]
 "schema/linkml" = [
     "schema/linkml/regimen_spec.yaml",
+    "schema/linkml/intervention_spec.yaml",
+    "schema/linkml/profile_manifest.yaml",
     "schema/linkml/README.md",
+    "schema/linkml/validate.py",
     "schema/linkml/examples/nsclc_registry.yaml",
+    "schema/linkml/examples/nsclc_interventions.yaml",
+    "schema/linkml/examples/nsclc_profile.yaml",
 ]
 
 [project.entry-points."omop.config"]

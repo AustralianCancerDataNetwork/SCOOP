@@ -1,0 +1,108 @@
+id: https://w3id.org/scoop/profile-manifest
+name: scoop_profile_manifest
+title: SCOOP profile manifest
+description: >-
+  The author-facing, canonical schema for a SCOOP disease-profile manifest.
+  A manifest names the graphs, regimen registry, intervention catalog, and
+  vocabulary resources that make up one profile.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  scoop: https://w3id.org/scoop/
+
+default_prefix: scoop
+default_range: string
+imports:
+  - linkml:types
+
+classes:
+  ProfileDocument:
+    tree_root: true
+    description: A profile manifest document with its explicit profile wrapper.
+    attributes:
+      profile:
+        description: The profile composition declaration.
+        required: true
+        inlined: true
+        range: ProfileManifest
+
+  ProfileManifest:
+    description: The named resources and routing declarations for one profile.
+    attributes:
+      profile_id:
+        description: Stable identifier for the disease profile.
+        identifier: true
+        required: true
+        range: string
+      default_graph:
+        description: Graph used when no graph is selected explicitly.
+        required: true
+        range: string
+      entry_graph:
+        description: Graph used as the entry point for routed profiles.
+        range: string
+      regimen_registry:
+        description: Relative path to the profile regimen registry.
+        required: true
+        range: string
+      interventions:
+        description: Relative path to the profile intervention catalog.
+        range: string
+      graphs:
+        description: Named transformation graph resources available to the profile.
+        required: true
+        multivalued: true
+        inlined_as_list: true
+        range: GraphResource
+        minimum_cardinality: 1
+      pathways:
+        description: Pathway names mapped to graph resources.
+        multivalued: true
+        inlined_as_list: true
+        range: Pathway
+      mappers:
+        description: Vocabulary resources used by this profile.
+        required: true
+        range: MapperResources
+
+  GraphResource:
+    description: A named transformation graph file.
+    attributes:
+      graph_id:
+        description: Stable graph name used by routing declarations.
+        identifier: true
+        required: true
+        range: string
+      path:
+        description: Relative path to the graph YAML file.
+        required: true
+        range: string
+
+  Pathway:
+    description: A named pathway mapped to one graph resource.
+    attributes:
+      pathway_id:
+        description: Stable pathway name exposed by the profile.
+        identifier: true
+        required: true
+        range: string
+      graph_id:
+        description: Graph resource selected for this pathway.
+        required: true
+        range: string
+
+  MapperResources:
+    description: Vocabulary mapper files used by the profile.
+    attributes:
+      concept_map:
+        description: Relative path to the concept mapper resource.
+        required: true
+        range: string
+      measurement_map:
+        description: Relative path to the measurement mapper resource.
+        required: true
+        range: string
+      observation_map:
+        description: Relative path to the observation mapper resource.
+        required: true
+        range: string

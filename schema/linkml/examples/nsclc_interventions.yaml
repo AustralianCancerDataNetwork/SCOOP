@@ -1,0 +1,38 @@
+profile_id: nsclc
+version: 1
+state_node_exemptions:
+  - resection_margin
+interventions:
+  - intervention_id: sbrt
+    requires:
+      - condition_episode.operability
+    resolution:
+      phase:
+        id: definitive_rt
+        technique: sbrt
+  - intervention_id: met_intervention
+    requires:
+      - condition_occurrence.biomarker
+    resolution:
+      choice:
+        intervention_ids:
+          - met_tki
+          - met_ptdb
+          - met_ptdb_w_ici
+  - intervention_id: concurrent_crt
+    requires:
+      - condition_episode.crt_eligible
+    resolution:
+      recipe:
+        sequence_template: concurrent
+        steps:
+          - ref:
+              phase:
+                id: conc_crt
+            timing: concurrent
+  - intervention_id: surgery_only
+    requires:
+      - condition_episode.operability
+    resolution:
+      non_hemonc:
+        label: surgery

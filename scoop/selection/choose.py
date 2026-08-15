@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+import random
+from collections.abc import Mapping
 
 from ..protocols.candidates import ProtocolCandidate, RegimenCandidate
 
@@ -35,8 +36,44 @@ def select(
     context: PatientContext,
     seed: int,
 ) -> SelectedProtocol | NoSelection:
-    """Declare the selection boundary without choosing a regimen yet."""
+    """Select one protocol and one regimen per phase reproducibly."""
 
-    raise NotImplementedError(
-        "Candidate selection is intentionally deferred to Phase 5."
+    if not isinstance(context, PatientContext):
+        raise TypeError("select() requires a PatientContext")
+    if not candidates:
+        return NoSelection("No protocol candidates were supplied")
+
+    eligible: list[ProtocolCandidate] = []
+    rejected: list[str] = []
+    for candidate in candidates:
+        required = tuple(candidate.selection_requires)
+        missing = sorted(field for field in required if field not in context.values)
+        if missing:
+            rejected.append(
+                f"{candidate.name}: missing declared selection input(s) {missing}"
+            )
+            continue
+        if not candidate.phases:
+            rejected.append(f"{candidate.name}: no phases were declared")
+            continue
+        if any(not phase.options for phase in candidate.phases):
+            rejected.append(f"{candidate.name}: one or more phases have no candidates")
+            continue
+        eligible.append(candidate)
+
+    if not eligible:
+        reason = "No protocol candidate satisfies the declared selection context"
+        if rejected:
+            reason += ": " + "; ".join(rejected)
+        return NoSelection(reason)
+
+    rng = random.Random(seed)
+    protocol = rng.choice(eligible)
+    selected = tuple(
+        SelectedRegimen(
+            phase_id=phase.label or f"phase_{index}",
+            regimen=rng.choice(phase.options),
+        )
+        for index, phase in enumerate(protocol.phases, start=1)
     )
+    return SelectedProtocol(protocol_id=protocol.name, phases=selected)

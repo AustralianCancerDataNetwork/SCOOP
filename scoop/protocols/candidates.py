@@ -179,6 +179,7 @@ class ProtocolCandidate(BaseModel):
     requirement_type: str | None = None
     requirement_element: str | None = None
     fan_out_reason: FanOutReason | None = None
+    selection_requires: tuple[str, ...] = ()
 
     @classmethod
     def from_yaml(cls, name: str, 
@@ -325,6 +326,7 @@ def assemble(spec: ProtocolSpec, gateway: HemOncGateway) -> list[ProtocolCandida
             ProtocolCandidate(
                 name=spec.protocol_id,
                 phases=_ordered_phases(spec.source_phase_ids, base_phases),
+                selection_requires=spec.selection_requires,
             )
         ]
 
@@ -354,6 +356,7 @@ def assemble(spec: ProtocolSpec, gateway: HemOncGateway) -> list[ProtocolCandida
                 name=spec.protocol_id,
                 phases=_ordered_phases(spec.source_phase_ids, restricted),
                 fan_out_reason=SharedComponent(component),
+                selection_requires=spec.selection_requires,
             )
         )
 
@@ -370,6 +373,7 @@ def assemble(spec: ProtocolSpec, gateway: HemOncGateway) -> list[ProtocolCandida
                 omitted,
             ),
             fan_out_reason=OptionalPhaseOmitted(optional_id),
+            selection_requires=spec.selection_requires,
         )
     )
     return fan_out

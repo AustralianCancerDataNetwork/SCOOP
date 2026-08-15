@@ -1,0 +1,313 @@
+profile_id: nsclc
+version: 1
+state_node_exemptions:
+- resection_margin
+interventions:
+- intervention_id: sbrt
+  requires:
+  - condition_episode.operability
+  resolution:
+    phase:
+      id: definitive_rt
+      technique: sbrt
+- intervention_id: surgery_only
+  requires:
+  - condition_episode.operability
+  - treatment_episode.resection_margin
+  resolution:
+    non_hemonc:
+      label: surgery
+- intervention_id: port
+  requires:
+  - condition_episode.operability
+  - treatment_episode.resection_margin
+  resolution:
+    protocol: surgery_then_port
+- intervention_id: port_adjuvant_osimertinib
+  requires:
+  - condition_episode.operability
+  - treatment_episode.resection_margin
+  - condition_occurrence.biomarker
+  resolution:
+    protocol: port_adjuvant_osimertinib
+- intervention_id: neoadjuvant_or_perioperative_ici_w_chemo
+  requires:
+  - person.chemo_ici_eligible
+  - condition_occurrence.biomarker
+  resolution:
+    protocol: neoadjuvant_or_perioperative_ici_w_chemo
+- intervention_id: adjuvant_pembrolizumab
+  requires:
+  - person.chemo_ici_eligible
+  - condition_occurrence.pdl1_binary
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: adjuvant_pembrolizumab
+- intervention_id: adjuvant_atezolizumab_pembrolizumab
+  requires:
+  - person.chemo_ici_eligible
+  - condition_occurrence.pdl1_binary
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: adjuvant_atezolizumab_pembrolizumab
+- intervention_id: adjuvant_osimertinib
+  requires:
+  - condition_occurrence.biomarker
+  - condition_episode.chemo_eligible
+  resolution:
+    phase:
+      id: adjuvant_osimertinib
+- intervention_id: adjuvant_cisplatin_osimertinib
+  requires:
+  - condition_occurrence.biomarker
+  - condition_episode.chemo_eligible
+  resolution:
+    protocol: adjuvant_cisplatin_osimertinib
+- intervention_id: adjuvant_optchemo_alectinib
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: adjuvant_optchemo_alectinib
+- intervention_id: radiotherapy
+  requires:
+  - condition_episode.crt_eligible
+  resolution:
+    phase:
+      id: definitive_rt
+- intervention_id: sequential_crt
+  requires:
+  - condition_episode.sequential_crt_eligible
+  - condition_occurrence.egfr
+  - condition_occurrence.pdl1_binary
+  resolution:
+    protocol: seq_crt
+- intervention_id: concurrent_crt
+  requires:
+  - condition_episode.crt_eligible
+  - condition_episode.sequential_crt_eligible
+  - condition_occurrence.egfr
+  - condition_occurrence.pdl1_binary
+  resolution:
+    recipe:
+      sequence_template: concurrent
+      steps:
+      - ref:
+          phase:
+            id: conc_crt
+        timing: concurrent
+- intervention_id: sequential_crt_adjuvant_osimertinib
+  requires:
+  - condition_episode.sequential_crt_eligible
+  - condition_occurrence.egfr
+  resolution:
+    protocol: seq_crt_followed_by_osimertinib
+- intervention_id: concurrent_crt_adjuvant_osimertinib
+  requires:
+  - condition_episode.crt_eligible
+  - condition_episode.sequential_crt_eligible
+  - condition_occurrence.egfr
+  resolution:
+    protocol: conc_crt_followed_by_osimertinib
+- intervention_id: sequential_crt_adjuvant_durvalumab
+  requires:
+  - condition_episode.sequential_crt_eligible
+  - condition_occurrence.egfr
+  - condition_occurrence.pdl1_binary
+  resolution:
+    protocol: seq_crt_followed_by_durvalumab
+- intervention_id: concurrent_crt_adjuvant_durvalumab
+  requires:
+  - condition_episode.crt_eligible
+  - condition_episode.sequential_crt_eligible
+  - condition_occurrence.egfr
+  - condition_occurrence.pdl1_binary
+  resolution:
+    protocol: conc_crt_followed_by_durvalumab
+- intervention_id: egfr_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: egfr_intervention
+- intervention_id: alk_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: alk_intervention
+- intervention_id: ros1_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: ros1_intervention
+- intervention_id: braf_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: braf_intervention
+- intervention_id: ret_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: ret_intervention
+- intervention_id: erbb2_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: erbb2_intervention
+- intervention_id: ntrk_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    phase:
+      id: ntrk_intervention
+- intervention_id: met_intervention
+  requires:
+  - condition_occurrence.biomarker
+  resolution:
+    choice:
+      intervention_ids:
+      - met_tki
+      - met_ptdb
+      - met_ptdb_w_ici
+- intervention_id: best_supportive_care
+  requires:
+  - person.performance_status_v_frail
+  resolution:
+    non_hemonc:
+      label: best_supportive_care
+- intervention_id: platinum_doublet_3rd_gen_agent
+  requires:
+  - condition_occurrence.morphology
+  - person.performance_status_v_frail
+  - person.ici_eligible
+  resolution:
+    phase:
+      id: platinum_doublet_3rd_gen_agent
+- intervention_id: platinum_doublet_nonsquamous
+  requires:
+  - condition_occurrence.morphology
+  - person.performance_status_v_frail
+  - person.ici_eligible
+  resolution:
+    phase:
+      id: platinum_doublet_nonsquamous
+- intervention_id: ici_w_chemo_nonsquamous
+  requires:
+  - condition_occurrence.pdl1
+  - condition_occurrence.morphology
+  - person.ici_eligible
+  - person.performance_status_frail
+  resolution:
+    phase:
+      id: ici_w_chemo_nonsquamous
+- intervention_id: ici_w_chemo_squamous
+  requires:
+  - condition_occurrence.pdl1
+  - condition_occurrence.morphology
+  - person.ici_eligible
+  - person.performance_status_frail
+  resolution:
+    phase:
+      id: ici_w_chemo_squamous
+- intervention_id: ici_monotherapy
+  requires:
+  - person.performance_status
+  - person.ici_eligible
+  - condition_occurrence.pdl1
+  resolution:
+    phase:
+      id: ici_monotherapy
+- intervention_id: chemotherapy_or_atezolizumab_squamous
+  requires:
+  - person.performance_status
+  - person.ici_eligible
+  - condition_occurrence.morphology
+  - condition_occurrence.pdl1_binary_50
+  resolution:
+    choice:
+      intervention_ids:
+      - ptdb_squamous
+      - single_chemo_squamous
+      - atezolizumab
+- intervention_id: chemotherapy_or_atezolizumab_nonsquamous
+  requires:
+  - person.performance_status
+  - person.ici_eligible
+  - condition_occurrence.morphology
+  - condition_occurrence.pdl1_binary_50
+  resolution:
+    choice:
+      intervention_ids:
+      - ptdb_nonsquamous
+      - single_chemo_nonsquamous
+      - atezolizumab
+- intervention_id: ici_monotherapy_or_ici_with_chemotherapy_squamous
+  requires:
+  - person.performance_status_frail
+  - person.ici_eligible
+  - condition_occurrence.pdl1
+  - condition_occurrence.morphology
+  resolution:
+    choice:
+      intervention_ids:
+      - ici_monotherapy
+      - ici_w_chemo_squamous
+- intervention_id: ici_monotherapy_or_ici_with_chemotherapy_nonsquamous
+  requires:
+  - person.performance_status_frail
+  - person.ici_eligible
+  - condition_occurrence.pdl1
+  - condition_occurrence.morphology
+  resolution:
+    choice:
+      intervention_ids:
+      - ici_monotherapy
+      - ici_w_chemo_nonsquamous
+- intervention_id: met_tki
+  internal: true
+  resolution:
+    phase:
+      id: met_tki
+- intervention_id: met_ptdb
+  internal: true
+  resolution:
+    phase:
+      id: met_ptdb
+- intervention_id: met_ptdb_w_ici
+  internal: true
+  resolution:
+    phase:
+      id: met_ptdb_w_ici
+- intervention_id: ptdb_squamous
+  internal: true
+  resolution:
+    phase:
+      id: ptdb_squamous
+- intervention_id: single_chemo_squamous
+  internal: true
+  resolution:
+    phase:
+      id: single_chemo_squamous
+- intervention_id: ptdb_nonsquamous
+  internal: true
+  resolution:
+    phase:
+      id: ptdb_nonsquamous
+- intervention_id: single_chemo_nonsquamous
+  internal: true
+  resolution:
+    phase:
+      id: single_chemo_nonsquamous
+- intervention_id: atezolizumab
+  internal: true
+  resolution:
+    phase:
+      id: atezolizumab

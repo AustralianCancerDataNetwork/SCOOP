@@ -125,7 +125,25 @@ class ComponentRule(BaseModel):
     @classmethod
     def with_defaults(cls, raw: Mapping[str, Any] | None = None) -> "ComponentRule":
         """Apply the registry's explicit category defaulting rules."""
-        raw_rule = cls.model_validate(raw or {})
+        data = dict(raw or {})
+        component_lists = data.get("component_lists")
+        if isinstance(component_lists, list) and all(
+            isinstance(item, Mapping) and set(item) == {"components"}
+            for item in component_lists
+        ):
+            data["component_lists"] = [item["components"] for item in component_lists]
+
+        category_restrictions = data.get("category_restrictions")
+        if isinstance(category_restrictions, list):
+            data["category_restrictions"] = {
+                item["category"]: {
+                    "type": item["type"],
+                    "amount": item["amount"],
+                }
+                for item in category_restrictions
+            }
+
+        raw_rule = cls.model_validate(data)
         category_restrictions: dict[BroadCategory, CategoryRule]
         if raw_rule.category_restrictions:
             if set(raw_rule.category_restrictions) == set(DEFAULT_CATEGORY_RULES):
@@ -235,10 +253,20 @@ class ProtocolSpec(BaseModel):
     protocol_id: str
     source_phase_ids: list[str]
     optional_phases: dict[str, OptionalPhaseSpec] | None = None
+    selection_requires: tuple[str, ...] = ()
     source_phases: dict[str, PhaseSpec] = Field(default_factory=dict)
     phase_choices: dict[str, PhaseChoiceSpec] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("selection_requires")
+    @classmethod
+    def validate_selection_requires(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(set(value)) != len(value) or any(not field for field in value):
+            raise ValueError(
+                "selection_requires must contain distinct, non-empty field names"
+            )
+        return value
 
     @classmethod
     def generate(
@@ -249,15 +277,35 @@ class ProtocolSpec(BaseModel):
         source_phases: Mapping[str, PhaseSpec] | None = None,
         phase_choices: Mapping[str, PhaseChoiceSpec] | None = None,
     ) -> "ProtocolSpec":
-        unknown = set(protocol_data) - {"phases", "optional_phases"}
+        unknown = set(protocol_data) - {
+            "protocol_id",
+            "source_phase_ids",
+            "optional_phases",
+            "selection_requires",
+        }
         if unknown:
             raise ValueError(
                 f"protocol {label!r} has unknown field(s): {sorted(unknown)}"
             )
+
+        if protocol_data.get("protocol_id") != label:
+            raise ValueError(f"protocol {label!r} has mismatched protocol_id")
+
+        optional_phases: dict[str, OptionalPhaseSpec] | None = None
+        if protocol_data.get("optional_phases") is not None:
+            optional_phases = {}
+            for optional_data in protocol_data["optional_phases"]:
+                optional_data = dict(optional_data)
+                optional_id = optional_data.pop("phase_id")
+                optional_phases[optional_id] = OptionalPhaseSpec.model_validate(
+                    optional_data
+                )
+
         return cls(
             protocol_id=label,
-            source_phase_ids=protocol_data["phases"],
-            optional_phases=protocol_data.get("optional_phases"),
+            source_phase_ids=protocol_data["source_phase_ids"],
+            optional_phases=optional_phases,
+            selection_requires=tuple(protocol_data.get("selection_requires", ())),
             source_phases=dict(source_phases or {}),
             phase_choices=dict(phase_choices or {}),
         )
@@ -286,41 +334,46 @@ class RegistrySpec(BaseModel):
         with path.open("r", encoding="utf-8") as handle:
             raw = safe_load(handle)
 
-        if not isinstance(raw, dict) or len(raw) != 1:
-            raise ValueError("registry YAML must contain exactly one profile mapping")
-        label, registry_data = next(iter(raw.items()))
-        if not isinstance(registry_data, dict):
-            raise ValueError(f"registry {label!r} must contain a mapping")
+        if not isinstance(raw, dict):
+            raise ValueError("registry YAML must contain a mapping")
 
-        required = {"version", "conditions", "source_phases", "protocols"}
-        missing = required - registry_data.keys()
+        required = {
+            "label",
+            "version",
+            "default_conditions",
+            "source_phases",
+            "union_phases",
+            "protocols",
+        }
+        missing = required - raw.keys()
         if missing:
-            raise ValueError(f"registry {label!r} is missing: {sorted(missing)}")
-        allowed = required | {"phase_combinations", "entries"}
-        unknown = set(registry_data) - allowed
+            raise ValueError(f"registry is missing: {sorted(missing)}")
+        unknown = set(raw) - required
         if unknown:
             raise ValueError(
-                f"registry {label!r} has unknown field(s): {sorted(unknown)}"
+                f"registry has unknown field(s): {sorted(unknown)}"
             )
 
-        default_conditions = ConditionRef.from_value(registry_data["conditions"])
+        label = raw["label"]
+        default_conditions = ConditionRef.from_value(raw["default_conditions"])
         source_phases = {
             phase_id: PhaseSpec.generate(
                 phase_data or {}, phase_id, default_conditions
             )
-            for phase_id, phase_data in registry_data["source_phases"].items()
+            for phase_id, phase_data in raw["source_phases"].items()
         }
-        union_phases = {}
-        for union_id, union_data in registry_data.get("phase_combinations", {}).items():
-            unknown = set(union_data) - {"source_phases"}
+        union_phases: dict[str, PhaseChoiceSpec] = {}
+        for union_id, union_data in raw["union_phases"].items():
+            unknown = set(union_data) - {"phase_id", "source_phase_ids"}
             if unknown:
                 raise ValueError(
                     f"phase choice {union_id!r} has unknown field(s): {sorted(unknown)}"
                 )
-            union_phases[union_id] = PhaseChoiceSpec(
-                phase_id=union_id,
-                source_phase_ids=union_data["source_phases"],
-            )
+            if union_data.get("phase_id") != union_id:
+                raise ValueError(
+                    f"phase choice {union_id!r} has mismatched phase_id"
+                )
+            union_phases[union_id] = PhaseChoiceSpec.model_validate(union_data)
         protocols = {
             protocol_id: ProtocolSpec.generate(
                 protocol_id,
@@ -328,13 +381,13 @@ class RegistrySpec(BaseModel):
                 source_phases=source_phases,
                 phase_choices=union_phases,
             )
-            for protocol_id, protocol_data in registry_data["protocols"].items()
+            for protocol_id, protocol_data in raw["protocols"].items()
         }
         return cls.model_validate(
             {
                 "label": label,
                 "default_conditions": default_conditions,
-                "version": registry_data["version"],
+                "version": raw["version"],
                 "source_phases": source_phases,
                 "union_phases": union_phases,
                 "protocols": protocols,
@@ -368,35 +421,41 @@ class RegistrySpec(BaseModel):
                 )
         return self
 
-    def to_dict(self) -> dict[str, dict[str, Any]]:
-        """Return the canonical single-profile YAML structure."""
+    def to_dict(self) -> dict[str, Any]:
+        """Return the canonical registry YAML structure."""
         data = self.model_dump(mode="json")
-        data.pop("label")
-        data.pop("default_conditions")
-        data["conditions"] = self.default_conditions.to_value()
 
-        for phase_id, phase in data["source_phases"].items():
-            phase.pop("source_phase_id", None)
-            phase["conditions"] = self.source_phases[phase_id].conditions.to_value()
-            restrictions = phase["component_requirements"]["category_restrictions"]
-            neutral_default = restrictions == {
+        for phase in data["source_phases"].values():
+            requirements = phase["component_requirements"]
+            requirements["component_lists"] = [
+                {"components": components}
+                for components in requirements["component_lists"]
+            ]
+            restrictions = requirements["category_restrictions"]
+            if restrictions == {
                 "chemotherapy": {"type": "min", "amount": 0}
-            }
-            if neutral_default:
-                phase["component_requirements"]["category_restrictions"] = {}
+            }:
+                requirements["category_restrictions"] = []
+            else:
+                requirements["category_restrictions"] = [
+                    {
+                        "category": category,
+                        "type": restriction["type"],
+                        "amount": restriction["amount"],
+                    }
+                    for category, restriction in restrictions.items()
+                ]
 
         for protocol in data["protocols"].values():
-            protocol.pop("protocol_id", None)
             protocol.pop("source_phases", None)
             protocol.pop("phase_choices", None)
-            protocol["phases"] = protocol.pop("source_phase_ids")
+            if protocol["optional_phases"] is not None:
+                protocol["optional_phases"] = [
+                    {"phase_id": phase_id, **optional}
+                    for phase_id, optional in protocol["optional_phases"].items()
+                ]
 
-        phase_combinations = {
-            choice_id: {"source_phases": choice["source_phase_ids"]}
-            for choice_id, choice in data.pop("union_phases").items()
-        }
-        data["phase_combinations"] = phase_combinations
-        return {self.label: data}
+        return data
 
     def to_yaml(self) -> str:
         return safe_dump(self.to_dict(), sort_keys=False)

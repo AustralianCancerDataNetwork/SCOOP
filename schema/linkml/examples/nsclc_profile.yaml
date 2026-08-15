@@ -1,0 +1,18 @@
+profile:
+  profile_id: nsclc
+  default_graph: nsclc
+  entry_graph: nsclc
+  regimen_registry: nsclc_protocol_registry.yaml
+  interventions: nsclc_interventions.yaml
+  graphs:
+    - graph_id: nsclc
+      path: nsclc.yaml
+    - graph_id: nsclc_stg1
+      path: nsclc_stg1.yaml
+  pathways:
+    - pathway_id: nsclc_stage1
+      graph_id: nsclc_stg1
+  mappers:
+    concept_map: ../../vocabulary/resources/concept_maps.yaml
+    measurement_map: ../../vocabulary/resources/measurement_mappers.yaml
+    observation_map: ../../vocabulary/resources/observation_mappers.yaml
