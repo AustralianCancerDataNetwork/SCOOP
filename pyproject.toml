@@ -35,6 +35,14 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["scoop*"]
 
+[tool.setuptools.package-data]
+# Operational profile and vocabulary YAML: runtime-relative resources loaded via
+# scoop.profiles.paths.CONFIG_ROOT, not just source-tree fixtures. These live under
+# plain data subdirectories (no __init__.py), so they must be declared explicitly;
+# setuptools does not infer them from packages.find.
+"scoop.profiles" = ["**/*.yaml"]
+"scoop.vocabulary" = ["resources/*.yaml"]
+
 [tool.setuptools.data-files]
 "schema/linkml" = [
     "schema/linkml/regimen_spec.yaml",
@@ -52,5 +60,3 @@ scoop = "scoop.config:ScoopConfig"
 
 [tool.uv.sources]
 hemonc-import = { path = "../hemonc_import/hemonc_import", editable = true }
-oa-configurator = { path = "../../core-stack/oa-configurator", editable = true }
-omop-alchemy = { path = "../../core-stack/omop-alchemy", editable = true }

@@ -1,8 +1,15 @@
 from __future__ import annotations
+from importlib.resources import files
 from pathlib import Path
 
 # SCOOP profile/resource paths and path utilities
-CONFIG_ROOT = Path(__file__).resolve().parents[1]
+#
+# Resolved via importlib.resources rather than Path(__file__).parents[N]: for a
+# regular (non-namespace) installed package this still yields a concrete
+# pathlib.Path to the installed `scoop` directory, but it does so through the
+# standard resource-location API instead of hardcoded parent-directory arithmetic
+# that assumes a flat unpacked source tree.
+CONFIG_ROOT = Path(files("scoop"))
 PROFILES_DIRNAME = Path("profiles")
 MAPPERS_DIRNAME = Path("vocabulary") / "resources"
 PROFILES_ROOT = CONFIG_ROOT / PROFILES_DIRNAME
