@@ -1,0 +1,66 @@
+# Layer 1 of 4 in the legacy coalesce order (highest precedence).
+#
+# Transcribed verbatim from scoop.protocols.hemonc.models.MAJOR_CLASS_MAP.
+# Matches the HemOnc `canmed_major_class` column exactly (case-sensitive,
+# exact string match) -- this is the legacy behavior being reproduced, not a
+# design choice for this rule set. See rules/README.md for the coalesce order
+# and what "layer" means here.
+version: 1
+layer: canmed_major_class
+rules:
+- key: Serine-threonine kinase inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: &legacy_rationale >-
+    Legacy behavior extracted from SCOOP. The original per-entry rationale
+    (from a pre-migration _temp/.../category_mappings.py, per
+    functional_specifications.md section 5.5) was lost before this codebase
+    was created and is not recoverable from source.
+- key: MEK inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Immunostimulatory monoclonal antibody
+  category: immunotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Antineoplastic monoclonal antibody
+  category: immunotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Alkylating agent
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Microtubule inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Tyrosine kinase inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Topoisomerase inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Antimetabolite
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Emesis prevention
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Chemotherapy protective agent
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Growth factor
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Antibody-drug conjugate
+  category: immunotherapy
+  source: scoop.protocols.hemonc.models.MAJOR_CLASS_MAP
+  rationale: *legacy_rationale

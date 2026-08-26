@@ -135,6 +135,14 @@ class ComponentRule(BaseModel):
 
         category_restrictions = data.get("category_restrictions")
         if isinstance(category_restrictions, list):
+            declared_categories = [item["category"] for item in category_restrictions]
+            duplicates = sorted(
+                {c for c in declared_categories if declared_categories.count(c) > 1}
+            )
+            if duplicates:
+                raise ValueError(
+                    f"category_restrictions has duplicate categor(y/ies): {duplicates}"
+                )
             data["category_restrictions"] = {
                 item["category"]: {
                     "type": item["type"],
@@ -294,6 +302,17 @@ class ProtocolSpec(BaseModel):
         optional_phases: dict[str, OptionalPhaseSpec] | None = None
         if protocol_data.get("optional_phases") is not None:
             optional_phases = {}
+            declared_ids = [
+                item["phase_id"] for item in protocol_data["optional_phases"]
+            ]
+            duplicates = sorted(
+                {phase_id for phase_id in declared_ids if declared_ids.count(phase_id) > 1}
+            )
+            if duplicates:
+                raise ValueError(
+                    f"protocol {label!r} has duplicate optional_phases "
+                    f"phase_id(s): {duplicates}"
+                )
             for optional_data in protocol_data["optional_phases"]:
                 optional_data = dict(optional_data)
                 optional_id = optional_data.pop("phase_id")

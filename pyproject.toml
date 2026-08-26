@@ -42,6 +42,7 @@ include = ["scoop*"]
 # setuptools does not infer them from packages.find.
 "scoop.profiles" = ["**/*.yaml"]
 "scoop.vocabulary" = ["resources/*.yaml"]
+"scoop.protocols.classification" = ["rules/*.yaml"]
 
 [tool.setuptools.data-files]
 "schema/linkml" = [

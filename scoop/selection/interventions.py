@@ -159,6 +159,14 @@ class InterventionCatalog:
         if not isinstance(declarations, list):
             raise ValueError("interventions must be a list of identified objects")
 
+        declared_ids = [data.get("intervention_id") for data in declarations]
+        duplicates = sorted({iid for iid in declared_ids if declared_ids.count(iid) > 1})
+        if duplicates:
+            raise ValueError(
+                f"intervention catalog {profile_id!r} has duplicate "
+                f"intervention_id(s): {duplicates}"
+            )
+
         specs = {
             data["intervention_id"]: _parse_intervention(
                 data["intervention_id"],

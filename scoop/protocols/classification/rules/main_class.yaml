@@ -1,0 +1,85 @@
+# Layer 2 of 4 in the legacy coalesce order.
+#
+# Transcribed verbatim from scoop.protocols.hemonc.models.MAIN_CLASS_MAP.
+# Matches the HemOnc `main_class` column exactly (case-sensitive, exact
+# string match). Only consulted when layer 1 (canmed_major_class) did not
+# match, matching the legacy sa.func.coalesce() order.
+version: 1
+layer: main_class
+rules:
+- key: TRK inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: &legacy_rationale >-
+    Legacy behavior extracted from SCOOP. The original per-entry rationale
+    (from a pre-migration _temp/.../category_mappings.py, per
+    functional_specifications.md section 5.5) was lost before this codebase
+    was created and is not recoverable from source.
+- key: KRAS inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Anti-EGFR-HGFR bispecific antibody
+  category: immunotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Anthracycline
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Multikinase inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: MET inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Steroid
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Antihistamine
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: H2 blocker
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Opioid receptor agonist
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Replacement therapy
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Anti-PD-1-VEGF bispecific antibody
+  category: immunotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Dopamine receptor antagonist
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Fluoroquinolone
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: H2-receptor antagonist
+  category: supportive
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: ROS1 inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: RET inhibitor
+  category: chemotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale
+- key: Anti-DLL3-CD3 bispecific antibody
+  category: immunotherapy
+  source: scoop.protocols.hemonc.models.MAIN_CLASS_MAP
+  rationale: *legacy_rationale

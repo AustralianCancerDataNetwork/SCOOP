@@ -42,6 +42,7 @@ SMOKE_SCRIPT = textwrap.dedent(
     """
     from scoop.profiles.manifest import list_profiles
     from scoop.profiles.paths import CONFIG_ROOT, PROFILES_ROOT
+    from scoop.protocols.classification import BroadCategory, ComponentFact, classify
     from scoop.protocols.spec import RegistrySpec
     from scoop.vocabulary.gateway import DefaultVocabularyGateway
 
@@ -61,6 +62,12 @@ SMOKE_SCRIPT = textwrap.dedent(
     gateway = DefaultVocabularyGateway(CONFIG_ROOT, engine_factory=lambda: None)
     mappers = gateway.get_mappers()
     assert mappers.concept_mapper is not None
+
+    # Same class of gap as the profile/vocabulary YAML above: the classifier's
+    # rule YAML lives under scoop/protocols/classification/rules and must
+    # ship in the wheel too.
+    result = classify(ComponentFact(canmed_major_class="Alkylating agent"))
+    assert result.category == BroadCategory.CHEMOTHERAPY, result
 
     print("WHEEL_SMOKE_OK")
     """

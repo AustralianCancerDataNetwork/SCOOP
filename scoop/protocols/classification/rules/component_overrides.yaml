@@ -1,0 +1,48 @@
+# Layer 3 of 4 in the legacy coalesce order.
+#
+# Half of the legacy scoop.protocols.hemonc.models.COMPONENT_MAP: the entries
+# that name a drug/supportive-care component rather than a non-drug
+# procedure. The non-drug half (Surgery, External beam radiotherapy) is its
+# own layer, non_drug_components.yaml (CLS-12) -- this split changes nothing
+# about which category any key resolves to, only which file declares it;
+# both layers occupy the same relative position the original single
+# "component" map held in the coalesce order (after main_class, before
+# nothing else exists below it in this legacy layer set).
+#
+# Matches the HemOnc `component` column exactly (case-sensitive, exact
+# string match) -- legacy behavior, not a new design choice.
+version: 1
+layer: component_overrides
+rules:
+- key: Bleomycin
+  category: supportive
+  source: scoop.protocols.hemonc.models.COMPONENT_MAP
+  rationale: &legacy_rationale >-
+    Legacy behavior extracted from SCOOP. The original per-entry rationale
+    (from a pre-migration _temp/.../category_mappings.py, per
+    functional_specifications.md section 5.5) was lost before this codebase
+    was created and is not recoverable from source.
+- key: Granulocyte colony-stimulating factor
+  category: supportive
+  source: scoop.protocols.hemonc.models.COMPONENT_MAP
+  rationale: *legacy_rationale
+- key: Serotonin 5-HT3 antagonist
+  category: supportive
+  source: scoop.protocols.hemonc.models.COMPONENT_MAP
+  rationale: *legacy_rationale
+- key: Steroid
+  category: supportive
+  source: scoop.protocols.hemonc.models.COMPONENT_MAP
+  rationale: *legacy_rationale
+  # Also declared in main_class.yaml (same "Steroid" string, different
+  # HemOnc column, same resulting category). They agree today; nothing
+  # structural keeps them agreeing (see migration_code_review_2026-08-15.md
+  # F-series / functional_specifications.md section 5.5). Not marked as an
+  # `overrides` relationship because the two layers do not disagree -- see
+  # classifier.py's cross-layer conflict check for what would actually
+  # require that marker.
+- key: Emesis prevention
+  category: supportive
+  source: scoop.protocols.hemonc.models.COMPONENT_MAP
+  rationale: *legacy_rationale
+  # Also declared in canmed_major_class.yaml; same note as Steroid above.
