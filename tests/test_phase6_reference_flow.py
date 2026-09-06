@@ -97,13 +97,12 @@ def test_selection_is_reproducible_for_the_reference_seed():
 
 
 def test_candidate_ordering_is_load_bearing_for_selection():
-    """Documents F7: seeded selection is only deterministic over stable order.
+    """Documents F7: seeded selection is invariant to gateway row ordering.
 
     `braf_intervention` has two declared component-list groups (dabrafenib,
     trametinib), so it assembles to two candidates. Reversing their order
-    changes which one a fixed seed selects -- confirming that candidate order
-    is part of today's effective behavior, not an incidental detail a refactor
-    is free to change.
+    must not change which one a fixed seed selects. Candidate order is
+    canonicalized before the seeded choice is made.
     """
 
     registry = load_nsclc_registry()
@@ -141,7 +140,7 @@ def test_candidate_ordering_is_load_bearing_for_selection():
         assert isinstance(result, SelectedProtocol)
         return result.phases[0].regimen.name
 
-    assert selected_name(forward) != selected_name(reversed_)
+    assert selected_name(forward) == selected_name(reversed_)
 
 
 def test_a_different_seed_can_change_a_multi_candidate_selection():

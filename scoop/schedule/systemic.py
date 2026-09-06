@@ -22,7 +22,8 @@ from typing import Any
 import warnings
 import pandas as pd
 from pydantic import BaseModel, ValidationError, computed_field, PrivateAttr
-from hemonc_import.final_model.schedule_handling import resolve_all_days
+from hemonc_alchemy.toolkit.analytics.treatment.scheduling import resolve_all_days
+from hemonc_alchemy.toolkit.analytics.treatment.scheduling.tokens import Indefinite
 
 
 NEOADJ_WEEKS_TO_SURGERY = 4 # https://doi.org/10.21037/tlcr-24-781
@@ -132,7 +133,8 @@ class DoseRule(BaseRandomSampler):
     def from_sig(cls, sig, seed: int | None = None):
 
         return cls(doseminnum=sig.doseminnum, dosemaxnum=sig.dosemaxnum,
-                   doseunit=sig.doseunit, doseunit_cui=sig.doseunit_cui, divided=sig.divided, 
+                   doseunit=sig.doseunit, doseunit_cui=sig.doseunit_cui,
+                   divided=getattr(sig, "divided", False),
                    dose_cap=try_attribute(DoseCap.from_sig, sig), seed=seed)
     
     def get_dose(self)-> float:
@@ -164,7 +166,7 @@ def try_attribute(fn, arg):
     """Tries to return fn(arg) result """
     try:
         return fn(arg)
-    except ValidationError:
+    except (ValidationError, AttributeError, TypeError):
         return None
 
 
@@ -189,6 +191,7 @@ class ComponentPart(BaseModel):
     role: str 
     # target level belongs here too
     class_field: str
+    source_sig_id: int | None = None
 
     @classmethod
     def from_sig(cls, sig):
@@ -202,8 +205,9 @@ class ComponentPart(BaseModel):
                    frequency_cui=sig.frequency_cui,
                    dose_info=try_attribute(DoseRule.from_sig, sig),
                    duration=try_attribute(Duration.from_sig, sig),
-                   role=sig.component_role,
-                   class_field=sig.class_field,)
+                   role=getattr(sig, "component_role", ""),
+                   class_field=getattr(sig, "class_field", "") or "",
+                   source_sig_id=getattr(sig, "id", None),)
 
     def get_dose(self, units_as_cuis=False):
         # TODO: make more robust
@@ -220,16 +224,21 @@ class ComponentPart(BaseModel):
 
 
 def get_continue(ho_timing):
+    """Return the cycle step represented by a toolkit indefinite marker."""
+
     if not ho_timing:
-        return None    
-    continue_match = re.search(r"\(\+(\d+)\)$", ho_timing)
-    if continue_match:
-        return continue_match.group(1)
-    else:
         return None
+    # Existing SCOOP profiles use (+1), while the shared parser uses (+n1).
+    normalised = re.sub(r"\(\+(\d+)\)$", r"(+n\1)", ho_timing)
+    resolved = resolve_all_days(normalised)
+    indefinite = resolved.indefinite
+    if isinstance(indefinite, Indefinite) and indefinite.kind == "+n":
+        return indefinite.max_days
+    return None
 
 def split_ho_timing(ho_timing):
-    timing_list = resolve_all_days(ho_timing)
+    normalised = re.sub(r"\(\+(\d+)\)$", r"(+n\1)", ho_timing or "")
+    timing_list = resolve_all_days(normalised)
     optional = []
     base = []
     for day in timing_list:
@@ -311,8 +320,13 @@ class OtherSigInfo(BaseModel):
     date_added: Any
     @classmethod
     def from_sig(cls, sig):
-        return cls(in_parens=sig.inparens, tail=sig.tail, temp=sig.temp, 
-                   sig_id=sig.id, date_added=sig.date_added)
+        return cls(
+            in_parens=getattr(sig, "inparens", None),
+            tail=getattr(sig, "tail", None),
+            temp=getattr(sig, "temp", None),
+            sig_id=getattr(sig, "id", None),
+            date_added=getattr(sig, "date_added", None),
+        )
 
 
 class SigSchedule(BaseModel):
@@ -333,7 +347,8 @@ class SigSchedule(BaseModel):
 
     def add_to_deliveries(self, cycle_start_date, within_cycle_deliveries):
             days, component_part = self.get_days_for_cycle()
-            dates = [cycle_start_date + pd.DateOffset(days=day) for day in days]
+            # HemOnc timing values are one-based: day 1 is the cycle start.
+            dates = [cycle_start_date + pd.DateOffset(days=day - 1) for day in days]
             for date in dates:
                 within_cycle_deliveries[date].append(component_part)
             return within_cycle_deliveries
@@ -358,9 +373,16 @@ class OriginalContext(BaseModel):
 
     @classmethod
     def from_sig(cls, sig):
-        return cls(phase=sig.phase, study=sig.study, regimen=sig.regimen, 
-            regimen_cui=sig.regimen_cui, variant=sig.variant, variant_cui=sig.variant_cui, 
-            branch=sig.branch, branch_type=sig.branch_type,)
+        return cls(
+            phase=getattr(sig, "phase", None),
+            study=getattr(sig, "study", None),
+            regimen=getattr(sig, "regimen", None),
+            regimen_cui=getattr(sig, "regimen_cui", None),
+            variant=getattr(sig, "variant", None),
+            variant_cui=getattr(sig, "variant_cui", None),
+            branch=getattr(sig, "branch", None),
+            branch_type=getattr(sig, "branch_type", None),
+        )
 
 
 class CycleSet(BaseRandomSampler):
@@ -406,11 +428,20 @@ class CycleSet(BaseRandomSampler):
     def get_cycle_length(self) -> int:
         return self._get_value_in_range(self.cycle_length_lb, self.cycle_length_ub)
     
-    def get_one_systemic_cycle(self, cycle_number: int, cycle_start_date, 
-                               ongoing_prob):
+    def get_one_systemic_cycle(
+        self,
+        cycle_number: int,
+        cycle_start_date,
+        ongoing_prob,
+        optional_prob: float | None = None,
+    ):
         within_cycle_administration = defaultdict(list)
         for sig_schedule in self.sig_schedules:
-            if sig_schedule.cycle_window.check_active_this_cycle(cycle_number, ongoing_prob):
+            if sig_schedule.cycle_window.check_active_this_cycle(
+                cycle_number,
+                ongoing_prob,
+                optional_prob,
+            ):
                 within_cycle_administration = sig_schedule.add_to_deliveries(
                     cycle_start_date, within_cycle_administration
                     )
@@ -465,19 +496,42 @@ class PhaseSchedule(BaseModel):
     cycle_sets: list[CycleSet]
     original_context: OriginalContext
     @classmethod
-    def from_component_sigs(cls, siglist: list) -> "PhaseSchedule":
+    def from_component_sigs(
+        cls,
+        siglist: list,
+        seed: int | None = None,
+    ) -> "PhaseSchedule":
+        if not siglist:
+            raise ValueError("PhaseSchedule requires at least one signature")
         if len(siglist)==1:
-            cyclesets = [CycleSet.from_siglist(siglist)]
+            cyclesets = [
+                CycleSet.from_siglist(
+                    siglist,
+                    cycle_set_seed=seed,
+                    sig_schedule_seeds=[seed] if seed is not None else None,
+                )
+            ]
         else:
-            cyclesets = cls._get_CycleSets(siglist)
+            cyclesets = cls._get_CycleSets(siglist, seed=seed)
         return cls(cycle_sets=cyclesets, original_context=OriginalContext.from_sig(siglist[0]))
 
     @staticmethod
-    def _get_CycleSets(siglist):
+    def _get_CycleSets(siglist, seed: int | None = None):
         """Gets CycleSets iff multiple sigs in siglist"""
+        rng = random.Random(seed) if seed is not None else None
         sorted_siglist = sorted(siglist, key=lambda sig: CycleEventValues.from_sig(sig))
         cycleset_siglist = [sorted_siglist[0]]
         cyclesets = []
+
+        def make_cycleset(group):
+            return CycleSet.from_siglist(
+                group,
+                cycle_set_seed=rng.randrange(2**32) if rng else None,
+                sig_schedule_seeds=(
+                    [rng.randrange(2**32) for _ in group] if rng else None
+                ),
+            )
+
         for i in range(1, len(sorted_siglist)):
             left_sig = sorted_siglist[i-1]
             right_sig = sorted_siglist[i]
@@ -485,27 +539,44 @@ class PhaseSchedule(BaseModel):
             if has_same_cycle_events:
                 cycleset_siglist.append(right_sig)
             else:
-                cyclesets.append(CycleSet.from_siglist(cycleset_siglist))
+                cyclesets.append(make_cycleset(cycleset_siglist))
                 cycleset_siglist = [right_sig]
 
             is_final_cycle = i == len(sorted_siglist)-1
             if is_final_cycle:
-                cyclesets.append(CycleSet.from_siglist(cycleset_siglist))
+                cyclesets.append(make_cycleset(cycleset_siglist))
         return cyclesets
 
 
-    def get_scheduled_dates(self, phase_start_date):
+    def get_scheduled_dates(
+        self,
+        phase_start_date,
+        *,
+        max_cycles: int | None = None,
+        within_component_continue_probability: float | None = None,
+        within_cycleset_continue_probability: float | None = None,
+        optional_cycle_probability: float | None = None,
+    ):
+        if max_cycles is not None and max_cycles < 1:
+            raise ValueError("max_cycles must be positive when provided")
         cycle_number = 1
         cycle_start_date = phase_start_date
         all_component_parts = {}
         while True:
+            if max_cycles is not None and cycle_number > max_cycles:
+                break
             was_cycle_any_set = False
             for cycle_set in self.cycle_sets:
                 if (cycle_set.get_normally_active_this_cycle(cycle_number)):
                     process_cycle = True
                     ongoing_prob = None
                 elif (cycle_set.ongoing_step and
-                    consider_ongoing(cycle_set, cycle_number, WITHIN_CYCLESET_CONTINUE_PROB)):
+                    consider_ongoing(
+                        cycle_set,
+                        cycle_number,
+                        within_cycleset_continue_probability
+                        or WITHIN_CYCLESET_CONTINUE_PROB,
+                    )):
                     process_cycle = True
                     ongoing_prob = 1
                 else:
@@ -516,7 +587,12 @@ class PhaseSchedule(BaseModel):
                         cycle_set.get_cycle_length(), cycle_set.cycle_len_unit
                         )
                     # TODO: Make robust to different portions having overlapping cycles
-                    all_component_parts = all_component_parts | cycle_set.get_one_systemic_cycle(cycle_number, cycle_start_date, ongoing_prob)
+                    all_component_parts = all_component_parts | cycle_set.get_one_systemic_cycle(
+                        cycle_number,
+                        cycle_start_date,
+                        ongoing_prob,
+                        optional_cycle_probability,
+                    )
 
             if not was_cycle_any_set:
                 # TODO: Make robust to blank cycles?

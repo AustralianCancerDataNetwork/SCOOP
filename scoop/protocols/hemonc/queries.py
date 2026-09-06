@@ -4,11 +4,20 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 from functools import cached_property
 from typing import Any
+from hemonc_alchemy.model import (
+    Drugs,
+    Sigs,
+    Studies,
+    StudyResults,
+    drugs_Canmed_major_classMap,
+    drugs_Canmed_minor_classMap,
+    sigs_StudyMap,
+)
+from hemonc_alchemy.toolkit.core.sigs import SigSelectionSpec, sig_search_statement
 from scoop.protocols.hemonc.models import ( 
     _load_hemonc_models, HemOncModels, 
     condition_cuis_by_names, search_substring, _component_search_expressions,
-    join_not_distinct, or_for_piped_col,
-    get_sig_study_join, COMPONENT_CLASS_MAPS
+    join_not_distinct, COMPONENT_CLASS_MAPS
     )
 from scoop.protocols.hemonc.filters import query_rt_inc_study_ids
 
@@ -38,41 +47,43 @@ def component_search_by_name(search_terms: str | list[str], table: Any) -> Any:
 
 
 def get_sig_component_stmt(condition_cuis, models, non_curative=False):
-    return (
-    sa.select(
-        models.Sigs.id,
-        models.Sigs.regimen,
-        models.Sigs.variant_cui,
-        models.Sigs.component,
-        models.Sigs.component_cui,
-        models.Drugs.drug_inn,
-        models.Drugs.main_class,
-        models.drugs_Canmed_major_classMap.canmed_major_class,
-        models.drugs_Canmed_minor_classMap.canmed_minor_class,
-        models.Sigs.study,
-        models.Sigs.phase
+    del models
+    stmt = sig_search_statement(
+        SigSelectionSpec.for_conditions(condition_cuis)
+    ).outerjoin(Drugs, Drugs.drug_cui == Sigs.component_cui).outerjoin(
+        drugs_Canmed_major_classMap,
+        drugs_Canmed_major_classMap.parent_id == Drugs.id,
+    ).outerjoin(
+        drugs_Canmed_minor_classMap,
+        drugs_Canmed_minor_classMap.parent_id == Drugs.id,
     )
-    .outerjoin(models.Drugs, models.Sigs.component_cui == models.Drugs.drug_cui)
-    .outerjoin(
-        models.drugs_Canmed_major_classMap,
-        models.drugs_Canmed_major_classMap.parent_id == models.Drugs.id,
+    context_studies = get_stmt_studies_by_curative_context(
+        condition_cuis, non_curative=non_curative
     )
-    .outerjoin(
-        models.drugs_Canmed_minor_classMap,
-        models.drugs_Canmed_minor_classMap.parent_id == models.Drugs.id,
-    )
-    .join(models.Studies, get_sig_study_join(), full=True)
-    .where(models.Studies.study.in_(get_stmt_studies_by_curative_context(condition_cuis, models, non_curative)))
-    )
+    return stmt.with_only_columns(
+        Sigs.id,
+        Sigs.regimen,
+        Sigs.variant_cui,
+        Sigs.component,
+        Sigs.component_cui,
+        Drugs.drug_inn,
+        Drugs.main_class,
+        drugs_Canmed_major_classMap.canmed_major_class,
+        drugs_Canmed_minor_classMap.canmed_minor_class,
+        Studies.study.label("study"),
+        Sigs.phase,
+        maintain_column_froms=True,
+    ).where(Studies.study.in_(context_studies))
 
 
-def get_stmt_studies_by_curative_context(condition_cuis, models, non_curative = False):
-    context_operator = getattr(models.StudyResults.context, "__eq__" if non_curative else "__ne__")
+def get_stmt_studies_by_curative_context(condition_cuis, models=None, non_curative = False):
+    del models
+    context_operator = (StudyResults.context == "Non-curative therapy") if non_curative else (StudyResults.context != "Non-curative therapy")
     return (
-        sa.Select(models.Studies.study)
-        .join(models.StudyResults, models.Studies.study==models.StudyResults.study)
-        .where(sa.and_(models.Studies.condition_cui.in_(condition_cuis),
-                       context_operator("Non-curative therapy") ))
+        sa.select(Studies.study)
+        .join(StudyResults, Studies.study == StudyResults.study)
+        .where(sa.and_(Studies.condition_cui.in_(condition_cuis), context_operator))
+        .distinct()
     )
 
 
@@ -247,16 +258,15 @@ def get_siggroup_identifying_subquery(component_requirements, categorised, model
     
     Does not contain sig objects themselves.
     """
-    models = models or _load_hemonc_models()
+    del models
     return (
     sa.select(
-        models.Studies.study.label('single_study'),
-        # categorised.c.study.label('sig_study'),
+        categorised.c.study.label('single_study'),
         categorised.c.phase.label('matched_phase'),
         categorised.c.variant_cui.label('matched_variant_cui')
     )
-    .join(models.Studies, or_for_piped_col(categorised.c.study, models.Studies.study))
-    .group_by(models.Studies, categorised.c.phase, categorised.c.variant_cui)
+    .select_from(categorised)
+    .group_by(categorised.c.study, categorised.c.phase, categorised.c.variant_cui)
     .having(sa.and_(*build_component_requirement_expressions(component_requirements, categorised)))
     .subquery()
 )
@@ -268,29 +278,24 @@ def subquery_sigs_valid_groups(valid_groups_subquery, models):
     """
     return (
     sa.select(
-        # valid_groups_subquery.c.sig_study,
         valid_groups_subquery.c.single_study,
         valid_groups_subquery.c.matched_phase,
         valid_groups_subquery.c.matched_variant_cui,
-        models.Sigs.variant_cui,
-        models.Sigs.phase,
-        models.Sigs.study,
-        models.Sigs.component,
-        models.Sigs.id,
-        models.Sigs.regimen,
-        models.Sigs.variant,
-        # models.Studies.study,
-        # models.StudyResults.context,
-        # models.Studies.start,
-
+        Sigs.variant_cui,
+        Sigs.phase,
+        sigs_StudyMap.study.label("study"),
+        Sigs.component,
+        Sigs.id,
+        Sigs.regimen,
+        Sigs.variant,
     )
+    .select_from(Sigs)
+    .join(sigs_StudyMap, sigs_StudyMap.parent_id == Sigs.id)
     .join(valid_groups_subquery, sa.and_(
-        join_not_distinct(models.Sigs.phase, valid_groups_subquery.c.matched_phase),
-        join_not_distinct(models.Sigs.variant_cui, valid_groups_subquery.c.matched_variant_cui),
-        get_sig_study_join(to=valid_groups_subquery.c.single_study)
+        join_not_distinct(Sigs.phase, valid_groups_subquery.c.matched_phase),
+        join_not_distinct(Sigs.variant_cui, valid_groups_subquery.c.matched_variant_cui),
+        sigs_StudyMap.study == valid_groups_subquery.c.single_study,
     ))
-    # .join(models.Studies, get_sig_study_join())
-    # .join(models.StudyResults, models.Studies.study==models.StudyResults.study)
 ).subquery()
 
 

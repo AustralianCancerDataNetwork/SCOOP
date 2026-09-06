@@ -205,3 +205,31 @@ def test_unselectable_context_is_a_value():
     result = select([candidate], PatientContext({}), seed=3)
     assert isinstance(result, NoSelection)
     assert "condition_episode.biomarker" in result.reason
+
+
+def test_seeded_selection_is_invariant_to_candidate_input_order():
+    first = ProtocolCandidate(
+        name="protocol-a",
+        phases=[
+            PhaseCandidates(
+                label="phase",
+                options=[_candidate("z", "phase", 2), _candidate("a", "phase", 1)],
+                conditions=[],
+            )
+        ],
+    )
+    second = ProtocolCandidate(
+        name="protocol-a",
+        phases=[
+            PhaseCandidates(
+                label="phase",
+                options=[_candidate("a", "phase", 1), _candidate("z", "phase", 2)],
+                conditions=[],
+            )
+        ],
+    )
+
+    selected_first = select([first], PatientContext({}), seed=17)
+    selected_second = select([second], PatientContext({}), seed=17)
+
+    assert selected_first == selected_second

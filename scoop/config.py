@@ -18,7 +18,7 @@ class ScoopConfig(PackageConfigBase):
     """Typed view of SCOOP's shared stack configuration.
 
     HemOnc is represented as a generic database because its schema is owned by
-    ``hemonc_import`` rather than being an OMOP CDM database bundle.
+    ``hemonc_alchemy`` rather than being an OMOP CDM database bundle.
     """
 
     tool_name: ClassVar[str] = "scoop"

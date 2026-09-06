@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, Optional, Dict, List
 from collections import defaultdict
+from yaml import safe_load
 import scoop.protocols.descriptions as desc
 from scoop.protocols.hemonc.gateway import HemOncGateway
 from scoop.protocols.spec import ConditionRef, PhaseChoiceSpec, PhaseSpec, ProtocolSpec
@@ -105,18 +108,88 @@ class PhaseCandidates(BaseModel):
 
 
     @classmethod
-    def from_yaml(cls, index: int
-                 ) -> "PhaseCandidates":
-        options = []
-        original_options = []
-        ...
-        return cls(index=index, conditions = [],
-                   options=options, original_options=original_options, 
-                   label="")
+    def from_yaml(
+        cls,
+        index: int,
+        payload: Mapping[str, Any] | None = None,
+    ) -> "PhaseCandidates":
+        """Load one serialized phase candidate block.
+
+        Candidate assembly itself is gateway-backed and therefore does not read
+        YAML.  This loader is intentionally limited to the portable display /
+        fixture representation used by SCOOP; it is not a second protocol
+        registry format.
+        """
+
+        data = dict(payload or {})
+        options = [RegimenCandidate.model_validate(option) for option in data.get("options", [])]
+        no_candidates = data.get("no_candidates")
+        if no_candidates is not None and not isinstance(no_candidates, NoCandidates):
+            if not isinstance(no_candidates, Mapping):
+                raise TypeError("no_candidates must be a mapping")
+            no_candidates = NoCandidates(**no_candidates)
+        return cls(
+            index=index,
+            label=data.get("label"),
+            options=options,
+            conditions=list(data.get("conditions", [])),
+            categories=set(data["categories"]) if data.get("categories") is not None else None,
+            no_candidates=no_candidates,
+        )
 
     @classmethod
-    def from_tuple_dict(cls, tuple_dict) -> "PhaseCandidates":
-        ...
+    def from_tuple_dict(
+        cls,
+        tuple_dict: Mapping[tuple[Any, ...], list[Any]],
+        *,
+        index: int = 1,
+        label: str | None = None,
+        conditions: list[Any] | None = None,
+    ) -> "PhaseCandidates":
+        """Convert legacy grouped query rows into typed phase candidates.
+
+        The tuple-key form is retained as a narrow ingestion helper for old
+        query fixtures.  It does not participate in runtime protocol loading.
+        Keys follow ``(phase, variant_cui, study, regimen, variant)``.
+        """
+
+        options: list[RegimenCandidate] = []
+        for key, sigs in tuple_dict.items():
+            if len(key) != 5:
+                raise ValueError(
+                    "candidate tuple keys must contain phase, variant CUI, "
+                    "study, regimen, and variant"
+                )
+            phase, variant_cui, study, regimen, variant = key
+            try:
+                normalized_cui = int(variant_cui) if variant_cui is not None else None
+            except (TypeError, ValueError):
+                normalized_cui = None
+            normalized_variant = None if variant in (None, "None") else str(variant)
+            normalized_study = None if study in (None, "None") else str(study)
+            normalized_regimen = str(regimen)
+            options.append(
+                RegimenCandidate(
+                    name=(
+                        f"{normalized_regimen} {normalized_variant}"
+                        if normalized_variant
+                        else normalized_regimen
+                    ),
+                    variant_cui=normalized_cui,
+                    sigs=list(sigs),
+                    regimen=normalized_regimen,
+                    components={getattr(sig, "component", str(sig)) for sig in sigs},
+                    phase=None if phase in (None, "None") else str(phase),
+                    study=normalized_study,
+                    variant=normalized_variant,
+                )
+            )
+        return cls(
+            index=index,
+            label=label,
+            options=_sort_candidates(options),
+            conditions=list(conditions or []),
+        )
 
     def __repr__(self):
         header = f"Phase {self.index}" if not self.label else f"{self.label} (Phase {self.index})"
@@ -182,11 +255,28 @@ class ProtocolCandidate(BaseModel):
     selection_requires: tuple[str, ...] = ()
 
     @classmethod
-    def from_yaml(cls, name: str, 
-                 ) -> "ProtocolCandidate":
-        ...
-        phases = []
-        return cls(name=name, phases=phases)
+    def from_yaml(
+        cls,
+        name: str,
+        payload: Mapping[str, Any] | None = None,
+    ) -> "ProtocolCandidate":
+        """Load a portable serialized protocol candidate."""
+
+        data = dict(payload or {})
+        raw_phases = data.get("phases", [])
+        if not isinstance(raw_phases, list):
+            raise TypeError("protocol candidate phases must be a list")
+        phases = [
+            PhaseCandidates.from_yaml(index, phase)
+            for index, phase in enumerate(raw_phases, start=1)
+        ]
+        return cls(
+            name=name,
+            phases=phases,
+            requirement_type=data.get("requirement_type"),
+            requirement_element=data.get("requirement_element"),
+            selection_requires=tuple(data.get("selection_requires", ())),
+        )
 
     def __repr__(self):
         return f"Treatment protocol: {self.name} ({len(self.phases)} phase(s))"
@@ -230,7 +320,23 @@ class CandidateSet(BaseModel):
 
     @classmethod
     def from_yaml(cls, yaml_path: str, prepend="") -> "CandidateSet":
-        ...
+        path = Path(yaml_path)
+        with path.open(encoding="utf-8") as handle:
+            payload = safe_load(handle) or {}
+        if not isinstance(payload, Mapping):
+            raise TypeError("candidate set YAML must contain a mapping")
+
+        name = str(payload.get("name") or prepend or path.stem)
+        raw_scenarios = payload.get("treatment_scenarios", payload.get("scenarios", {}))
+        if not isinstance(raw_scenarios, Mapping):
+            raise TypeError("candidate set scenarios must be a mapping")
+        scenarios = {
+            str(scenario_name): ProtocolCandidate.from_yaml(
+                str(scenario_name), scenario_payload
+            )
+            for scenario_name, scenario_payload in raw_scenarios.items()
+        }
+        return cls(name=name, treatment_scenarios=scenarios)
 
     def _repr_html_(self):
         children = []
@@ -418,7 +524,29 @@ def _group_candidates(
             },
             deep=True,
         )
-    return list(grouped.values())
+    return _sort_candidates(list(grouped.values()))
+
+
+def _candidate_sort_value(value: Any) -> tuple[int, str]:
+    """Make mixed nullable candidate metadata safely sortable."""
+
+    return (0, "") if value is None else (1, str(value))
+
+
+def _candidate_sort_key(candidate: RegimenCandidate) -> tuple[Any, ...]:
+    identity = _candidate_identity(candidate)
+    return (
+        *(_candidate_sort_value(value) for value in identity),
+        candidate.name,
+        tuple(sorted(candidate.components)),
+        tuple(sorted(repr(sig) for sig in candidate.sigs)),
+    )
+
+
+def _sort_candidates(candidates: list[RegimenCandidate]) -> list[RegimenCandidate]:
+    """Return a deterministic order independent of database row ordering."""
+
+    return sorted(candidates, key=_candidate_sort_key)
 
 
 def _restrict_phase(phase: PhaseCandidates, component: str) -> PhaseCandidates:

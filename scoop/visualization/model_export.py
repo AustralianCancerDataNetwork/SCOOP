@@ -15,19 +15,20 @@ from typing import Any
 
 import yaml
 
-from ..configuration.paths import (
+from ..profiles.paths import (
     PROFILES_DIRNAME,
     profile_artifact_relpath,
     profile_manifest_path,
     resolve_config_root,
 )
-from ..configuration.regimen_registry import (
+from .registry_adapter import (
     BundleRecipeResolver,
     ComponentQueryResolver,
     CompositeResolver,
-    RegimenRegistry,
-    load_regimen_registry,
+    VisualizationRegistry,
+    load_visual_registry,
 )
+from ..profiles.manifest import load_profile_manifest
 
 
 @dataclass(frozen=True)
@@ -158,6 +159,7 @@ class ExportProfileManifest:
     default_graph: str
     graphs: dict[str, Path]
     regimen_registry: Path
+    interventions: Path | None = None
     entry_graph: str | None = None
     pathways: dict[str, str] = field(default_factory=dict)
 
@@ -202,21 +204,15 @@ def _list_profiles(config_root: Path) -> list[str]:
 
 
 def _load_manifest(profile_id: str, config_root: Path) -> ExportProfileManifest:
-    manifest_path = profile_manifest_path(profile_id, config_root)
-    with manifest_path.open("r", encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle) or {}
-
-    manifest = raw.get("profile", raw)
+    manifest = load_profile_manifest(profile_id, base_dir=config_root)
     return ExportProfileManifest(
-        profile_id=manifest["profile_id"],
-        default_graph=manifest["default_graph"],
-        graphs={
-            graph_name: Path(graph_path)
-            for graph_name, graph_path in manifest["graphs"].items()
-        },
-        regimen_registry=Path(manifest["regimen_registry"]),
-        entry_graph=manifest.get("entry_graph"),
-        pathways=dict(manifest.get("pathways", {})),
+        profile_id=manifest.profile_id,
+        default_graph=manifest.default_graph,
+        graphs=manifest.graphs,
+        regimen_registry=manifest.regimen_registry,
+        interventions=manifest.interventions,
+        entry_graph=manifest.entry_graph,
+        pathways=dict(manifest.pathways or {}),
     )
 
 
@@ -244,7 +240,7 @@ def _node_scope(node_name: str) -> str:
 
 def _export_registry(
     profile_id: str,
-    registry: RegimenRegistry,
+    registry: VisualizationRegistry,
 ) -> tuple[list[RegistryEntryRecord], list[ResolverRecord], list[GroupRecord], list[BundleRecord], list[EdgeRecord]]:
     registry_entries: list[RegistryEntryRecord] = []
     resolvers: list[ResolverRecord] = []
@@ -265,7 +261,11 @@ def _export_registry(
                     "default_condition_cuis": list(group.default_condition_cuis),
                     "component_lists": [list(component_list) for component_list in group.component_lists],
                     "category_restrictions": {
-                        key: restriction.model_dump()
+                        key: (
+                            restriction.model_dump()
+                            if hasattr(restriction, "model_dump")
+                            else restriction
+                        )
                         for key, restriction in group.category_restrictions.items()
                     },
                     "notes": group.notes,
@@ -497,8 +497,20 @@ def build_view_model(base_dir: Path | None = None) -> ViewModel:
                     )
                 )
 
-        registry_path = config_root / profile_artifact_relpath(profile_id, manifest.regimen_registry)
-        registry = load_regimen_registry(registry_path)
+        registry_path = config_root / profile_artifact_relpath(
+            profile_id,
+            manifest.regimen_registry,
+        )
+        interventions_path = (
+            config_root / profile_artifact_relpath(profile_id, manifest.interventions)
+            if manifest.interventions is not None
+            else None
+        )
+        registry = load_visual_registry(
+            profile_id,
+            registry_path,
+            interventions_path,
+        )
         (
             exported_registry_entries,
             exported_resolvers,

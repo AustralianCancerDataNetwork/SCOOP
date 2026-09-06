@@ -1,8 +1,12 @@
 from pathlib import Path
 
+import yaml
+
 from scoop.protocols.candidates import (
+    CandidateSet,
     NoCandidates,
     OptionalPhaseOmitted,
+    PhaseCandidates,
     RegimenCandidate,
     SharedComponent,
     assemble,
@@ -152,3 +156,49 @@ def test_fake_gateway_caches_repeated_phase_queries():
 def test_candidate_layer_has_no_sqlalchemy_import():
     source = Path(__file__).parents[1] / "scoop" / "protocols" / "candidates.py"
     assert "sqlalchemy" not in source.read_text(encoding="utf-8").lower()
+
+
+def test_portable_candidate_loaders_preserve_typed_shape(tmp_path):
+    payload = {
+        "name": "fixture",
+        "treatment_scenarios": {
+            "scenario": {
+                "phases": [
+                    {
+                        "label": "phase",
+                        "conditions": ["Lung cancer"],
+                        "options": [
+                            {
+                                "name": "regimen v1",
+                                "variant_cui": 7,
+                                "sigs": ["sig-1"],
+                                "regimen": "regimen",
+                                "components": ["cisplatin"],
+                            }
+                        ],
+                    }
+                ]
+            }
+        },
+    }
+    path = tmp_path / "candidates.yaml"
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    loaded = CandidateSet.from_yaml(str(path))
+
+    assert loaded.name == "fixture"
+    option = loaded.treatment_scenarios["scenario"].phases[0].options[0]
+    assert isinstance(option, RegimenCandidate)
+    assert option.components == {"cisplatin"}
+
+
+def test_tuple_candidate_loader_normalizes_identity_and_order():
+    phase = PhaseCandidates.from_tuple_dict(
+        {
+            ("phase", "2", "study", "regimen", "v2"): ["b"],
+            ("phase", "1", "study", "regimen", "v1"): ["a"],
+        }
+    )
+
+    assert [option.variant_cui for option in phase.options] == [1, 2]
+    assert phase.options[0].components == {"a"}

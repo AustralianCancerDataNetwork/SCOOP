@@ -6,15 +6,15 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
-    "omop-alchemy>=1.0.0,<2.0.0",
-    "omop-graph>=0.1.3",
+    "hemonc-alchemy>=0.1.0",
+    "omop-alchemy>=1.1.0",
+    "omop-graph>=2.1.0",
     "oa-configurator>=1.0.0,<2.0.0",
     "pandas>=3.0.2",
     "psycopg2-binary>=2.9.11",
     "pydantic>=2.12.3",
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
-    "hemonc-import",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +58,3 @@ include = ["scoop*"]
 
 [project.entry-points."omop.config"]
 scoop = "scoop.config:ScoopConfig"
-
-[tool.uv.sources]
-hemonc-import = { path = "../hemonc_import/hemonc_import", editable = true }

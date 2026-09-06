@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable
 
@@ -63,14 +62,33 @@ class PhaseBinding(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
 
-class SigbackedBinding(ABC, PhaseBinding):
-    # change to this approach? candidates = list[RegimenCandidate]
+class SigbackedBinding(PhaseBinding):
+    """Binding for phases whose candidates come from the HemOnc gateway."""
+
     sql_artifacts: str | None = None
 
     @classmethod
-    @abstractmethod
-    def _create_candidates(cls, phase_spec, session):
-        pass
+    def _create_candidates(cls, phase_spec: PhaseSpec, gateway):
+        """Fetch and normalize candidates through the injected gateway.
+
+        Binding decides *which kind* of phase is eligible for HemOnc-backed
+        resolution. Query construction remains owned by the gateway, so this
+        helper does not accept a SQLAlchemy session or inspect database models.
+        """
+
+        if not isinstance(phase_spec, PhaseSpec):
+            raise TypeError("_create_candidates() requires a PhaseSpec")
+        if not hasattr(gateway, "candidates_for_phase"):
+            raise TypeError(
+                "_create_candidates() requires a gateway with "
+                "candidates_for_phase()"
+            )
+        from .candidates import _group_candidates
+
+        return _group_candidates(
+            list(gateway.candidates_for_phase(phase_spec)),
+            source_phase_id=phase_spec.source_phase_id or "",
+        )
 
 
 class VariantBinding(SigbackedBinding):
@@ -82,11 +100,6 @@ class VariantBinding(SigbackedBinding):
     
     I.e. at least one systemic component.
     """
-    @classmethod
-    def _create_candidates(cls, phase_spec, session):
-        pass
-
-
 class NonVariantBinding(SigbackedBinding):
     """
     Applies when HemOncKB regimen variants are not defined.
@@ -96,29 +109,19 @@ class NonVariantBinding(SigbackedBinding):
 
     I.e. when no concurrent systemic component
     """
-    @classmethod
-    def _create_candidates(cls, phase_spec, session):
-        pass
-
-
 class NonSigbackedBinding(PhaseBinding):
     """
     Used whenever the HemOncKB is not/cannot be used for operationalising.
     """
-    pass
-
-
 class SurgeryBinding(NonSigbackedBinding):
-    # until better differentiation based on pt these all lobectomies?
-    pass
+    """Surgery-only phase; procedure modeling is outside HemOnc selection."""
 
 
 class NullBinding(NonSigbackedBinding):
     """
     Placeholder phase for no implementation
     """
-    # No implementation of Best Supportive Care atm. 
-    pass
+    # No implementation of Best Supportive Care atm.
 
 
 @dataclass(frozen=True)

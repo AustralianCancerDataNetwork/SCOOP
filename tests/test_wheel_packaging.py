@@ -10,20 +10,10 @@ isolated environment, and proves that profile discovery, NSCLC registry
 loading, and vocabulary mapper resources all work from the *installed*
 location rather than the source tree.
 
-A wheel's own metadata cannot carry `[tool.uv.sources]` path/editable
-overrides (those are project-level dev config, not part of a built
-distribution's dependency list), so installing the wheel directly with its
-declared dependencies cannot resolve the private `hemonc-import` source. This
-test instead installs the project's already-resolved dependency set via
-`uv export` (which does flatten local/editable sources correctly), then
-overlays the just-built wheel with `--no-deps --force-reinstall` so `scoop`
-itself is guaranteed to come from the wheel, not the source tree or an
-editable install.
-
-This still needs the project's real dependencies to be resolvable (the local
-`hemonc-import` path, and `oa-configurator`/`omop-alchemy` from PyPI) and is
-skipped, rather than failed, when that isn't the case (e.g. a sandbox missing
-the sibling `hemonc_import` checkout), so it does not block unrelated work.
+The test installs the project's already-resolved dependency set via `uv export`
+and overlays the just-built wheel with `--no-deps --force-reinstall` so `scoop`
+itself is guaranteed to come from the wheel, not the source tree or an editable
+install. All runtime dependencies are expected to resolve from PyPI.
 """
 
 from __future__ import annotations
@@ -96,8 +86,8 @@ def test_installed_wheel_loads_profiles_and_vocabulary_resources(tmp_path):
 
     # Export the project's real, already-resolved runtime dependencies
     # (excluding the root project itself) so the isolated environment gets
-    # the same hemonc-import/oa-configurator/omop-alchemy the project uses,
-    # without re-deriving them from the wheel's own (source-agnostic) metadata.
+    # the same released HemOnc/OMOP/configurator stack the project uses,
+    # without re-deriving it from the wheel's own (source-agnostic) metadata.
     requirements_path = tmp_path / "requirements.txt"
     export = subprocess.run(
         [

@@ -81,7 +81,7 @@ class SimulationContext:
     graph: TransformationGraph
     vocabulary_gateway: VocabularyGateway
     vocabulary_mappers: VocabularyMappers
-    # regimen_registry: RegimenRegistry
+    registry_spec: RegistrySpec | None
     concept_mapper: ConceptMapper
     modifier_mapper: ModifierMapper
     measurement_mapper: MeasurementMapper
@@ -132,7 +132,7 @@ class SimulationContext:
         sampled = self.sample_patient()
         return build_graph_outcome(
             sampled,
-            # registry=self.regimen_registry,
+            intervention_catalog=self.intervention_catalog,
             source_profile=self.profile_name,
         )
 
@@ -247,7 +247,7 @@ class RoutedProfileRuntime:
         try:
             graph_outcome = build_graph_outcome(
                 final_guideline.as_dict,
-                registry=getattr(tail_context, "regimen_registry", None),
+                intervention_catalog=tail_context.intervention_catalog,
                 source_profile=tail_context.profile_name,
             )
             outcome_error = None
@@ -298,14 +298,15 @@ class ProfileLoader:
         #     self.base_dir / profile.regimen_registry_relpath
         # )
 
+        registry_spec = None
         intervention_catalog = None
         if profile.interventions_relpath is not None:
-            registry = RegistrySpec.from_path(
+            registry_spec = RegistrySpec.from_path(
                 self.base_dir / profile.regimen_registry_relpath
             )
             intervention_catalog = InterventionCatalog.from_path(
                 self.base_dir / profile.interventions_relpath,
-                protocols=registry.protocols,
+                protocols=registry_spec.protocols,
             )
 
         context = SimulationContext(
@@ -314,7 +315,7 @@ class ProfileLoader:
             graph=graph,
             vocabulary_gateway=self.vocabulary_gateway,
             vocabulary_mappers=vocabulary_mappers,
-            # regimen_registry=regimen_registry,
+            registry_spec=registry_spec,
             concept_mapper=vocabulary_mappers.concept_mapper,
             modifier_mapper=vocabulary_mappers.modifier_mapper,
             measurement_mapper=vocabulary_mappers.measurement_mapper,

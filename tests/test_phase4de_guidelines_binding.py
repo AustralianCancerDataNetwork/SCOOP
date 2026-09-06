@@ -14,6 +14,8 @@ from scoop.protocols.binding import (
     VariantBinding,
     bind,
 )
+from scoop.protocols.candidates import RegimenCandidate
+from scoop.protocols.hemonc.gateway import FakeHemOncGateway
 from scoop.protocols.spec import (
     BroadCategory,
     CategoryRuleType,
@@ -141,3 +143,25 @@ def test_binding_does_not_accept_or_inspect_a_gateway():
         components=[["osimertinib"]],
     )
     assert isinstance(bind(phase), VariantBinding)
+
+
+def test_sigbacked_binding_fetches_candidates_only_through_gateway():
+    phase = _phase(
+        "explicit_drug",
+        components=[["osimertinib"]],
+    )
+    candidate = RegimenCandidate(
+        name="osimertinib",
+        variant_cui=1,
+        sigs=["sig"],
+        regimen="osimertinib",
+        components={"osimertinib"},
+    )
+    gateway = FakeHemOncGateway({"explicit_drug": [candidate]})
+
+    result = bind(phase)
+    candidates = result._create_candidates(phase, gateway)
+
+    assert isinstance(result, VariantBinding)
+    assert candidates == [candidate.model_copy(update={"source_phase_id": "explicit_drug"})]
+    assert gateway.calls == ["explicit_drug"]

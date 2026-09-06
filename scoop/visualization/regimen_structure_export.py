@@ -9,18 +9,18 @@ from typing import Any
 
 import yaml
 
-from ..configuration.paths import (
+from ..profiles.paths import (
     PROFILES_DIRNAME,
     profile_artifact_relpath,
     profile_manifest_path,
     resolve_config_root,
 )
-from ..configuration.regimen_registry import (
+from .registry_adapter import (
     BundleRecipeResolver,
     ComponentQueryResolver,
     CompositeResolver,
-    RegimenRegistry,
-    load_regimen_registry,
+    VisualizationRegistry,
+    load_visual_registry,
 )
 
 
@@ -112,7 +112,11 @@ def _export_registry_group(profile_id: str, group_id: str, group: Any) -> dict[s
         "default_condition_cuis": list(group.default_condition_cuis),
         "component_lists": [list(component_list) for component_list in group.component_lists],
         "category_restrictions": {
-            key: restriction.model_dump()
+            key: (
+                restriction.model_dump()
+                if hasattr(restriction, "model_dump")
+                else restriction
+            )
             for key, restriction in group.category_restrictions.items()
         },
         "notes": group.notes,
@@ -143,7 +147,7 @@ def _export_registry_bundle(profile_id: str, bundle_id: str, bundle: Any) -> dic
     }
 
 
-def _export_registry(profile_id: str, registry: RegimenRegistry) -> dict[str, Any]:
+def _export_registry(profile_id: str, registry: VisualizationRegistry) -> dict[str, Any]:
     entries = [
         _export_registry_entry(profile_id, entry_id, entry)
         for entry_id, entry in registry.entries.items()
@@ -247,7 +251,17 @@ def build_regimen_structure(base_dir: Path | None = None) -> dict[str, Any]:
         registry_path = config_root / profile_artifact_relpath(
             profile_id, Path(manifest["regimen_registry"])
         )
-        registry = load_regimen_registry(registry_path)
+        interventions_path = (
+            config_root
+            / profile_artifact_relpath(profile_id, Path(manifest["interventions"]))
+            if manifest.get("interventions") is not None
+            else None
+        )
+        registry = load_visual_registry(
+            profile_id,
+            registry_path,
+            interventions_path,
+        )
         protocol = _export_protocol(
             profile_id,
             _raw_protocol_registry(_protocol_registry_path(profile_id, config_root)),

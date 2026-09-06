@@ -3,6 +3,21 @@ from typing import Any
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 import logging
+from hemonc_alchemy.model import (
+    Conditions,
+    Drugs,
+    Sigs,
+    Studies,
+    StudyResults,
+    drugs_Canmed_major_classMap,
+    drugs_Canmed_minor_classMap,
+    sigs_StudyMap,
+    variants_StudyMap,
+    Variants,
+)
+from hemonc_alchemy.toolkit.core.conditions import (
+    condition_cuis_by_names as _condition_cuis_by_names,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,45 +80,22 @@ COMPONENT_STR_COLS = ["canmed_major_class", "canmed_minor_class", "main_class", 
 class HemOncModels:
     """Container for the SQLAlchemy entities used by the query helpers."""
 
-    Variants: Any
-    Sigs: Any
-    Studies: Any
-    Drugs: Any
-    drugs_Canmed_major_classMap: Any
-    drugs_Canmed_minor_classMap: Any
-    variants_StudyMap: Any
-    Conditions: Any
-    StudyResults: Any
+    Variants: Any = Variants
+    Sigs: Any = Sigs
+    Studies: Any = Studies
+    Drugs: Any = Drugs
+    drugs_Canmed_major_classMap: Any = drugs_Canmed_major_classMap
+    drugs_Canmed_minor_classMap: Any = drugs_Canmed_minor_classMap
+    variants_StudyMap: Any = variants_StudyMap
+    sigs_StudyMap: Any = sigs_StudyMap
+    Conditions: Any = Conditions
+    StudyResults: Any = StudyResults
 
 
 def _load_hemonc_models() -> HemOncModels:
-    """Import and package the HemOnc SQLAlchemy models on demand."""
+    """Return the current public HemOnc SQLAlchemy model bundle."""
 
-    try:
-        from hemonc_import.final_model.relationships import Drugs, Sigs, Studies, Variants, Conditions
-        from hemonc_import.final_model.entities import (
-            drugs_Canmed_major_classMap,
-            drugs_Canmed_minor_classMap,
-            variants_StudyMap, 
-            StudyResults
-        )
-    except ImportError as exc:
-        raise ImportError(
-            "hemonc_import is required to build executable HemOnc queries. "
-            "Install it in the active environment before using these helpers."
-        ) from exc
-
-    return HemOncModels(
-        Variants=Variants,
-        Sigs=Sigs,
-        Studies=Studies,
-        Drugs=Drugs,
-        drugs_Canmed_major_classMap=drugs_Canmed_major_classMap,
-        drugs_Canmed_minor_classMap=drugs_Canmed_minor_classMap,
-        variants_StudyMap=variants_StudyMap,
-        Conditions=Conditions,
-        StudyResults=StudyResults
-    )
+    return HemOncModels()
 
 
 
@@ -138,17 +130,8 @@ def get_sig_study_join(models: HemOncModels | None = None, to="studies_table"):
 
 def condition_cuis_by_names(condition_names: list[str], session: so.Session,
                            models: HemOncModels | None = None) -> list[int]:
-    models = models or _load_hemonc_models()
-    results = (
-        session.query(models.Conditions.condition_cui, models.Conditions.condition)
-        .filter(models.Conditions.condition.in_(condition_names))
-        .all()
-    )
-    found_names = {row.condition for row in results}
-    missing = set(condition_names) - found_names
-    if missing:
-        logger.warning("No CUI found for condition(s): %s", missing)
-    return [row.condition_cui for row in results]
+    del models
+    return _condition_cuis_by_names(session, condition_names)
 
 def _component_search_expressions(search_terms: str | list[str], table: Any) -> list[Any]:
     """Build `ILIKE` expressions across all supported component text columns."""
@@ -167,6 +150,5 @@ def join_not_distinct(col1, col2):
         col1 == col2,
         sa.and_(col1.is_(None), col2.is_(None))
     )
-
 
 

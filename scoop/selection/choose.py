@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import random
 from collections.abc import Mapping
 
-from ..protocols.candidates import ProtocolCandidate, RegimenCandidate
+from ..protocols.candidates import ProtocolCandidate, RegimenCandidate, _sort_candidates
 
 
 @dataclass(frozen=True)
@@ -68,11 +68,15 @@ def select(
         return NoSelection(reason)
 
     rng = random.Random(seed)
+    # Protocol and option order can originate in database row order or YAML
+    # mapping order. Canonicalize both before using the seeded RNG so the same
+    # seed means the same clinical alternative across equivalent inputs.
+    eligible = sorted(eligible, key=lambda candidate: candidate.name)
     protocol = rng.choice(eligible)
     selected = tuple(
         SelectedRegimen(
             phase_id=phase.label or f"phase_{index}",
-            regimen=rng.choice(phase.options),
+            regimen=rng.choice(_sort_candidates(phase.options)),
         )
         for index, phase in enumerate(protocol.phases, start=1)
     )

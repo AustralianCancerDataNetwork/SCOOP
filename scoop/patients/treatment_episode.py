@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import Field
 from .transforms import TransformableBase
 from ..profiles.context import get_active_simulation_context
-# The legacy registry integration is intentionally deferred to the bridge phase.
+from ..selection.interventions import InterventionCatalog, Recipe
 
 class Treatment_Episode(TransformableBase):
 
@@ -23,12 +23,19 @@ class Treatment_Episode(TransformableBase):
     bundle_recipe_id: str | None = None
     bundle_sequence_template: str | None = None
     bundle_phase_summary: list[dict[str, Any]] = Field(default_factory=list)
+    drug_exposures: list[dict[str, Any]] = Field(default_factory=list)
+    procedures: list[dict[str, Any]] = Field(default_factory=list)
 
     def roll_events(self):
-        """ Placeholder method to generate drug exposures and procedures for this treatment episode. """
-        # In a real implementation, this would generate events based on the regimen details.
-        drug_exposures = [{"drug_concept_id": 12345, "dose": "50mg", "frequency": "daily"}]
-        procedures = [{"procedure_concept_id": 67890, "date": "2023-01-01"}]
+        """Return event payloads explicitly produced by treatment resolution."""
+
+        drug_exposures = [dict(event) for event in self.drug_exposures]
+        procedures = [dict(event) for event in self.procedures]
+        for phase in self.bundle_phase_summary:
+            drug_exposures.extend(
+                dict(event) for event in phase.get("drug_exposures", [])
+            )
+            procedures.extend(dict(event) for event in phase.get("procedures", []))
         return drug_exposures, procedures
 
 
@@ -44,6 +51,8 @@ class GraphOutcome:
     active_endpoints: tuple[str, ...]
     modifiers: dict[str, Any]
     raw_sample: dict[str, Any]
+    resolver_type: str | None = None
+    bundle_recipe_id: str | None = None
 
 
 def extract_active_treatment_endpoints(graph_sample: dict[str, Any]) -> list[str]:
@@ -70,44 +79,53 @@ def _extract_modifiers(graph_sample: dict[str, Any]) -> dict[str, Any]:
 
 def build_graph_outcome(
     graph_sample: dict[str, Any],
-    registry: None=None, #RegimenRegistry | None = None,
+    registry: Any | None = None,
+    intervention_catalog: InterventionCatalog | None = None,
     source_profile: str | None = None,
 ) -> GraphOutcome:
     if not graph_sample:
         raise ValueError("Graph sample is required to build a regimen outcome.")
 
-    if registry is None:
+    if intervention_catalog is None:
         context = get_active_simulation_context()
-        if context is None or getattr(context, "regimen_registry", None) is None:
+        if context is not None:
+            intervention_catalog = getattr(context, "intervention_catalog", None)
+    if intervention_catalog is None:
+        if registry is not None:
             raise ValueError(
-                "No regimen registry was provided and no active profile context is available."
+                "The legacy regimen registry is no longer supported; provide "
+                "an InterventionCatalog from the active profile context."
             )
-        registry = context.regimen_registry
+        if intervention_catalog is None:
+            raise ValueError(
+                "No intervention catalog was provided and no active profile context "
+                "is available."
+            )
     active_endpoints = extract_active_treatment_endpoints(graph_sample)
     if not active_endpoints:
         raise ValueError("No active treatment_episode endpoints found in graph sample.")
 
-    resolved: dict[str, list[str]] = {}
-    unresolved: list[str] = []
-    for endpoint in active_endpoints:
-        try:
-            canonical_id = registry.resolve_alias(endpoint)
-        except KeyError:
-            unresolved.append(endpoint)
-            continue
-        resolved.setdefault(canonical_id, []).append(endpoint)
-
-    if unresolved:
-        raise ValueError(f"Unmapped treatment endpoints in graph sample: {sorted(unresolved)}")
-    if len(resolved) != 1:
+    undeclared = [
+        endpoint
+        for endpoint in active_endpoints
+        if endpoint not in intervention_catalog.specs
+    ]
+    if undeclared:
         raise ValueError(
-            "Expected exactly one active canonical regimen category, "
-            f"found {sorted(resolved)} from endpoints {sorted(active_endpoints)}"
+            f"Unmapped treatment endpoints in graph sample: {sorted(undeclared)}"
+        )
+    if len(set(active_endpoints)) != 1:
+        raise ValueError(
+            "Expected exactly one active treatment endpoint, "
+            f"found {sorted(set(active_endpoints))}"
         )
 
-    primary_category_id, raw_endpoints = next(iter(resolved.items()))
-    graph_endpoint = raw_endpoints[0]
-    graph_alias_used = graph_endpoint if graph_endpoint != primary_category_id else None
+    primary_category_id = active_endpoints[0]
+    graph_endpoint = primary_category_id
+    graph_alias_used = None
+    spec = intervention_catalog.specs[primary_category_id]
+    resolver_type = type(spec.resolution).__name__.lower()
+    bundle_recipe_id = primary_category_id if isinstance(spec.resolution, Recipe) else None
 
     return GraphOutcome(
         primary_category_id=primary_category_id,
@@ -117,4 +135,6 @@ def build_graph_outcome(
         active_endpoints=tuple(active_endpoints),
         modifiers=_extract_modifiers(graph_sample),
         raw_sample=graph_sample,
+        resolver_type=resolver_type,
+        bundle_recipe_id=bundle_recipe_id,
     )
