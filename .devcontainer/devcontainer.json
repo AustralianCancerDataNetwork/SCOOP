@@ -1,10 +1,7 @@
 {
     "name": "SCOOP Dev Container",
     // This file needs to live in SCOOP/.devcontainer/ so we need to go one level up to find the docker-compose file
-    "dockerComposeFile": [
-        "../docker-compose.yaml",
-        "../docker-compose.override.yaml"
-    ],
+    "dockerComposeFile": ["../docker-compose.yaml"],
     "service": "python-scoop",
     "remoteUser": "vscode", // Adapt if you changed it
     "workspaceFolder": "/workspace/SCOOP/",  // Adapt if your workspace is different in docker-compose.yaml
@@ -27,7 +24,6 @@
             ]
         }
     },
-    // This assumes devcontainer is in SCOOP/.devcontainer and just installs scoop
-    "postCreateCommand": "uv sync --frozen --all-packages && uv pip install -e /workspace/hemonc_import" ,  // Install dependencies after creating the container
+    "postCreateCommand": "uv sync --frozen --all-packages",
     "shutdownAction": "none"
 }

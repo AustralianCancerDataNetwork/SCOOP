@@ -35,7 +35,10 @@ USER $USERNAME
 # Ensure the virtual environment binaries are prioritized in the PATH
 ENV PATH="/workspace/SCOOP/.venv/bin:/home/vscode/.local/bin:$PATH"
 
-# Copy package definitions to pre-cache dependencies
+# Copy package definitions so the dev image has the project metadata available.
+# The sibling HemOnc and OMOP working trees are mounted by compose at runtime,
+# so dependency installation happens in postCreateCommand after those mounts
+# exist rather than during this image build.
 COPY --chown=$USER_UID:$USER_GID pyproject.toml uv.lock* ./
 
 # NOTE: We are not copying the entire source code here to allow for faster rebuilds!
@@ -43,7 +46,7 @@ COPY --chown=$USER_UID:$USER_GID pyproject.toml uv.lock* ./
 # so we can install dependencies without copying the source code first
 
 # Note: --no-install-project allows us to build the environment before copying the source code
-RUN uv sync --frozen --no-install-project
+RUN uv venv .venv
 
 # ==========================================
 # STAGE 3: PRODUCTION (Self-contained Image)

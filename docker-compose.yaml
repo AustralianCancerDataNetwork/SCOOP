@@ -39,7 +39,7 @@ services:
     build:
       context: .
       dockerfile: DOCKERFILE # You may need to adapt the path to your Dockerfile and the context during build
-      target: prod
+      target: dev
     image: python-scoop:latest
     restart: always
     depends_on:
@@ -47,5 +47,9 @@ services:
         condition: service_healthy
     command: 
       sleep infinity # This keeps the container running for development.
+    volumes:
+      - .:/workspace/SCOOP:rw
+      - ../hemonc-alchemy:/workspace/hemonc-alchemy:rw
+      - ../../core-stack/omop-alchemy:/core-stack/omop-alchemy:rw
     networks:
       - hemonc-network
