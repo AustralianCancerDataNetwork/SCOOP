@@ -8,7 +8,7 @@ from scoop.configuration.config_loader import (
     load_profile_manifest,
     load_transformation_graph,
 )
-from scoop.configuration.regimen_registry import load_regimen_registry
+from scoop.configuration.protocol_registry import load_protocol_registry
 from scoop.schema.treatment_episode import extract_active_treatment_endpoints
 
 
@@ -57,11 +57,12 @@ class BladderProfileTests(unittest.TestCase):
             self.assertGreater(len(graph.nodes), 0, graph_name)
 
     def test_bladder_registry_loads(self):
-        registry = load_regimen_registry(BLADDER_DIR / "bladder_regimen_registry.yaml")
-        self.assertEqual(registry.disease, "bladder")
+        registry = load_protocol_registry(BLADDER_DIR / "bladder_regimen_registry.yaml")
+        self.assertEqual(registry.label, "bladder")
         self.assertIn("turbt_intravesical_therapy", registry.entries)
         self.assertIn("trimodality_bladder_preservation", registry.entries)
         self.assertIn("erdafitinib", registry.entries)
+        self.assertEqual(registry.entries["erdafitinib"].resolver.type, "none")
 
     def test_bladder_routed_runtime_loads(self):
         runtime = load_routed_profile("bladder", base_dir=CONFIG_ROOT)

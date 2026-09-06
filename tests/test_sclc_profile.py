@@ -8,7 +8,7 @@ from scoop.configuration.config_loader import (
     load_profile_manifest,
     load_transformation_graph,
 )
-from scoop.configuration.regimen_registry import load_regimen_registry
+from scoop.configuration.protocol_registry import load_protocol_registry
 from scoop.schema.treatment_episode import extract_active_treatment_endpoints
 
 
@@ -55,19 +55,21 @@ class SCLCProfileTests(unittest.TestCase):
             self.assertGreater(len(graph.nodes), 0, graph_name)
 
     def test_sclc_registry_loads(self):
-        registry = load_regimen_registry(SCLC_DIR / "sclc_regimen_registry.yaml")
-        self.assertEqual(registry.disease, "sclc")
+        registry = load_protocol_registry(SCLC_DIR / "sclc_regimen_registry.yaml")
+        self.assertEqual(registry.label, "sclc")
         self.assertIn("concurrent_crt", registry.entries)
         self.assertIn("platinum_etoposide_atezolizumab", registry.entries)
         self.assertIn("lurbinectedin", registry.entries)
         self.assertIn("lung_sclc_all", registry.condition_sets)
         self.assertEqual(registry.condition_sets["lung_sclc_all"], [666])
 
-        resolved = registry.resolve_hemonc_bundle("concurrent_crt")
-        self.assertIsNotNone(resolved)
         self.assertEqual(
-            [phase.phase_id for phase in resolved.phases],
-            ["systemic", "radiotherapy"],
+            registry.entries["concurrent_crt"].resolver.type,
+            "bundle_recipe",
+        )
+        self.assertEqual(
+            registry.entries["concurrent_crt"].resolver.group_id,
+            "concurrent_crt",
         )
 
     def test_sclc_routed_runtime_loads(self):

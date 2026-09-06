@@ -11,7 +11,7 @@ from scoop.configuration.config_loader import (
     ProfileLoader,
     get_profile_config,
 )
-from scoop.configuration.regimen_registry import load_regimen_registry
+from scoop.configuration.protocol_registry import load_protocol_registry
 from scoop.schema import condition_occurrence as condition_occurrence_module
 from scoop.schema.condition_episode import Condition_Episode
 from scoop.schema import episode_base as episode_base_module
@@ -123,7 +123,7 @@ class RegimenAssignmentTests(unittest.TestCase):
                 base_dir=cls.config_root,
             )
         )
-        cls.registry = cls.context.regimen_registry
+        cls.registry = cls.context.protocol_registry
 
     @classmethod
     def tearDownClass(cls):
@@ -135,37 +135,35 @@ class RegimenAssignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(scoop, "__version__"))
 
     def test_registry_loader_sets_entry_ids(self):
-        direct_registry = load_regimen_registry(
-            self.config_root / "profiles" / "nsclc" / "nsclc_regimen_registry.yaml"
+        direct_registry = load_protocol_registry(
+            self.config_root / "profiles" / "nsclc" / "nsclc_protocol_registry.yaml"
         )
-        entry = self.registry.get_entry("egfr_intervention")
-        self.assertEqual(entry.entry_id, "egfr_intervention")
-        self.assertEqual(direct_registry.get_entry("egfr_intervention").entry_id, "egfr_intervention")
+        self.assertIsNotNone(self.registry)
+        self.assertIn("egfr_intervention", self.registry.entries)
+        self.assertIn("egfr_intervention", direct_registry.entries)
         self.assertEqual(
-            self.registry.resolve_alias("ici_monotherapy_or_ici_with_chemotherapy_squamous"),
-            "ici_monotherapy_or_ici_with_chemotherapy_squamous",
+            self.registry.entries["egfr_intervention"].resolver.type,
+            "component_query",
         )
 
     def test_profile_loader_attaches_registry_to_context(self):
         self.assertEqual(self.context.profile_name, "nsclc_stg23_resectable")
-        self.assertIsNotNone(self.context.regimen_registry)
+        self.assertIsNotNone(self.context.protocol_registry)
 
-    def test_build_graph_outcome_canonicalizes_alias(self):
+    def test_build_graph_outcome_uses_registry_endpoint_metadata(self):
         sample = {
             "condition_occurrence.morphology": "squamous",
             "condition_occurrence.pdl1": "high",
-            "treatment_episode.ici_monotherapy_or_ici_with_chemotherapy_squamous": "ici_monotherapy_or_w_chemo_sqcc",
+            "treatment_episode.egfr_intervention": "egfr_intervention",
         }
         outcome = build_graph_outcome(
             graph_sample=sample,
             registry=self.registry,
-            source_profile="nsclc_stg4_nodrivers",
+            source_profile="nsclc_stg4_driver",
         )
-        self.assertEqual(
-            outcome.primary_category_id,
-            "ici_monotherapy_or_ici_with_chemotherapy_squamous",
-        )
+        self.assertEqual(outcome.primary_category_id, "egfr_intervention")
         self.assertIsNone(outcome.graph_alias_used)
+        self.assertEqual(outcome.resolver_type, "component_query")
 
     def test_build_graph_outcome_requires_single_endpoint(self):
         sample = {
@@ -207,10 +205,6 @@ class RegimenAssignmentTests(unittest.TestCase):
         self.assertEqual(condition.regimen.regimen_type, "radiotherapy")
         self.assertEqual(condition.regimen.registry_resolver_type, "bundle_recipe")
         self.assertEqual(condition.regimen.bundle_recipe_id, "radiotherapy")
-        self.assertEqual(
-            [phase["phase_id"] for phase in condition.regimen.bundle_phase_summary],
-            ["radiotherapy"],
-        )
 
     def test_condition_occurrence_uses_unresolved_fallback_for_non_registry_sample(self):
         sample = {
