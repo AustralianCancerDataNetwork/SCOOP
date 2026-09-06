@@ -1,174 +1,259 @@
-"""Helpers for turning resolved HemOnc variant queries into SQLAlchemy queries.
+"""Adapters from SCOOP protocol phases to the HemOnc toolkit."""
 
-This module covers the variant-backed path only. It normalizes component and
-category requirements, builds SQL expressions against the `hemonc_import`
-schema, and optionally executes the resulting variant query.
-"""
 from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Any
+
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from dataclasses import dataclass
+
+from hemonc_alchemy.toolkit.analytics.treatment.selection import (
+    CategoryRequirement,
+    ComponentRequirement,
+    TreatmentSelectionSpec,
+    build_variant_query_artifacts as _build_variant_query_artifacts,
+    build_variant_statement as _build_variant_statement,
+    select_variants,
+)
+from hemonc_alchemy.toolkit.core.conditions import (
+    condition_cuis_by_names as _condition_cuis_by_names,
+)
 
 from ..configuration.protocol_registry import (
     ComponentRequirements,
     SourcePhaseYaml,
-    ConditionCuis,
+    apply_default_component_requirements,
 )
-from scoop.utils.hemonc_helpers import (
-    HemOncModels,
-    _load_hemonc_models,
-    condition_cuis_by_names,
+from .hemonc_helpers import COMPONENT_CLASS_MAPS, HemOncModels, _load_hemonc_models
 
-)
-from scoop.utils.treatment_selection import (
-    categorise_components,
-    get_sig_component_stmt,
-    build_component_requirement_expressions
-)
-import logging
-
-logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class VariantQueryArtifacts:
-    """Intermediate SQL artifacts for inspecting how a variant query was built."""
+    """SCOOP-shaped view of the current HemOnc query artifacts."""
 
-    # resolved_query: ResolvedHemOncQuery
-    # source_phase_yaml: SourcePhaseYaml
     components_subquery: Any
     categorised_components_subquery: Any
     variant_cuis_subquery: Any
     variants_stmt: Any
 
-def build_components_subquery(condition_cuis: list[int], models: HemOncModels | None = None) -> Any:
-    """Build the base component-level subquery for a condition set."""
 
-    models = models or _load_hemonc_models()
-    return (
-        sa.select(
-            models.Variants.variant_cui,
-            models.Sigs.component,
-            models.Sigs.component_cui,
-            models.Drugs.drug_inn,
-            models.Drugs.main_class,
-            models.drugs_Canmed_major_classMap.canmed_major_class,
-            models.drugs_Canmed_minor_classMap.canmed_minor_class,
-        )
-        .join(models.Variants.component_sigs)
-        .outerjoin(models.Drugs, models.Sigs.component_cui == models.Drugs.drug_cui)
-        .outerjoin(
-            models.drugs_Canmed_major_classMap,
-            models.drugs_Canmed_major_classMap.parent_id == models.Drugs.id,
-        )
-        .outerjoin(
-            models.drugs_Canmed_minor_classMap,
-            models.drugs_Canmed_minor_classMap.parent_id == models.Drugs.id,
-        )
-        .join(models.variants_StudyMap)
-        .join(models.Studies, models.variants_StudyMap.study == models.Studies.study)
-        .where(models.Variants.study_items.any(models.Studies.condition_cui.in_(condition_cuis)))
-        .subquery()
+def _category_mapping() -> dict[str, dict[str, str]]:
+    """Return SCOOP's explicit broad-category policy for HemOnc fields."""
+
+    return dict(COMPONENT_CLASS_MAPS)
+
+
+def _condition_cuis(conditions: Any, session: so.Session | None) -> tuple[int, ...]:
+    if isinstance(conditions, str):
+        if session is None:
+            raise TypeError("A session is required when conditions are names.")
+        return tuple(_condition_cuis_by_names(session, conditions))
+    values = tuple(conditions)
+    if values and all(isinstance(value, str) for value in values):
+        if session is None:
+            raise TypeError("A session is required when conditions are names.")
+        return tuple(_condition_cuis_by_names(session, values))
+    return tuple(int(value) for value in values)
+
+
+def _component_requirements(
+    requirements: ComponentRequirements,
+) -> tuple[ComponentRequirement, ...]:
+    return tuple(
+        ComponentRequirement.from_terms(terms)
+        for terms in requirements.component_lists
+        if terms
     )
 
 
+def _category_requirements(
+    requirements: ComponentRequirements,
+) -> tuple[CategoryRequirement, ...]:
+    return tuple(
+        CategoryRequirement(
+            category=category,
+            amount=restriction.amount,
+            match=restriction.type,
+        )
+        for category, restriction in requirements.category_restrictions.items()
+    )
 
-def convert_conditions(conditions: list, session: so.Session):
-    if isinstance(conditions[0], str):
-        condition_cuis = condition_cuis_by_names(conditions, session)
-    else:
-        condition_cuis = conditions
-    return condition_cuis
+
+def _selection_spec(
+    component_requirements: ComponentRequirements,
+    condition_cuis: Any,
+    *,
+    regimens: tuple[str, ...] = (),
+    phase: str | None = None,
+    version_policy: str = "latest",
+) -> TreatmentSelectionSpec:
+    return TreatmentSelectionSpec.for_conditions(
+        condition_cuis,
+        component_requirements=_component_requirements(component_requirements),
+        category_requirements=_category_requirements(component_requirements),
+        regimens=regimens,
+        phase=phase,
+        version_policy=version_policy,
+    )
+
+
+def _query_spec(
+    query: Any,
+    *,
+    condition_cuis: Any = None,
+    session: so.Session | None = None,
+) -> TreatmentSelectionSpec:
+    """Normalize a protocol source phase or inline query description."""
+
+    if hasattr(query, "component_requirements") and hasattr(query, "condition_cuis"):
+        return _selection_spec(
+            query.component_requirements,
+            _condition_cuis(query.condition_cuis, session),
+            regimens=tuple(query.regimens or ()),
+            phase=(query.type if query.type and str(query.type).lower() != "none" else None),
+        )
+
+    if hasattr(query, "component_lists") and hasattr(query, "default_condition_cuis"):
+        requirements = ComponentRequirements(
+            component_lists=query.component_lists,
+            category_restrictions=query.category_restrictions,
+        )
+        return _selection_spec(
+            requirements,
+            _condition_cuis(query.default_condition_cuis, session),
+        )
+
+    if condition_cuis is None:
+        raise TypeError("condition_cuis is required for inline component requirements.")
+    return _selection_spec(
+        query,
+        _condition_cuis(condition_cuis, session),
+    )
+
+
+def build_components_subquery(
+    condition_cuis: list[int],
+    models: HemOncModels | None = None,
+) -> Any:
+    """Build the current HemOnc flat component projection for a condition set."""
+
+    del models
+    spec = TreatmentSelectionSpec.for_conditions(condition_cuis)
+    return _build_variant_query_artifacts(
+        spec,
+        category_mapping=_category_mapping(),
+    ).components
+
 
 def build_variant_cui_subquery(
     component_requirements: ComponentRequirements,
-    condition_cuis: ConditionCuis,
-    session: so.Session,
+    condition_cuis: list[int],
+    session: so.Session | None = None,
     models: HemOncModels | None = None,
 ) -> Any:
-    """Build the subquery that identifies matching variant CUIs."""
+    """Build the current HemOnc matching-variant ID subquery."""
 
-    condition_cuis = convert_conditions(condition_cuis, session)
-
-    components = build_components_subquery(condition_cuis, models=models)
-    categorised = categorise_components(components)
-    return (
-        sa.select(categorised.c.variant_cui)
-        .group_by(categorised.c.variant_cui) # TODO: test for nonvar path with study+phase grouping
-        .having(*build_component_requirement_expressions(component_requirements, categorised))
-        .subquery()
+    del models
+    spec = _selection_spec(
+        component_requirements,
+        _condition_cuis(condition_cuis, session),
     )
+    return _build_variant_query_artifacts(
+        spec,
+        category_mapping=_category_mapping(),
+    ).variant_ids
 
-def get_variant_objects(subquery, session, models: HemOncModels | None = None):
+
+def get_variant_objects(
+    subquery: Any,
+    session: so.Session,
     models: HemOncModels | None = None,
-    stmt_full = (
-        sa.select(models.Variants)
-        .join(subquery, models.Variants.variant_cui == subquery.c.variant_cui)
-    )
-    chosen_variants = session.execute(stmt_full).unique().scalars().all()
-    return chosen_variants
+) -> list[Any]:
+    """Execute a variant ID subquery without discarding the model bundle."""
+
+    model = (models or _load_hemonc_models()).Variants
+    statement = sa.select(model).join(subquery, subquery.c.variant_id == model.id)
+    return list(session.execute(statement).unique().scalars())
+
 
 def build_variant_statement(
-    component_requirements: ComponentRequirements,
-    condition_cuis: ConditionCuis,
-    session: so.Session,
+    component_requirements: Any,
+    condition_cuis: Any = None,
+    session: so.Session | None = None,
     models: HemOncModels | None = None,
 ) -> Any:
-    """Build the final SQLAlchemy statement returning matching variant rows."""
-    
-    models = models or _load_hemonc_models()
-    variant_cuis = build_variant_cui_subquery(component_requirements, condition_cuis, 
-                                              models=models, session=session)
-    return sa.select(models.Variants).join(
-        variant_cuis, models.Variants.variant_cui == variant_cuis.c.variant_cui
-    )
+    """Build a current HemOnc variant statement from a SCOOP query object.
 
+    ``models`` remains accepted for transition compatibility; the statement is
+    deliberately built from the public ``hemonc_alchemy`` model and toolkit.
+    """
+
+    del models
+    spec = _query_spec(
+        component_requirements,
+        condition_cuis=condition_cuis,
+        session=session,
+    )
+    return _build_variant_statement(spec, category_mapping=_category_mapping())
 
 
 def build_variant_query_artifacts(
-    component_requirements: ComponentRequirements,
-    condition_cuis: ConditionCuis,
+    component_requirements: Any,
+    condition_cuis: Any = None,
     models: HemOncModels | None = None,
 ) -> VariantQueryArtifacts:
-    """Build inspectable intermediate SQL artifacts for a resolved variant query."""
-    models = models or _load_hemonc_models()
-    components = get_sig_component_stmt(condition_cuis, models=models)
-    categorised = categorise_components(components)
-    variant_cuis = (
-        sa.select(categorised.c.variant_cui)
-        .group_by(categorised.c.variant_cui)
-        .having(
-            *build_component_requirement_expressions(
-                component_requirements,
-                categorised,
-            )
-        )
-        .subquery()
+    """Build inspectable current HemOnc artifacts for a SCOOP query."""
+
+    del models
+    spec = _query_spec(component_requirements, condition_cuis=condition_cuis)
+    artifacts = _build_variant_query_artifacts(
+        spec,
+        category_mapping=_category_mapping(),
     )
     return VariantQueryArtifacts(
-        components_subquery=components,
-        categorised_components_subquery=categorised,
-        variant_cuis_subquery=variant_cuis,
-        variants_stmt=sa.select(models.Variants).join(
-            variant_cuis, models.Variants.variant_cui == variant_cuis.c.variant_cui
-        ),
+        components_subquery=artifacts.components,
+        categorised_components_subquery=artifacts.categorized_components,
+        variant_cuis_subquery=artifacts.variant_ids,
+        variants_stmt=artifacts.variants,
     )
 
-
-def build_variant_statement_for_entry():
-    pass
 
 def execute_variant_query(
     session: so.Session,
     source_phase_yaml: SourcePhaseYaml,
     models: HemOncModels | None = None,
 ) -> list[Any]:
-    """Execute a resolved variant query and return ORM variant rows."""
-    # TODO: Change approach, split up build_variant_statement
-    stmt = build_variant_statement(source_phase_yaml.component_requirements,
-                                   source_phase_yaml.conditions, models=models, session=session)
-    return session.execute(stmt).unique().scalars().all()
+    """Execute a registry source phase through the HemOnc toolkit."""
+
+    del models
+    requirements = source_phase_yaml.component_requirements
+    spec = _selection_spec(
+        requirements,
+        _condition_cuis(source_phase_yaml.condition_cuis, session),
+        regimens=tuple(source_phase_yaml.regimens or ()),
+        phase=(
+            source_phase_yaml.type
+            if source_phase_yaml.type and str(source_phase_yaml.type).lower() != "none"
+            else None
+        ),
+    )
+    return select_variants(
+        session,
+        spec,
+        category_mapping=_category_mapping(),
+    )
 
 
-def execute_variant_query_for_entry():
-    pass
+__all__ = [
+    "HemOncModels",
+    "VariantQueryArtifacts",
+    "_load_hemonc_models",
+    "apply_default_component_requirements",
+    "build_components_subquery",
+    "build_variant_cui_subquery",
+    "build_variant_query_artifacts",
+    "build_variant_statement",
+    "execute_variant_query",
+    "get_variant_objects",
+]

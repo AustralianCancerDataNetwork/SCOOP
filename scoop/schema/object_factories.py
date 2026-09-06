@@ -11,7 +11,6 @@ from .episode_base import Episode_Base
 from .treatment_episode import Treatment_Episode, build_graph_outcome
 
 from ..configuration.profile_manager import get_active_simulation_context
-from ..configuration.regimen_registry import BundleRecipeResolver
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,6 @@ def _sample_graph_state(require_regimen: bool = False, **overrides: Any) -> dict
         raise RuntimeError(
             "No active simulation context is available. Load a profile before sampling."
         )
-    registry = getattr(context, "regimen_registry", None) if require_regimen else None
     last_error: Exception | None = None
     last_sampled: dict[str, Any] | None = None
 
@@ -55,11 +53,7 @@ def _sample_graph_state(require_regimen: bool = False, **overrides: Any) -> dict
                 sampled.update(overrides)
             if not require_regimen:
                 return sampled
-            build_graph_outcome(
-                graph_sample=sampled,
-                registry=registry,
-                source_profile=_active_profile_name(),
-            )
+            build_graph_outcome(graph_sample=sampled, source_profile=_active_profile_name())
             return sampled
         except Exception as exc:
             last_error = exc
@@ -228,15 +222,13 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
             **overrides,
         )
 
-    context = get_active_simulation_context()
-    registry = getattr(context, "regimen_registry", None)
     try:
+        context = get_active_simulation_context()
         outcome = build_graph_outcome(
             graph_sample=graph_sample,
-            registry=registry,
+            registry=getattr(context, "protocol_registry", None),
             source_profile=condition_occurrence.source_profile or _active_profile_name(),
         )
-        entry = registry.get_entry(outcome.primary_category_id)
     except ValueError as exc:
         logger.debug(
             "Unable to resolve graph sample to a canonical regimen for Condition[%s]: %s",
@@ -268,39 +260,18 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
         condition_occurrence.condition_occurrence_id,
         outcome.graph_endpoint,
     )
-    bundle_kwargs: dict[str, Any] = {}
-    if isinstance(entry.resolver, BundleRecipeResolver):
-        resolved_bundle = registry.resolve_hemonc_bundle(outcome.primary_category_id)
-        bundle_kwargs = {
-            "bundle_recipe_id": resolved_bundle.group_id if resolved_bundle is not None else entry.resolver.group_id,
-            "bundle_sequence_template": (
-                resolved_bundle.sequence_template if resolved_bundle is not None else None
-            ),
-            "bundle_phase_summary": [
-                {
-                    "phase_id": phase.phase_id,
-                    "phase_type": phase.phase_type,
-                    "timing": phase.timing,
-                    "source_type": phase.source_type,
-                    "source_entry_id": phase.source_entry_id,
-                    "source_group_id": phase.source_group_id,
-                    "component_terms": list(phase.component_terms),
-                }
-                for phase in (resolved_bundle.phases if resolved_bundle is not None else [])
-            ],
-        }
     return Treatment_Episode(
         regimen_type=outcome.primary_category_id,
         regimen_category_id=outcome.primary_category_id,
         graph_endpoint=outcome.graph_endpoint,
         graph_alias_used=outcome.graph_alias_used,
-        registry_resolver_type=entry.resolver.type,
+        registry_resolver_type=outcome.resolver_type,
         source_profile=outcome.source_profile,
-        required_modifiers=entry.required_modifiers,
+        required_modifiers=[],
         decision_context=outcome.modifiers,
-        registry_notes=entry.notes,
+        registry_notes=None,
+        bundle_recipe_id=outcome.bundle_recipe_id,
         condition_occurrence_id=condition_occurrence.condition_occurrence_id,
         person_id=condition_occurrence.person_id,
-        **bundle_kwargs,
         **overrides,
     )

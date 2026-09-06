@@ -2,7 +2,7 @@ profile:
   profile_id: nsclc
   default_graph: nsclc
   entry_graph: nsclc
-  regimen_registry: nsclc_regimen_registry.yaml
+  protocol_registry: nsclc_protocol_registry.yaml
   graphs:
     nsclc: nsclc.yaml
     nsclc_stg1: nsclc_stg1.yaml

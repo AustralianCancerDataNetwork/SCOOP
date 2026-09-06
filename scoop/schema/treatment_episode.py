@@ -3,8 +3,6 @@ from dataclasses import dataclass
 from typing import Any
 from pydantic import Field
 from .transformable_object import TransformableBase
-from ..configuration.profile_manager import get_active_simulation_context
-# from ..configuration.regimen_registry import RegimenRegistry
 
 class Treatment_Episode(TransformableBase):
 
@@ -23,12 +21,30 @@ class Treatment_Episode(TransformableBase):
     bundle_recipe_id: str | None = None
     bundle_sequence_template: str | None = None
     bundle_phase_summary: list[dict[str, Any]] = Field(default_factory=list)
+    drug_exposures: list[dict[str, Any]] = Field(default_factory=list)
+    procedures: list[dict[str, Any]] = Field(default_factory=list)
 
     def roll_events(self):
-        """ Placeholder method to generate drug exposures and procedures for this treatment episode. """
-        # In a real implementation, this would generate events based on the regimen details.
-        drug_exposures = [{"drug_concept_id": 12345, "dose": "50mg", "frequency": "daily"}]
-        procedures = [{"procedure_concept_id": 67890, "date": "2023-01-01"}]
+        """Return event payloads explicitly produced by treatment resolution.
+
+        Event generation is deliberately data-driven.  The former implementation
+        emitted hardcoded concept identifiers and dates, which made every
+        treatment episode appear to have the same treatment.  Resolver and
+        scheduler work can now populate these fields directly; until then an
+        unresolved episode correctly emits no events.
+        """
+
+        drug_exposures = [dict(event) for event in self.drug_exposures]
+        procedures = [dict(event) for event in self.procedures]
+
+        # Permit bundle assemblers to attach event payloads to phase summaries
+        # without requiring a second conversion step before rollout.
+        for phase in self.bundle_phase_summary:
+            drug_exposures.extend(
+                dict(event) for event in phase.get("drug_exposures", [])
+            )
+            procedures.extend(dict(event) for event in phase.get("procedures", []))
+
         return drug_exposures, procedures
 
 
@@ -44,6 +60,8 @@ class GraphOutcome:
     active_endpoints: tuple[str, ...]
     modifiers: dict[str, Any]
     raw_sample: dict[str, Any]
+    resolver_type: str | None = None
+    bundle_recipe_id: str | None = None
 
 
 def extract_active_treatment_endpoints(graph_sample: dict[str, Any]) -> list[str]:
@@ -70,44 +88,35 @@ def _extract_modifiers(graph_sample: dict[str, Any]) -> dict[str, Any]:
 
 def build_graph_outcome(
     graph_sample: dict[str, Any],
-    registry: None=None, #RegimenRegistry | None = None,
+    registry: Any | None = None,
     source_profile: str | None = None,
 ) -> GraphOutcome:
     if not graph_sample:
         raise ValueError("Graph sample is required to build a regimen outcome.")
 
-    if registry is None:
-        context = get_active_simulation_context()
-        if context is None or getattr(context, "regimen_registry", None) is None:
-            raise ValueError(
-                "No regimen registry was provided and no active profile context is available."
-            )
-        registry = context.regimen_registry
     active_endpoints = extract_active_treatment_endpoints(graph_sample)
     if not active_endpoints:
         raise ValueError("No active treatment_episode endpoints found in graph sample.")
 
-    resolved: dict[str, list[str]] = {}
-    unresolved: list[str] = []
-    for endpoint in active_endpoints:
-        try:
-            canonical_id = registry.resolve_alias(endpoint)
-        except KeyError:
-            unresolved.append(endpoint)
-            continue
-        resolved.setdefault(canonical_id, []).append(endpoint)
-
-    if unresolved:
-        raise ValueError(f"Unmapped treatment endpoints in graph sample: {sorted(unresolved)}")
-    if len(resolved) != 1:
+    if len(set(active_endpoints)) != 1:
         raise ValueError(
-            "Expected exactly one active canonical regimen category, "
-            f"found {sorted(resolved)} from endpoints {sorted(active_endpoints)}"
+            "Expected exactly one active treatment endpoint, "
+            f"found {sorted(set(active_endpoints))}"
         )
 
-    primary_category_id, raw_endpoints = next(iter(resolved.items()))
-    graph_endpoint = raw_endpoints[0]
-    graph_alias_used = graph_endpoint if graph_endpoint != primary_category_id else None
+    primary_category_id = active_endpoints[0]
+    graph_endpoint = primary_category_id
+    graph_alias_used = None
+    registry_entry = None
+    if registry is not None:
+        registry_entry = getattr(registry, "entries", {}).get(primary_category_id)
+        if registry_entry is None:
+            raise ValueError(
+                f"Graph endpoint '{primary_category_id}' is not declared in "
+                f"protocol registry '{getattr(registry, 'label', 'unknown')}'."
+            )
+
+    resolver = getattr(registry_entry, "resolver", None)
 
     return GraphOutcome(
         primary_category_id=primary_category_id,
@@ -117,4 +126,8 @@ def build_graph_outcome(
         active_endpoints=tuple(active_endpoints),
         modifiers=_extract_modifiers(graph_sample),
         raw_sample=graph_sample,
+        resolver_type=getattr(resolver, "type", None),
+        bundle_recipe_id=getattr(resolver, "group_id", None)
+        if getattr(resolver, "type", None) == "bundle_recipe"
+        else None,
     )

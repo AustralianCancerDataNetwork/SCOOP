@@ -6,6 +6,7 @@ from .config_loader import (
     list_profiles,
     load_profile,
     load_profile_manifest,
+    load_protocol_registry,
     load_transformation_graph,
 )
 from .global_mappers import (
@@ -32,5 +33,6 @@ __all__ = [
     "list_profiles",
     "load_profile",
     "load_profile_manifest",
+    "load_protocol_registry",
     "load_transformation_graph",
 ]

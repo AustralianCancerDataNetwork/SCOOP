@@ -1,11 +1,38 @@
+"""SCOOP's small compatibility boundary for the HemOnc model.
+
+SCOOP owns treatment-profile policy, but the model and reusable query
+operations live in :mod:`hemonc_alchemy`. This module keeps the handful of
+SCOOP-facing helpers that are still convenient while avoiding a dependency on
+the removed ``hemonc_import.final_model`` package.
+"""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any
+
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-import logging
 
-logger = logging.getLogger(__name__)
+from hemonc_alchemy.model import (
+    Conditions,
+    Drugs,
+    Sigs,
+    Studies,
+    StudyResults,
+    Variants,
+    drugs_Canmed_major_classMap,
+    drugs_Canmed_minor_classMap,
+    sigs_StudyMap,
+    variants_StudyMap,
+)
+from hemonc_alchemy.toolkit.core.conditions import (
+    condition_cuis_by_names as _condition_cuis_by_names,
+)
 
+
+# These are SCOOP policy mappings, not HemOnc model classifications. They
+# remain here until each profile can provide its own category policy.
 MAJOR_CLASS_MAP = {
     "Serine-threonine kinase inhibitor": "chemotherapy",
     "MEK inhibitor": "chemotherapy",
@@ -58,115 +85,90 @@ COMPONENT_CLASS_MAPS = {
     "main_class": MAIN_CLASS_MAP,
     "component": COMPONENT_MAP,
 }
+COMPONENT_STR_COLS = [
+    "canmed_major_class",
+    "canmed_minor_class",
+    "main_class",
+    "component",
+]
 
-COMPONENT_STR_COLS = ["canmed_major_class", "canmed_minor_class", "main_class", "component"]
 
 @dataclass(frozen=True)
 class HemOncModels:
-    """Container for the SQLAlchemy entities used by the query helpers."""
+    """SCOOP-local model bundle backed by current HemOnc entities."""
 
-    Variants: Any
-    Sigs: Any
-    Studies: Any
-    Drugs: Any
-    drugs_Canmed_major_classMap: Any
-    drugs_Canmed_minor_classMap: Any
-    variants_StudyMap: Any
-    Conditions: Any
-    StudyResults: Any
+    Variants: Any = Variants
+    Sigs: Any = Sigs
+    Studies: Any = Studies
+    Drugs: Any = Drugs
+    drugs_Canmed_major_classMap: Any = drugs_Canmed_major_classMap
+    drugs_Canmed_minor_classMap: Any = drugs_Canmed_minor_classMap
+    variants_StudyMap: Any = variants_StudyMap
+    sigs_StudyMap: Any = sigs_StudyMap
+    Conditions: Any = Conditions
+    StudyResults: Any = StudyResults
 
 
 def _load_hemonc_models() -> HemOncModels:
-    """Import and package the HemOnc SQLAlchemy models on demand."""
+    """Return the current public HemOnc model classes."""
 
-    try:
-        from hemonc_import.final_model.relationships import Drugs, Sigs, Studies, Variants, Conditions
-        from hemonc_import.final_model.entities import (
-            drugs_Canmed_major_classMap,
-            drugs_Canmed_minor_classMap,
-            variants_StudyMap, 
-            StudyResults
-        )
-    except ImportError as exc:
-        raise ImportError(
-            "hemonc_import is required to build executable HemOnc queries. "
-            "Install it in the active environment before using these helpers."
-        ) from exc
-
-    return HemOncModels(
-        Variants=Variants,
-        Sigs=Sigs,
-        Studies=Studies,
-        Drugs=Drugs,
-        drugs_Canmed_major_classMap=drugs_Canmed_major_classMap,
-        drugs_Canmed_minor_classMap=drugs_Canmed_minor_classMap,
-        variants_StudyMap=variants_StudyMap,
-        Conditions=Conditions,
-        StudyResults=StudyResults
-    )
+    return HemOncModels()
 
 
+def condition_cuis_by_names(
+    condition_names: list[str] | str,
+    session: so.Session,
+    models: HemOncModels | None = None,
+) -> list[int]:
+    """Resolve exact condition names using the HemOnc toolkit."""
 
-def search_substring(substring, table, column_names=COMPONENT_STR_COLS):
+    # ``models`` remains accepted for source compatibility while the current
+    # toolkit intentionally owns the generated entity classes.
+    del models
+    return _condition_cuis_by_names(session, condition_names)
+
+
+def search_substring(substring: str, table: Any, column_names=COMPONENT_STR_COLS):
+    """Return a union selecting rows whose text columns contain a term."""
+
     pattern = f"%{substring}%"
-    statements = []
-
-    for col_name in column_names:
-        column = getattr(table.c, col_name)
-        statements.append(sa.select(column).where(column.ilike(pattern)))
-    stmt = sa.union(*statements)
-
-    return stmt
-
-
-def or_for_piped_col(from_col, to_col):
-    return sa.or_(
-        (from_col==to_col),
-        from_col.like(sa.func.concat(to_col, '|%')),
-        from_col.like(sa.func.concat('%|', to_col, '|%')), 
-        from_col.like(sa.func.concat('%|', to_col)))
+    statements = [
+        sa.select(getattr(table.c, column_name)).where(
+            getattr(table.c, column_name).ilike(pattern)
+        )
+        for column_name in column_names
+    ]
+    return sa.union(*statements)
 
 
-def get_sig_study_join(models: HemOncModels | None = None, to="studies_table"):
-    models = models or _load_hemonc_models()
-    if to == "studies_table":
-        to_col = models.Studies.study
-    else:
-        to_col = to
-    return or_for_piped_col(models.Sigs.study, to_col)
+def _component_search_expressions(
+    search_terms: str | list[str], table: Any
+) -> list[Any]:
+    """Build ILIKE expressions across projected component text columns."""
+
+    terms = [search_terms] if isinstance(search_terms, str) else search_terms
+    return [
+        getattr(table.c, column_name).ilike(
+            term if any(marker in term for marker in ("%", "_")) else f"%{term}%"
+        )
+        for term in terms
+        for column_name in COMPONENT_STR_COLS
+    ]
 
 
-def condition_cuis_by_names(condition_names: list[str], session: so.Session,
-                           models: HemOncModels | None = None) -> list[int]:
-    models = models or _load_hemonc_models()
-    results = (
-        session.query(models.Conditions.condition_cui, models.Conditions.condition)
-        .filter(models.Conditions.condition.in_(condition_names))
-        .all()
-    )
-    found_names = {row.condition for row in results}
-    missing = set(condition_names) - found_names
-    if missing:
-        logger.warning("No CUI found for condition(s): %s", missing)
-    return [row.condition_cui for row in results]
+def join_not_distinct(col1: Any, col2: Any) -> Any:
+    """Compare nullable SQL columns with equality semantics for NULLs."""
 
-def _component_search_expressions(search_terms: str | list[str], table: Any) -> list[Any]:
-    """Build `ILIKE` expressions across all supported component text columns."""
-
-    if isinstance(search_terms, str):
-        search_terms = [search_terms]
-    expressions: list[Any] = []
-    for search_term in search_terms:
-        for column_name in COMPONENT_STR_COLS:
-            expressions.append(getattr(table.c, column_name).ilike(search_term))
-    return expressions
+    return sa.or_(col1 == col2, sa.and_(col1.is_(None), col2.is_(None)))
 
 
-def join_not_distinct(col1, col2):
-    return sa.or_(
-        col1 == col2,
-        sa.and_(col1.is_(None), col2.is_(None))
-    )
-
-
-
+__all__ = [
+    "COMPONENT_CLASS_MAPS",
+    "COMPONENT_STR_COLS",
+    "HemOncModels",
+    "_load_hemonc_models",
+    "_component_search_expressions",
+    "condition_cuis_by_names",
+    "join_not_distinct",
+    "search_substring",
+]

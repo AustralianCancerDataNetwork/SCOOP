@@ -2,7 +2,7 @@ profile:
   profile_id: sclc
   default_graph: sclc
   entry_graph: sclc
-  regimen_registry: sclc_regimen_registry.yaml
+  protocol_registry: sclc_regimen_registry.yaml
   graphs:
     sclc: sclc.yaml
     sclc_limited_surgical: sclc_limited_surgical.yaml

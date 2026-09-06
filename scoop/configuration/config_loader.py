@@ -29,7 +29,7 @@ from .paths import (
 )
 from .database import get_omop_engine
 from .profile_manager import set_active_simulation_context
-# from .regimen_registry import RegimenRegistry, load_regimen_registry
+from .protocol_registry import RegistryYaml, load_protocol_registry
 from .transformation_graph import TransformationGraph
 
 if TYPE_CHECKING:
@@ -43,10 +43,16 @@ class ProfileConfig:
     profile_id: str
     profile_name: str
     graph_relpath: Path
-    regimen_registry_relpath: Path
+    protocol_registry_relpath: Path | None
     concept_map_relpath: Path
     measurement_map_relpath: Path
     observation_map_relpath: Path
+
+    @property
+    def regimen_registry_relpath(self) -> Path | None:
+        """Deprecated compatibility name for the protocol registry path."""
+
+        return self.protocol_registry_relpath
 
 
 @dataclass(frozen=True)
@@ -56,12 +62,19 @@ class ProfileManifest:
     profile_id: str
     default_graph: str
     graphs: dict[str, Path]
-    regimen_registry: Path
+    protocol_registry: Path | None
     concept_map: Path
     measurement_map: Path
     observation_map: Path
     entry_graph: str | None = None
     pathways: dict[str, str] | None = None
+    legacy_regimen_registry: Path | None = None
+
+    @property
+    def regimen_registry(self) -> Path | None:
+        """Deprecated compatibility view of the registry artifact path."""
+
+        return self.protocol_registry or self.legacy_regimen_registry
 
 
 @dataclass
@@ -71,11 +84,11 @@ class SimulationContext:
     profile_id: str
     profile_name: str
     graph: TransformationGraph
-    # regimen_registry: RegimenRegistry
     concept_mapper: ConceptMapper
     modifier_mapper: ModifierMapper
     measurement_mapper: MeasurementMapper
     observation_mapper: ObservationMapper
+    protocol_registry: RegistryYaml | None = None
 
     def sample_patient(
         self,
@@ -93,7 +106,7 @@ class SimulationContext:
         sampled = self.sample_patient()
         return build_graph_outcome(
             sampled,
-            # registry=self.regimen_registry,
+            registry=self.protocol_registry,
             source_profile=self.profile_name,
         )
 
@@ -174,7 +187,7 @@ class RoutedProfileRuntime:
         try:
             graph_outcome = build_graph_outcome(
                 final_sample,
-                registry=tail_context.regimen_registry,
+                registry=tail_context.protocol_registry,
                 source_profile=tail_context.profile_name,
             )
             outcome_error = None
@@ -225,19 +238,22 @@ class ProfileLoader:
         graph = load_transformation_graph(
             f'{self.base_dir / profile.graph_relpath}'
         )
-        # regimen_registry = load_regimen_registry(
-        #     self.base_dir / profile.regimen_registry_relpath
-        # )
+
+        protocol_registry = None
+        if profile.protocol_registry_relpath is not None:
+            protocol_registry = load_protocol_registry(
+                self.base_dir / profile.protocol_registry_relpath
+            )
 
         context = SimulationContext(
             profile_id=profile.profile_id,
             profile_name=profile.profile_name,
             graph=graph,
-            # regimen_registry=regimen_registry,
             concept_mapper=concept_mapper,
             modifier_mapper=modifier_mapper,
             measurement_mapper=measurement_mapper,
             observation_mapper=observation_mapper,
+            protocol_registry=protocol_registry,
         )
         set_active_simulation_context(context)
         return context
@@ -281,11 +297,22 @@ def load_profile_manifest(
         )
 
     mappers = manifest.get("mappers", {})
+    protocol_registry_value = manifest.get("protocol_registry")
+    legacy_regimen_registry_value = manifest.get("regimen_registry")
+    if protocol_registry_value is None and legacy_regimen_registry_value is None:
+        raise ValueError(
+            f"Profile '{profile_id}' must declare 'protocol_registry'."
+        )
+
     loaded = ProfileManifest(
         profile_id=manifest["profile_id"],
         default_graph=manifest["default_graph"],
         graphs=graphs,
-        regimen_registry=Path(manifest["regimen_registry"]),
+        protocol_registry=(
+            Path(protocol_registry_value)
+            if protocol_registry_value is not None
+            else None
+        ),
         concept_map=Path(
             mappers.get("concept_map", DEFAULT_PROFILE_CONCEPT_MAP_RELPATH)
         ),
@@ -297,6 +324,11 @@ def load_profile_manifest(
         ),
         entry_graph=manifest.get("entry_graph"),
         pathways=dict(manifest.get("pathways", {})),
+        legacy_regimen_registry=(
+            Path(legacy_regimen_registry_value)
+            if legacy_regimen_registry_value is not None
+            else None
+        ),
     )
     if loaded.profile_id != profile_id:
         raise ValueError(
@@ -339,8 +371,10 @@ def get_profile_config(
         graph_relpath=profile_artifact_relpath(
             profile_id, manifest.graphs[selected_graph]
         ),
-        regimen_registry_relpath=profile_artifact_relpath(
-            profile_id, manifest.regimen_registry
+        protocol_registry_relpath=(
+            profile_artifact_relpath(profile_id, manifest.protocol_registry)
+            if manifest.protocol_registry is not None
+            else None
         ),
         concept_map_relpath=profile_artifact_relpath(
             profile_id, manifest.concept_map

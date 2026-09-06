@@ -22,7 +22,8 @@ from typing import Any
 import warnings
 import pandas as pd
 from pydantic import BaseModel, ValidationError, computed_field, PrivateAttr
-from hemonc_import.final_model.schedule_handling import resolve_all_days
+from hemonc_alchemy.toolkit.analytics.treatment.scheduling import resolve_all_days
+from hemonc_alchemy.toolkit.analytics.treatment.scheduling.tokens import Indefinite
 
 
 NEOADJ_WEEKS_TO_SURGERY = 4 # https://doi.org/10.21037/tlcr-24-781
@@ -132,7 +133,8 @@ class StandardDoseInfo(BaseRandomSampler):
     def from_sig(cls, sig, seed: int | None = None):
 
         return cls(doseminnum=sig.doseminnum, dosemaxnum=sig.dosemaxnum,
-                   doseunit=sig.doseunit, doseunit_cui=sig.doseunit_cui, divided=sig.divided, 
+                   doseunit=sig.doseunit, doseunit_cui=sig.doseunit_cui,
+                   divided=getattr(sig, "divided", False),
                    dose_cap=try_attribute(DoseCap.from_sig, sig), seed=seed)
     
     def get_dose(self)-> float:
@@ -164,7 +166,7 @@ def try_attribute(fn, arg):
     """Tries to return fn(arg) result """
     try:
         return fn(arg)
-    except ValidationError:
+    except (ValidationError, AttributeError, TypeError):
         return None
 
 
@@ -202,8 +204,8 @@ class ComponentPart(BaseModel):
                    frequency_cui=sig.frequency_cui,
                    dose_info=try_attribute(StandardDoseInfo.from_sig, sig),
                    duration=try_attribute(Duration.from_sig, sig),
-                   role=sig.component_role,
-                   class_field=sig.class_field,)
+                   role=getattr(sig, "component_role", ""),
+                   class_field=getattr(sig, "class_field", "") or "",)
 
     def get_dose(self, units_as_cuis=False):
         # TODO: make more robust
@@ -220,16 +222,28 @@ class ComponentPart(BaseModel):
 
 
 def get_continue(ho_timing):
+    """Return the legacy cycle-step value for an indefinite marker.
+
+    SCOOP's scheduling models predate the HemOnc toolkit's typed schedule
+    tokens and expose ``ongoing_step`` as an integer.  Keep that local shape,
+    while deriving it from the toolkit result rather than reparsing the
+    schedule independently.
+    """
+
     if not ho_timing:
-        return None    
-    continue_match = re.search(r"\(\+(\d+)\)$", ho_timing)
-    if continue_match:
-        return continue_match.group(1)
-    else:
         return None
+    # Older profile data uses ``(+1)``/``(+21)``; the shared parser spells
+    # these as ``(+n1)``/``(+n21)``.
+    normalised = re.sub(r"\(\+(\d+)\)$", r"(+n\1)", ho_timing)
+    resolved = resolve_all_days(normalised)
+    indefinite = resolved.indefinite
+    if isinstance(indefinite, Indefinite) and indefinite.kind == "+n":
+        return indefinite.max_days
+    return None
 
 def split_ho_timing(ho_timing):
-    timing_list = resolve_all_days(ho_timing)
+    normalised = re.sub(r"\(\+(\d+)\)$", r"(+n\1)", ho_timing or "")
+    timing_list = resolve_all_days(normalised)
     optional = []
     base = []
     for day in timing_list:
@@ -311,8 +325,13 @@ class OtherSigInfo(BaseModel):
     date_added: Any
     @classmethod
     def from_sig(cls, sig):
-        return cls(in_parens=sig.inparens, tail=sig.tail, temp=sig.temp, 
-                   sig_id=sig.id, date_added=sig.date_added)
+        return cls(
+            in_parens=getattr(sig, "inparens", None),
+            tail=getattr(sig, "tail", None),
+            temp=getattr(sig, "temp", None),
+            sig_id=getattr(sig, "id", None),
+            date_added=getattr(sig, "date_added", None),
+        )
 
 
 class Trio(BaseModel):
@@ -358,9 +377,16 @@ class OriginalContext(BaseModel):
 
     @classmethod
     def from_sig(cls, sig):
-        return cls(phase=sig.phase, study=sig.study, regimen=sig.regimen, 
-            regimen_cui=sig.regimen_cui, variant=sig.variant, variant_cui=sig.variant_cui, 
-            branch=sig.branch, branch_type=sig.branch_type,)
+        return cls(
+            phase=getattr(sig, "phase", None),
+            study=getattr(sig, "study", None),
+            regimen=getattr(sig, "regimen", None),
+            regimen_cui=getattr(sig, "regimen_cui", None),
+            variant=getattr(sig, "variant", None),
+            variant_cui=getattr(sig, "variant_cui", None),
+            branch=getattr(sig, "branch", None),
+            branch_type=getattr(sig, "branch_type", None),
+        )
 
 
 class CycleSet(BaseRandomSampler):

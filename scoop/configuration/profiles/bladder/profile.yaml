@@ -2,7 +2,7 @@ profile:
   profile_id: bladder
   default_graph: bladder
   entry_graph: bladder
-  regimen_registry: bladder_regimen_registry.yaml
+  protocol_registry: bladder_regimen_registry.yaml
   graphs:
     bladder: bladder.yaml
     bladder_nmibc: bladder_nmibc.yaml
