@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Dict, List, Optional, Any, Union, Annotated, Literal, DefaultDict
+from typing import Collection, Dict, List, Optional, Any, Union, Annotated, Literal, DefaultDict
 import random
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -882,14 +882,31 @@ mermaid.run();
         display(HTML(mermaid_html(self.to_mermaid())))
 
 
-    def validate_graph(self, *, strict: bool = False) -> list[GraphValidationIssue]:
+    def validate_graph(
+        self,
+        *,
+        strict: bool = False,
+        known_external_nodes: Collection[str] = (),
+    ) -> list[GraphValidationIssue]:
+        """Check this graph for structural problems.
+
+        ``known_external_nodes`` names nodes this graph is allowed to
+        reference without defining itself.
+        """
+
         issues: list[GraphValidationIssue] = []
 
         # 1. Check all nodes in order
         for name in self.order:
             node = self.nodes[name]
 
-            if node.built_distribution is None and not isinstance(node, BranchNode):
+            # BranchNode and NumericRangeNode derive their value from a rule
+            # or formula rather than sampling a distribution, so neither ever
+            # has a built_distribution -- that's expected, not an error.
+            if (
+                node.built_distribution is None
+                and not isinstance(node, (BranchNode, NumericRangeNode))
+            ):
                 issues.append(
                     GraphValidationIssue(
                         "error",
@@ -934,11 +951,11 @@ mermaid.run();
         for node in self.nodes.values():
             if node.active_when:
                 for k in node.active_when:
-                    if k not in self.nodes:
+                    if k not in self.nodes and k not in known_external_nodes:
                         issues.append(
                             GraphValidationIssue(
                                 "warning",
-                                f"active_when references inherited node '{k}'",
+                                f"active_when references unknown node '{k}'",
                                 context=repr(node),
                             )
                         )
@@ -947,11 +964,11 @@ mermaid.run();
         for node in self.nodes.values():
             if isinstance(node, BranchNode):
                 for k in node.from_:
-                    if k not in self.nodes:
+                    if k not in self.nodes and k not in known_external_nodes:
                         issues.append(
                             GraphValidationIssue(
                                 "warning",
-                                f"branch rule references inherited node '{k}'",
+                                f"branch rule references unknown node '{k}'",
                                 context=repr(node),
                             )
                         )

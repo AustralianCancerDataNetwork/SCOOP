@@ -420,6 +420,7 @@ def load_profile_manifest(
                 f"graph '{graph_name}'."
             )
     _validate_declared_interventions(loaded, config_root)
+    _validate_graph_topology(loaded, config_root)
     return loaded
 
 
@@ -567,3 +568,32 @@ def _validate_declared_interventions(
             raw = yaml.safe_load(handle) or {}
         graph_nodes.update((raw.get("graph", {}).get("nodes", {}) or {}).keys())
     catalog.validate_coverage(graph_nodes=graph_nodes)
+
+
+def _validate_graph_topology(manifest: ProfileManifest, config_root: Path) -> None:
+    """Validate every graph in the profile against `TransformationGraph.validate_graph`.
+
+    Each graph is checked with visibility into every *other* graph's node
+    names (the entry graph's shared state, or a sibling tail graph's), so a
+    reference to state a tail graph inherits from its entry graph -- the
+    normal pattern in this multi-graph architecture -- is not mistaken for a
+    genuinely dangling reference.
+    """
+
+    graphs: dict[str, TransformationGraph] = {
+        graph_name: load_transformation_graph(
+            str(config_root / profile_artifact_relpath(manifest.profile_id, graph_path))
+        )
+        for graph_name, graph_path in manifest.graphs.items()
+    }
+    all_node_names = {name for graph in graphs.values() for name in graph.nodes}
+
+    for graph_name, graph in graphs.items():
+        external_nodes = all_node_names - set(graph.nodes)
+        issues = graph.validate_graph(known_external_nodes=external_nodes)
+        if issues:
+            details = "\n".join(f"  {issue!r}" for issue in issues)
+            raise ValueError(
+                f"Profile '{manifest.profile_id}' graph '{graph_name}' failed "
+                f"validation:\n{details}"
+            )

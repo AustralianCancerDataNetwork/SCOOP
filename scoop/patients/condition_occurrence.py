@@ -8,7 +8,7 @@ from scoop.vocabulary.gateway import get_active_vocabulary_mappers
 from .ids import condition_id_seq
 from ..schedule.timing import random_date
 from ..vocabulary.condition_resolver import get_condition_concept_resolver
-from ..export.omop import OmopExportBundle, as_datetime
+from ..export.omop import OmopExportBundle, as_datetime, require_populated_columns
 if TYPE_CHECKING:
     from .build import assign_regimen
     from .condition_episode import Condition_Episode
@@ -36,23 +36,6 @@ def _record_type_concept_id(event_table: str) -> int | None:
     except KeyError:
         return None
     return record_types(event_table) or None
-
-
-def _condition_type_concept_id() -> int:
-    """Provenance concept for generated condition_occurrence rows.
-
-    OMOP declares condition_type_concept_id NOT NULL, so an unconfigured profile
-    is a configuration error rather than something to paper over with a null.
-    """
-
-    resolved = _record_type_concept_id("condition_occurrence")
-    if resolved is None:
-        raise ValueError(
-            "condition_type_concept_id is required by OMOP: add a "
-            "'record_type.condition_occurrence' entry to the profile's concept "
-            "map, or set condition_type_concept_id on the Condition_Occurrence."
-        )
-    return resolved
 
 
 def _condition_event_field_concept_id() -> int | None:
@@ -194,20 +177,21 @@ class Condition_Occurrence(TransformableBase):
     def to_omop_row(self):
         from omop_alchemy.cdm import model as omop_model
 
-        return omop_model.Condition_Occurrence(
+        row = omop_model.Condition_Occurrence(
             condition_occurrence_id=self.condition_occurrence_id,
             person_id=self.person_id,
             condition_concept_id=self.condition_concept_id,
             condition_type_concept_id=(
                 self.condition_type_concept_id
                 if self.condition_type_concept_id is not None
-                else _condition_type_concept_id()
+                else _record_type_concept_id("condition_occurrence")
             ),
             condition_start_date=self.condition_start_date,
             condition_start_datetime=as_datetime(self.condition_start_date),
             condition_source_value=self.condition_source_value,
             condition_source_concept_id=self.condition_source_concept_id,
         )
+        return require_populated_columns(row)
 
     def to_omop_bundle(self, *, include_related: bool = False) -> OmopExportBundle:
         _, measurements, observations, _ = self._collect_emitted_outputs()

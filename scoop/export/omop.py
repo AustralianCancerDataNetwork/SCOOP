@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
-from typing import Any
+from typing import Any, TypeVar
+
+import sqlalchemy as sa
 
 from ..schedule.rollout import (
     ProtocolSchedule,
@@ -18,6 +20,35 @@ def as_datetime(value: date | datetime | None) -> datetime | None:
     if isinstance(value, datetime):
         return value
     return datetime.combine(value, time.min)
+
+
+_OmopRow = TypeVar("_OmopRow")
+
+
+def require_populated_columns(row: _OmopRow) -> _OmopRow:
+    """Raise if any NOT-NULL column on this omop_alchemy ORM row is unset.
+
+    The requirement is read straight off the row's own SQLAlchemy mapper --
+    the same constraint the real CDM schema enforces at insert time -- so
+    there is no hand-maintained list of "required fields" to keep in sync as
+    tables or columns change. Returns the row unchanged, so a `to_omop_row()`
+    implementation can wrap its return value:
+    `return require_populated_columns(omop_model.X(...))`.
+    """
+
+    mapper = sa.inspect(row).mapper
+    missing = [
+        column.name
+        for column in mapper.columns
+        if not column.nullable and getattr(row, column.name, None) is None
+    ]
+    if missing:
+        raise ValueError(
+            f"{type(row).__name__} row is missing required (NOT NULL) "
+            f"column(s): {', '.join(missing)}. Check the profile and "
+            "vocabulary configuration that produced this case."
+        )
+    return row
 
 
 @dataclass

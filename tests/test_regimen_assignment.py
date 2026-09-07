@@ -445,6 +445,7 @@ class RegimenAssignmentTests(unittest.TestCase):
             morphology="squamous",
             topog="upper",
             condition_domain="lung",
+            year_of_diagnosis=2021,
             auto_assign_regimen=False,
         )
         self.assertEqual(condition.to_omop_row().condition_type_concept_id, 32817)
@@ -454,6 +455,7 @@ class RegimenAssignmentTests(unittest.TestCase):
             morphology="squamous",
             topog="upper",
             condition_domain="lung",
+            year_of_diagnosis=2021,
             condition_type_concept_id=32879,
             auto_assign_regimen=False,
         )
@@ -743,6 +745,7 @@ class RegimenAssignmentTests(unittest.TestCase):
                 weight=63.0,
                 variant="egfr",
                 auto_create_condition=True,
+                graph_sample={"person.year_of_diagnosis": 2020},
             )
 
         bundle = person.to_omop_bundle(include_related=True)
