@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import yaml
@@ -15,6 +17,23 @@ class EpisodeSpec:
     episode_source_value: str | None = None
     episode_source_concept_id: int | None = None
     episode_event_field_concept_id: int | None = None
+    episode_event_field_concept_ids: Mapping[str, int] = field(
+        default_factory=dict
+    )
+
+    def event_field_concept_id(self, event_table: str | None = None) -> int | None:
+        """Return the CDM Field concept for one event table.
+
+        A treatment episode links to drug exposures *and* procedures, so the
+        caller says which table the event_id belongs to. Falls back to the
+        scalar default when the table is not declared.
+        """
+
+        if event_table is not None:
+            declared = self.episode_event_field_concept_ids.get(event_table)
+            if declared is not None:
+                return declared
+        return self.episode_event_field_concept_id
 
 
 class EpisodeMapper:
@@ -55,6 +74,14 @@ class EpisodeMapper:
                     int(entry["episode_event_field_concept_id"])
                     if entry.get("episode_event_field_concept_id") is not None
                     else None
+                ),
+                episode_event_field_concept_ids=MappingProxyType(
+                    {
+                        str(table): int(concept_id)
+                        for table, concept_id in dict(
+                            entry.get("episode_event_field_concept_ids") or {}
+                        ).items()
+                    }
                 ),
             )
 

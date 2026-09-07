@@ -386,7 +386,7 @@ class RegimenAssignmentTests(unittest.TestCase):
 
         self.assertEqual(call_order, ["resolve", "episode", "treatment"])
 
-    def test_person_model_dump_emits_measurements_and_observations(self):
+    def test_person_model_dump_emits_supported_measurements_and_observations(self):
         person = Person(
             sex="female",
             age=65,
@@ -404,16 +404,13 @@ class RegimenAssignmentTests(unittest.TestCase):
             for measurement in measurements
             if measurement["measurement_concept_id"] == 4099154
         )
-        variant_record = next(
-            measurement
-            for measurement in measurements
-            if measurement["measurement_concept_id"] == 4180182
-        )
         smoking_record = observations[0]
 
         self.assertEqual(weight_record["value_as_number"], 63.0)
         self.assertEqual(weight_record["unit_concept_id"], 9529)
-        self.assertEqual(variant_record["value_as_concept_id"], 35962802)
+        self.assertFalse(
+            any(measurement.get("value_source_value") == "egfr" for measurement in measurements)
+        )
         self.assertEqual(smoking_record["observation_concept_id"], 43054909)
         self.assertIsNotNone(smoking_record["value_as_concept_id"])
 
@@ -440,7 +437,49 @@ class RegimenAssignmentTests(unittest.TestCase):
         )
         self.assertEqual(laterality_record["meas_event_field_concept_id"], 1147127)
 
-    def test_condition_model_dump_emits_biomarker_measurement(self):
+    def test_condition_row_carries_the_required_type_concept(self):
+        # condition_type_concept_id is NOT NULL in OMOP; it comes from the
+        # record_type concept map unless the caller sets one.
+        condition = Condition_Occurrence(
+            person_id=1,
+            morphology="squamous",
+            topog="upper",
+            condition_domain="lung",
+            auto_assign_regimen=False,
+        )
+        self.assertEqual(condition.to_omop_row().condition_type_concept_id, 32817)
+
+        overridden = Condition_Occurrence(
+            person_id=1,
+            morphology="squamous",
+            topog="upper",
+            condition_domain="lung",
+            condition_type_concept_id=32879,
+            auto_assign_regimen=False,
+        )
+        self.assertEqual(overridden.to_omop_row().condition_type_concept_id, 32879)
+
+    def test_condition_model_dump_omits_biomarker_measurement_for_unknown_gene(self):
+        # An unmapped gene resolves to 0, which means "no OMOP concept": the row
+        # is dropped rather than emitted with concept id 0.
+        condition = Condition_Occurrence(
+            person_id=1,
+            morphology="nonsquamous",
+            biomarker="none",
+            condition_domain="lung",
+            auto_assign_regimen=False,
+        )
+        dumped = condition.model_dump(exclude={"person", "regimen"})
+        self.assertEqual(
+            [
+                measurement
+                for measurement in dumped["measurements"]
+                if measurement["value_source_value"] == "none"
+            ],
+            [],
+        )
+
+    def test_condition_model_dump_does_not_emit_synthetic_biomarker_measurement(self):
         condition = Condition_Occurrence(
             person_id=1,
             morphology="nonsquamous",
@@ -449,15 +488,11 @@ class RegimenAssignmentTests(unittest.TestCase):
             auto_assign_regimen=False,
         )
         dumped = condition.model_dump(exclude={"person", "regimen"})
-        biomarker_record = next(
-            measurement
-            for measurement in dumped["measurements"]
-            if measurement["measurement_concept_id"] == 4180182
-            and measurement["value_as_concept_id"] == 35962802
+        self.assertFalse(
+            any(measurement.get("value_source_value") == "egfr" for measurement in dumped["measurements"])
         )
-        self.assertEqual(biomarker_record["value_source_value"], "egfr")
 
-    def test_condition_model_dump_emits_met_biomarker_measurement(self):
+    def test_condition_model_dump_does_not_emit_synthetic_met_measurement(self):
         condition = Condition_Occurrence(
             person_id=1,
             morphology="nonsquamous",
@@ -466,13 +501,9 @@ class RegimenAssignmentTests(unittest.TestCase):
             auto_assign_regimen=False,
         )
         dumped = condition.model_dump(exclude={"person", "regimen"})
-        biomarker_record = next(
-            measurement
-            for measurement in dumped["measurements"]
-            if measurement["measurement_concept_id"] == 4180182
-            and measurement["value_as_concept_id"] == 35961878
+        self.assertFalse(
+            any(measurement.get("value_source_value") == "met" for measurement in dumped["measurements"])
         )
-        self.assertEqual(biomarker_record["value_source_value"], "met")
 
     def test_condition_model_dump_emits_pdl1_measurement_from_proxy_bin(self):
         condition = Condition_Occurrence(
@@ -522,7 +553,7 @@ class RegimenAssignmentTests(unittest.TestCase):
         stage_record = next(
             measurement
             for measurement in dumped["measurements"]
-            if measurement["measurement_concept_id"] == 734320
+            if measurement["measurement_concept_id"] == 35918597
         )
         self.assertEqual(stage_record["value_as_concept_id"], 1634210)
         self.assertEqual(stage_record["value_source_value"], "stage_ii")
@@ -588,8 +619,8 @@ class RegimenAssignmentTests(unittest.TestCase):
 
         self.assertIsInstance(episode, Condition_Episode)
         self.assertEqual(episode.person_id, condition.person_id)
-        self.assertEqual(episode.episode_concept_id, 32528)
-        self.assertEqual(episode.episode_type_concept_id, 32533)
+        self.assertEqual(episode.episode_concept_id, 32533)
+        self.assertEqual(episode.episode_type_concept_id, 32545)
         self.assertEqual(episode.episode_object_concept_id, condition.condition_concept_id)
         self.assertEqual(episode.episode_start_date, sampled_date)
         self.assertEqual(len(episode.episode_events), 1)

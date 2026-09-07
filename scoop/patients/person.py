@@ -19,16 +19,30 @@ logger = logging.getLogger(__name__)
 def _gender_concept_id(value: str) -> int:
     return get_active_vocabulary_mappers().concept_mapper("sex")(value)
 
+
+def _race_concept_id(value: str) -> int:
+    """SCOOP deliberately does not infer race; emit OMOP's unknown sentinel."""
+
+    return 0
+
+
+def _ethnicity_concept_id(value: str) -> int:
+    """SCOOP deliberately does not infer ethnicity; emit OMOP's unknown sentinel."""
+
+    return 0
+
+
 class Person(TransformableBase):
 
     ## identifier fields
     person_id: int = Field(default_factory=person_id_seq.next)
-    ## direct mapped fields (because not implemented)
-    race_concept_id: int = 0
-    ethnicity_concept_id: int = 0
     ## simple transformed fields
     sex: str
     age: int
+    # SCOOP does not sample race or ethnicity. These fields are retained for
+    # source compatibility, but their OMOP concept IDs intentionally remain 0.
+    race: str = "unknown"
+    ethnicity: str = "unknown"
 
     ## measurement transformation fields - handled in measurement_mapper config
     smoking_history: str = "never"  
@@ -67,7 +81,16 @@ class Person(TransformableBase):
             "transform": lambda p: _gender_concept_id(p.sex),
             "drop": True,
         },
-        # todo: consider extending with mapper for race field
+        "race_concept_id": {
+            "inputs": ["race"],
+            "transform": lambda p: _race_concept_id(p.race),
+            "drop": True,
+        },
+        "ethnicity_concept_id": {
+            "inputs": ["ethnicity"],
+            "transform": lambda p: _ethnicity_concept_id(p.ethnicity),
+            "drop": True,
+        },
     }
 
     def to_omop_row(self):
@@ -77,9 +100,11 @@ class Person(TransformableBase):
             person_id=self.person_id,
             year_of_birth=date.today().year - self.age,
             gender_concept_id=_gender_concept_id(self.sex),
-            race_concept_id=self.race_concept_id,
-            ethnicity_concept_id=self.ethnicity_concept_id,
+            race_concept_id=_race_concept_id(self.race),
+            ethnicity_concept_id=_ethnicity_concept_id(self.ethnicity),
             gender_source_value=self.sex,
+            race_source_value=self.race,
+            ethnicity_source_value=self.ethnicity,
         )
 
     def to_omop_bundle(self, *, include_related: bool = False) -> OmopExportBundle:

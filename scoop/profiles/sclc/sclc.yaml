@@ -36,6 +36,23 @@ graph:
         fit: 0.5
         frail: 0.5
 
+    # Diagnosis date. condition_occurrence.condition_start_date is derived
+    # from these two fields (see condition_occurrence.py); without them every
+    # SCLC case would have a null start date, which OMOP's CDM schema
+    # rejects. Range mirrors nsclc.yaml's placeholder pending a
+    # guideline-backed distribution for SCLC.
+    person.year_of_diagnosis:
+      type: numeric
+      min_value: 2015
+      max_value: 2020
+      as_int: true
+
+    person.years_since_diagnosis:
+      type: numeric
+      min_value: 0
+      max_value: 3
+      as_int: true
+
     # placeholder distribution
     condition_episode.disease_setting:
       type: categorical

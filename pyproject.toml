@@ -6,12 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
-    "hemonc-alchemy>=0.1.0",
-    "omop-alchemy>=1.1.0",
-    "omop-graph>=2.1.0",
+    "hemonc-alchemy>=0.1.0,<1.0",
+    "omop-alchemy>=1.1.0,<2.0",
+    "omop-graph>=2.1.0,<3.0",
     "oa-configurator>=1.0.0,<2.0.0",
     "pandas>=3.0.2",
-    "psycopg2-binary>=2.9.11",
+    "psycopg-binary>=2.9.11",
     "pydantic>=2.12.3",
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
@@ -22,10 +22,29 @@ authoring = [
     "linkml>=1.9.6",
     "linkml-runtime>=1.9.5",
 ]
+# Everything needed to open and run notebooks/ without a second install step.
+# ipykernel and pandas are already core dependencies; these add the server, the
+# headless execution path (jupyter nbconvert --execute, nbclient, papermill),
+# and plotting.
+exploration = [
+    "jupyterlab>=4.4",
+    "nbclient>=0.10",
+    "nbconvert>=7.16",
+    "nbformat>=5.10",
+    "matplotlib>=3.9",
+]
 dev = [
     "oa-configurator[dev,postgres]>=1.0.0,<2.0.0",
     "pytest>=9.0.3",
 ]
+
+[tool.uv]
+# Prefer uv's own versioned interpreter installs over whatever an unversioned
+# system symlink such as /usr/local/bin/python3 currently points at. A macOS
+# python.org installer repoints that symlink on every release, which silently
+# breaks any venv built against it (the venv keeps lib/python3.13 while
+# bin/python starts resolving to 3.14). See also .python-version.
+python-preference = "managed"
 
 [build-system]
 requires = ["setuptools", "wheel"]

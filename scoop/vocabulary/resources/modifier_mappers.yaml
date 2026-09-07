@@ -1,7 +1,9 @@
 cancer_stage:
   vocabulary_id: Cancer Modifier
   domain_id: Measurement
-  require_standard: true
+  # Stage-group descendants can be classification concepts. They are values of
+  # the TNM stage measurement, not standalone measurement definitions.
+  require_standard: false
   include_ancestor: true
   parent_concepts:
     stage_0: 1633754

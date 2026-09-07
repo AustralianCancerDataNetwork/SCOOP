@@ -28,6 +28,47 @@ def _condition_start_date(condition: "Condition_Occurrence") -> date | None:
     return random_date(resolved_year)
 
 
+def _record_type_concept_id(event_table: str) -> int | None:
+    """Provenance concept for one CDM event table, or None if not configured."""
+
+    try:
+        record_types = get_active_vocabulary_mappers().concept_mapper("record_type")
+    except KeyError:
+        return None
+    return record_types(event_table) or None
+
+
+def _condition_type_concept_id() -> int:
+    """Provenance concept for generated condition_occurrence rows.
+
+    OMOP declares condition_type_concept_id NOT NULL, so an unconfigured profile
+    is a configuration error rather than something to paper over with a null.
+    """
+
+    resolved = _record_type_concept_id("condition_occurrence")
+    if resolved is None:
+        raise ValueError(
+            "condition_type_concept_id is required by OMOP: add a "
+            "'record_type.condition_occurrence' entry to the profile's concept "
+            "map, or set condition_type_concept_id on the Condition_Occurrence."
+        )
+    return resolved
+
+
+def _condition_event_field_concept_id() -> int | None:
+    """CDM Field concept naming condition_occurrence.condition_occurrence_id.
+
+    Read from the episode mapper rather than restated here, so the value a
+    measurement points at and the value an episode_event points at cannot drift
+    apart.
+    """
+
+    spec = get_active_vocabulary_mappers().episode_mapper(
+        "overarching_condition_episode"
+    )
+    return spec.event_field_concept_id("condition_occurrence")
+
+
 def _stage_label(condition: "Condition_Occurrence") -> str | None:
     for label in (condition.cancer_stage, condition.stage):
         if isinstance(label, str) and label:
@@ -47,7 +88,8 @@ def _build_metastasis_measurement(condition: "Condition_Occurrence") -> "Measure
         measurement_concept_id=sampled_metastasis.concept_id,
         measurement_date=date.today(),
         measurement_event_id=condition.condition_occurrence_id,
-        meas_event_field_concept_id=1147127,
+        meas_event_field_concept_id=_condition_event_field_concept_id(),
+        measurement_type_concept_id=_record_type_concept_id("measurement"),
         value_source_value=sampled_metastasis.concept_code,
     )
 
@@ -75,6 +117,9 @@ class Condition_Occurrence(TransformableBase):
     condition_concept_id: int | None = None
     condition_source_concept_id: int | None = None
     condition_source_value: str | None = None
+    # OMOP requires this on every condition_occurrence row; left unset it is
+    # resolved from the record_type concept map at export time.
+    condition_type_concept_id: int | None = None
 
     year_of_diagnosis: int | None = None
     years_since_diagnosis: int | None = None
@@ -153,6 +198,11 @@ class Condition_Occurrence(TransformableBase):
             condition_occurrence_id=self.condition_occurrence_id,
             person_id=self.person_id,
             condition_concept_id=self.condition_concept_id,
+            condition_type_concept_id=(
+                self.condition_type_concept_id
+                if self.condition_type_concept_id is not None
+                else _condition_type_concept_id()
+            ),
             condition_start_date=self.condition_start_date,
             condition_start_datetime=as_datetime(self.condition_start_date),
             condition_source_value=self.condition_source_value,

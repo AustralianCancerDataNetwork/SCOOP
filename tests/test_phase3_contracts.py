@@ -5,7 +5,7 @@ from typing import get_type_hints
 
 import pytest
 
-from scoop.export.omop import OmopExportBundle, export
+from scoop.export.omop import OmopExportBundle, OmopExportConfig, export
 from scoop.guidelines.sampling import (
     GuidelineSample,
     NoDecision,
@@ -87,12 +87,12 @@ def test_gateway_fakes_conform_without_external_state():
 
     vocabulary = FakeVocabularyGateway(
         condition_names={"Lung cancer": 123},
-        concepts={("route", "iv"): 456},
+        route_concepts={"iv": 456},
         modifiers={"stage": "stage_iii"},
     )
     assert vocabulary.resolve_condition_names(("Lung cancer",)) == (123,)
     assert vocabulary.resolve_condition_cuis((123,)) == (123,)
-    assert vocabulary.resolve_concept("route", "iv") == 456
+    assert vocabulary.resolve_route_concept("iv") == 456
     assert vocabulary.sample_modifier("stage", seed=11) == "stage_iii"
 
 
@@ -131,14 +131,14 @@ def test_spine_placeholders_fail_closed_without_legacy_fallbacks():
     assert isinstance(select([], context, seed=1), NoSelection)
     with pytest.raises(TypeError, match="SelectedProtocol"):
         schedule(None, date(2026, 1, 1), seed=1)
-    with pytest.raises(NotImplementedError, match="Phase 8"):
-        export(ProtocolSchedule(), FakeVocabularyGateway())
+    assert export(ProtocolSchedule(), FakeVocabularyGateway()) == OmopExportBundle()
 
 
 def test_typed_empty_results_are_available_for_later_phases():
     assert isinstance(NoDecision("not yet"), NoDecision)
     assert isinstance(NoSelection("not yet"), NoSelection)
     assert ScheduleConfig(max_cycles=3).max_cycles == 3
+    assert OmopExportConfig(person_id=1).person_id == 1
     assert Modality.SYSTEMIC.value == "systemic"
     assert isinstance(OmopExportBundle(), OmopExportBundle)
     assert ProtocolCandidate.__name__ == "ProtocolCandidate"

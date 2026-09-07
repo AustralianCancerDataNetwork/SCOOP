@@ -29,6 +29,19 @@ if TYPE_CHECKING:
     from .modifier_map import ModifierMapper
 
 
+# Administered component kind -> the OMOP domain a HemOnc "Maps to" edge must
+# land in. This is runtime vocabulary resolution, not profile configuration.
+COMPONENT_OMOP_DOMAINS = {
+    "drug": "Drug",
+    "procedure": "Procedure",
+}
+
+# OMOP's route-of-administration hierarchy is vocabulary data, not a SCOOP
+# profile choice.  Keep the semantic anchor here and let omop-alchemy expand it
+# against the connected vocabulary release.
+ROUTE_OF_ADMINISTRATION_PARENT_CONCEPT_ID = 4106215
+
+
 @dataclass(frozen=True)
 class VocabularyMappers:
     """All mapper families materialized for one vocabulary configuration."""
@@ -53,6 +66,17 @@ class VocabularyGateway(Protocol):
 
     def resolve_concept(self, domain: str, value: str) -> int:
         """Resolve one named concept in a declared domain."""
+
+    def resolve_component_concept(
+        self,
+        domain: str,
+        value: str,
+        cui: int | None = None,
+    ) -> int:
+        """Resolve an administered component, preferring its HemOnc CUI."""
+
+    def resolve_route_concept(self, value: str | None) -> int | None:
+        """Resolve a route below OMOP's route-of-administration parent."""
 
     def sample_modifier(self, label: str, seed: int) -> str:
         """Sample a modifier with an explicit seed."""
@@ -86,6 +110,12 @@ class DefaultVocabularyGateway:
         self.base_dir = Path(base_dir) if base_dir is not None else CONFIG_ROOT
         self.engine_factory = engine_factory
         self._mapper_cache: dict[tuple[Path, ...], VocabularyMappers] = {}
+        self._engine: Any | None = None
+        self._engine_loaded = False
+        self._hemonc: Any | None = None
+        self._omop_resolvers: dict[str, Any] = {}
+        self._route_resolver: Any | None = None
+        self._route_resolver_loaded = False
 
     def _default_paths(self) -> tuple[Path, ...]:
         mapper_root = self.base_dir / MAPPERS_DIRNAME
@@ -132,7 +162,7 @@ class DefaultVocabularyGateway:
         from .modifier_map import ModifierMapper
 
         concept_mapper = ConceptMapper(paths[0])
-        engine = self.engine_factory()
+        engine = self._get_engine()
         condition_mapper = ConditionMapper(paths[1], engine=engine)
         modifier_mapper = ModifierMapper(paths[2], engine=engine)
         episode_mapper = EpisodeMapper(paths[3])
@@ -152,6 +182,14 @@ class DefaultVocabularyGateway:
         self._mapper_cache[paths] = bundle
         return bundle
 
+    def _get_engine(self) -> Any | None:
+        """Materialize one vocabulary engine for all gateway resolvers."""
+
+        if not self._engine_loaded:
+            self._engine = self.engine_factory()
+            self._engine_loaded = True
+        return self._engine
+
     def resolve_condition_names(self, names: Sequence[str]) -> Sequence[int]:
         raise NotImplementedError(
             "Condition-name resolution belongs to the database-backed vocabulary "
@@ -163,6 +201,93 @@ class DefaultVocabularyGateway:
 
     def resolve_concept(self, domain: str, value: str) -> int:
         return self.get_mappers().concept_mapper(domain)(value)
+
+    def _hemonc_resolver(self):
+        from .hemonc import HemOncConceptResolver
+
+        if self._hemonc is None:
+            self._hemonc = HemOncConceptResolver(engine=self._get_engine())
+        return self._hemonc
+
+    def resolve_component_concept(
+        self,
+        domain: str,
+        value: str,
+        cui: int | None = None,
+    ) -> int:
+        """Resolve an administered component to a standard OMOP concept.
+
+        The HemOnc CUI is authoritative when the vocabulary carries a "Maps to"
+        edge for it, so it is tried first.  A name lookup is the only fallback;
+        it is built from OMOP vocabulary rows rather than a SCOOP-maintained
+        table of component concept IDs.
+        """
+
+        omop_domain = COMPONENT_OMOP_DOMAINS.get(domain)
+        if cui is not None and omop_domain is not None:
+            resolved = self._hemonc_resolver().resolve(cui, domain_id=omop_domain)
+            if resolved:
+                return resolved
+
+        resolved = self._resolve_omop_domain_concept(domain, value)
+        if resolved is None:
+            raise LookupError(
+                f"No standard OMOP {omop_domain or domain!r} concept resolved for "
+                f"{value!r}; provide a valid HemOnc CUI or vocabulary term."
+            )
+        return resolved
+
+    def _resolve_omop_domain_concept(
+        self, domain: str, value: str | None
+    ) -> int | None:
+        omop_domain = COMPONENT_OMOP_DOMAINS.get(domain)
+        if omop_domain is None or not value:
+            return None
+
+        resolver = self._omop_resolvers.get(omop_domain)
+        if resolver is None:
+            engine = self._get_engine()
+            if engine is None:
+                return None
+            from omop_alchemy.toolkit.core.concepts import make_concept_resolver
+            from sqlalchemy.orm import Session
+
+            with Session(engine) as session:
+                resolver = make_concept_resolver(
+                    session,
+                    name=f"scoop.{omop_domain.lower()}.component",
+                    domain_id=omop_domain,
+                    unknown=None,
+                    include_synonyms=True,
+                    require_active=True,
+                )
+            self._omop_resolvers[omop_domain] = resolver
+        return resolver.lookup(value)
+
+    def resolve_route_concept(self, value: str | None) -> int | None:
+        """Resolve an OMOP route using the released vocabulary hierarchy."""
+
+        if not value or value.strip().lower() in {"ns", "not specified"}:
+            return None
+        if not self._route_resolver_loaded:
+            engine = self._get_engine()
+            self._route_resolver_loaded = True
+            if engine is not None:
+                from omop_alchemy.toolkit.core.concepts import make_concept_resolver
+                from sqlalchemy.orm import Session
+
+                with Session(engine) as session:
+                    self._route_resolver = make_concept_resolver(
+                        session,
+                        name="scoop.route_of_administration",
+                        unknown=None,
+                        parents=[ROUTE_OF_ADMINISTRATION_PARENT_CONCEPT_ID],
+                        include_synonyms=True,
+                        require_active=True,
+                    )
+        if self._route_resolver is None:
+            return None
+        return self._route_resolver.lookup(value)
 
     def sample_modifier(self, label: str, seed: int) -> str:
         sampled = self.get_mappers().modifier_mapper(label).sample(
@@ -178,7 +303,10 @@ class FakeVocabularyGateway:
 
     condition_names: Mapping[str, int] = field(default_factory=dict)
     concepts: Mapping[tuple[str, str], int] = field(default_factory=dict)
+    route_concepts: Mapping[str, int] = field(default_factory=dict)
     modifiers: Mapping[str, str] = field(default_factory=dict)
+    # (domain, hemonc_cui) -> concept_id, standing in for the "Maps to" walk.
+    component_concepts: Mapping[tuple[str, int], int] = field(default_factory=dict)
     mapper_bundle: VocabularyMappers | None = None
 
     def resolve_condition_names(self, names: Sequence[str]) -> tuple[int, ...]:
@@ -189,6 +317,23 @@ class FakeVocabularyGateway:
 
     def resolve_concept(self, domain: str, value: str) -> int:
         return self.concepts[(domain, value)]
+
+    def resolve_component_concept(
+        self,
+        domain: str,
+        value: str,
+        cui: int | None = None,
+    ) -> int:
+        if cui is not None:
+            resolved = self.component_concepts.get((domain, int(cui)))
+            if resolved:
+                return resolved
+        return self.resolve_concept(domain, value)
+
+    def resolve_route_concept(self, value: str | None) -> int | None:
+        if not value or value.strip().lower() in {"ns", "not specified"}:
+            return None
+        return self.route_concepts.get(value.lower())
 
     def sample_modifier(self, label: str, seed: int) -> str:
         return self.modifiers[label]

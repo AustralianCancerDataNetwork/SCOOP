@@ -9,7 +9,21 @@ from scoop.schedule.rollout import (
     SystemicAdministration,
     schedule,
 )
-from scoop.selection.choose import SelectedProtocol, SelectedRegimen
+from scoop.patients.treatment_episode import Treatment_Episode
+from scoop.patients.build import assign_regimen
+from scoop.patients.condition_occurrence import Condition_Occurrence
+from scoop.selection.choose import (
+    SelectedProtocol,
+    SelectedRegimen,
+    apply_recipe_timing,
+)
+from scoop.selection.interventions import (
+    PhaseRef,
+    PhaseTiming,
+    Recipe,
+    RecipeStep,
+    SequenceTemplate,
+)
 
 
 class StubSignature:
@@ -110,3 +124,121 @@ def test_schedule_rejects_unschedulable_placeholder_signatures():
 def test_schedule_config_validates_probabilities():
     with pytest.raises(ValueError, match="between 0 and 1"):
         ScheduleConfig(optional_cycle_probability=1.1)
+
+
+def test_treatment_episode_attaches_schedule_with_event_provenance():
+    selected = _selected(StubSignature())
+    protocol_schedule = schedule(
+        selected,
+        date(2026, 1, 1),
+        seed=11,
+        config=ScheduleConfig(max_cycles=1),
+    )
+    episode = Treatment_Episode(
+        person_id=1,
+        condition_occurrence_id=2,
+        regimen_type="fixture",
+        regimen_category_id="fixture",
+    )
+
+    assert episode.attach_schedule(protocol_schedule) is episode
+    drugs, procedures = episode.roll_events()
+    assert len(drugs) == 1
+    assert procedures == []
+    assert drugs[0]["phase_id"] == "phase"
+    assert drugs[0]["source_sig_id"] == 42
+    # The HemOnc CUI travels as a CUI: it is not an OMOP concept_id, so no
+    # *_concept_id key is emitted here at all.
+    assert drugs[0]["component_hemonc_cui"] == 1234
+    assert "drug_concept_id" not in drugs[0]
+
+
+def test_assign_regimen_accepts_an_explicit_schedule_without_legacy_lookup():
+    protocol_schedule = schedule(
+        _selected(StubSignature()),
+        date(2026, 1, 1),
+        seed=11,
+        config=ScheduleConfig(max_cycles=1),
+    )
+    condition = Condition_Occurrence(
+        person_id=1,
+        auto_assign_regimen=False,
+    )
+
+    episode = assign_regimen(condition, protocol_schedule=protocol_schedule)
+
+    assert episode.registry_resolver_type == "none"
+    assert len(episode.drug_exposures) == 1
+
+
+def test_recipe_timing_sequences_ordered_phases():
+    first = _selected(StubSignature("cisplatin")).phases[0]
+    second_regimen = RegimenCandidate(
+        name="radiation",
+        variant_cui=2,
+        sigs=[StubSignature("External beam radiotherapy")],
+        regimen="radiation",
+        components={"External beam radiotherapy"},
+    )
+    selected = SelectedProtocol(
+        protocol_id="protocol",
+        phases=(
+            SelectedRegimen(phase_id="pre", regimen=first.regimen),
+            SelectedRegimen(phase_id="post", regimen=second_regimen),
+        ),
+    )
+    recipe = Recipe(
+        steps=(
+            # The first signature is a systemic phase and the second is a
+            # procedure phase; timing is intentionally declared here.
+            RecipeStep(PhaseRef("pre"), timing=PhaseTiming.PRE),
+            RecipeStep(PhaseRef("post"), timing=PhaseTiming.POST),
+        ),
+        sequence_template=SequenceTemplate.POSTOPERATIVE,
+    )
+
+    annotated = apply_recipe_timing(selected, recipe)
+    result = schedule(annotated, date(2026, 1, 1), seed=11)
+
+    assert result.phase_start_dates == {
+        "pre": date(2026, 1, 1),
+        "post": date(2026, 1, 2),
+    }
+    assert [event.date for event in result.administrations] == [
+        date(2026, 1, 1),
+        date(2026, 1, 2),
+    ]
+
+
+def test_recipe_timing_keeps_concurrent_phases_on_one_anchor_date():
+    first = _selected(StubSignature("cisplatin")).phases[0]
+    second_regimen = RegimenCandidate(
+        name="radiation",
+        variant_cui=2,
+        sigs=[StubSignature("External beam radiotherapy")],
+        regimen="radiation",
+        components={"External beam radiotherapy"},
+    )
+    selected = SelectedProtocol(
+        protocol_id="protocol",
+        phases=(
+            SelectedRegimen(phase_id="systemic", regimen=first.regimen),
+            SelectedRegimen(phase_id="radiation", regimen=second_regimen),
+        ),
+    )
+    annotated = apply_recipe_timing(
+        selected,
+        Recipe(
+            steps=(
+                RecipeStep(PhaseRef("systemic"), timing=PhaseTiming.CONCURRENT),
+                RecipeStep(PhaseRef("radiation"), timing=PhaseTiming.CONCURRENT),
+            ),
+            sequence_template=SequenceTemplate.CONCURRENT,
+        ),
+    )
+    result = schedule(annotated, date(2026, 1, 1), seed=11)
+
+    assert result.phase_start_dates == {
+        "systemic": date(2026, 1, 1),
+        "radiation": date(2026, 1, 1),
+    }

@@ -51,12 +51,16 @@ class Condition_Episode(Episode_Base):
 
     def _derive_episode_events(self) -> list[Episode_Event]:
         spec = self._episode_spec()
+        event_field_concept_id = spec.event_field_concept_id("condition_occurrence")
+        if event_field_concept_id is None:
+            raise ValueError(
+                "The overarching_condition_episode mapper must declare an "
+                "episode_event_field_concept_id for condition_occurrence."
+            )
         return [
             Episode_Event(
                 episode_id=self.episode_id,
                 event_id=self.condition_occurrence_id,
-                episode_event_field_concept_id=(
-                    spec.episode_event_field_concept_id or 1147127
-                ),
+                episode_event_field_concept_id=event_field_concept_id,
             )
         ]

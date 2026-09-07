@@ -1,30 +1,19 @@
 weight:
-  measurement_concept_id: 4099154
+  measurement_concept_id: 4099154        # Body weight (SNOMED)
   type: numeric
-  unit_concept_id: 9529         
+  unit_concept_id: 9529                  # kilogram (UCUM)
   drop: true
 
 ecog:
-  measurement_concept_id: 36305384
+  measurement_concept_id: 36305384       # ECOG Performance Status score (LOINC)
   type: numeric
   drop: true
-
-variant:
-  measurement_concept_id: 4180182
-  type: value
-  value_map: genomic_modifier       # refers to a concept_mapper domain
-  drop: true
-
-biomarker:
-  measurement_concept_id: 4180182   # placeholder generic genomic measurement concept
-  type: value
-  value_map: genomic_modifier
-  drop: false
-
 pdl1:
-  measurement_concept_id: 1092026
+  measurement_concept_id: 1092026        # Tumor area infiltrated with PD-L1 expressing
+                                         # immune cells/Total tumor area [Area Fraction]
+                                         # in Tissue by Immune stain (LOINC)
   type: numeric
-  unit_concept_id: 8554
+  unit_concept_id: 8554                  # percent (UCUM)
   value_proxy_map:
     absent: 0
     negative: 0
@@ -40,17 +29,22 @@ pdl1:
   drop: false
 
 stage:
-  measurement_concept_id: 734320
+  # Keep the TNM clinical stage-group concept as the measurement anchor. The
+  # selected stage node is written as value_as_concept_id; its descendants are
+  # intentionally eligible, including classification descendants of the
+  # hierarchy. This represents one stage observation without flattening the
+  # stage vocabulary into a local list of concept IDs.
+  measurement_concept_id: 35918597       # TNM Clin Stage Group (NAACCR)
   type: categorical
   modifier_map: cancer_stage
   event_id_attr: condition_occurrence_id
-  event_field_concept_id: 1147127
+  event_field_concept_id: 1147127        # condition_occurrence.condition_occurrence_id (CDM)
   drop: false
 
 laterality:
-  measurement_concept_id: 35918306
+  measurement_concept_id: 35918306       # Laterality (NAACCR)
   type: categorical
   value_map: laterality
   event_id_attr: condition_occurrence_id
-  event_field_concept_id: 1147127
+  event_field_concept_id: 1147127        # condition_occurrence.condition_occurrence_id (CDM)
   drop: false

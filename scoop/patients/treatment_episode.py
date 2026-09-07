@@ -5,6 +5,11 @@ from pydantic import Field
 from .transforms import TransformableBase
 from ..profiles.context import get_active_simulation_context
 from ..selection.interventions import InterventionCatalog, Recipe
+from ..schedule.rollout import (
+    ProtocolSchedule,
+    RadiationAdministration,
+    SystemicAdministration,
+)
 
 class Treatment_Episode(TransformableBase):
 
@@ -25,6 +30,7 @@ class Treatment_Episode(TransformableBase):
     bundle_phase_summary: list[dict[str, Any]] = Field(default_factory=list)
     drug_exposures: list[dict[str, Any]] = Field(default_factory=list)
     procedures: list[dict[str, Any]] = Field(default_factory=list)
+    schedule_skipped_phases: list[str] = Field(default_factory=list)
 
     def roll_events(self):
         """Return event payloads explicitly produced by treatment resolution."""
@@ -37,6 +43,60 @@ class Treatment_Episode(TransformableBase):
             )
             procedures.extend(dict(event) for event in phase.get("procedures", []))
         return drug_exposures, procedures
+
+    def attach_schedule(self, protocol_schedule: ProtocolSchedule) -> "Treatment_Episode":
+        """Attach typed schedule administrations as explicit event payloads."""
+
+        if not isinstance(protocol_schedule, ProtocolSchedule):
+            raise TypeError("attach_schedule() requires a ProtocolSchedule")
+
+        drug_exposures: list[dict[str, Any]] = []
+        procedures: list[dict[str, Any]] = []
+        for administration in protocol_schedule.administrations:
+            # component.cui is a HemOnc CUI, not an OMOP concept_id. It travels
+            # with the event so the exporter can walk HemOnc's "Maps to" edge to
+            # a standard concept; it is never written into a *_concept_id column.
+            common = {
+                "phase_id": administration.phase_id,
+                "event_date": administration.date,
+                "source_sig_id": administration.source_sig_id,
+                "component_hemonc_cui": administration.component.cui,
+                "component_source_value": administration.component.name,
+            }
+            if isinstance(administration, SystemicAdministration):
+                drug_exposures.append(
+                    {
+                        **common,
+                        "drug_source_value": administration.component.name,
+                        "drug_exposure_start_date": administration.date,
+                        "dose": administration.dose,
+                        "dose_unit": administration.dose_unit,
+                        "route_source_value": administration.route,
+                        "cycle_number": administration.cycle_number,
+                    }
+                )
+            elif isinstance(administration, RadiationAdministration):
+                procedures.append(
+                    {
+                        **common,
+                        "procedure_source_value": administration.component.name,
+                        "procedure_date": administration.date,
+                        "fraction_number": administration.fraction_number,
+                        "fraction_dose": administration.fraction_dose,
+                        "dose_unit": administration.dose_unit,
+                        "technique": administration.technique,
+                    }
+                )
+            else:
+                raise TypeError(
+                    "ProtocolSchedule contains an unsupported administration: "
+                    f"{type(administration).__name__}"
+                )
+
+        self.drug_exposures = drug_exposures
+        self.procedures = procedures
+        self.schedule_skipped_phases = list(protocol_schedule.skipped_phases)
+        return self
 
 
 NON_REGISTRY_TREATMENT_STATE_NODES = {"resection_margin"}

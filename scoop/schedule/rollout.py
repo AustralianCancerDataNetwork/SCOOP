@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from .systemic import Component
 from .modality import Modality
 from ..selection.choose import SelectedProtocol
+from ..selection.interventions import PhaseTiming
 
 @dataclass(frozen=True)
 class Administration:
@@ -63,6 +64,7 @@ class ProtocolSchedule:
     administrations: tuple[Administration, ...] = field(default_factory=tuple)
     selected_protocol: "SelectedProtocol | None" = None
     skipped_phases: tuple[str, ...] = field(default_factory=tuple)
+    phase_start_dates: dict[str, date] = field(default_factory=dict)
 
 
 def schedule(
@@ -87,6 +89,10 @@ def schedule(
 
     administrations: list[Administration] = []
     skipped_phases: list[str] = []
+    phase_start_dates: dict[str, date] = {}
+    has_timing = any(selected.timing is not None for selected in selected_protocol.phases)
+    cursor_date = start_date.date() if isinstance(start_date, datetime) else start_date
+    concurrent_anchor = cursor_date
     for phase_index, selected in enumerate(selected_protocol.phases, start=1):
         sigs = list(selected.regimen.sigs)
         phase_id = selected.phase_id
@@ -99,9 +105,13 @@ def schedule(
                 "the released scheduling fields"
             )
 
+        phase_start = cursor_date
+        if has_timing and selected.timing is PhaseTiming.CONCURRENT:
+            phase_start = concurrent_anchor
+        phase_start_dates[phase_id] = phase_start
         phase_schedule = _phase_schedule(sigs, seed=seed + phase_index)
         deliveries = phase_schedule.get_scheduled_dates(
-            start_date,
+            phase_start,
             max_cycles=config.max_cycles,
             within_component_continue_probability=(
                 config.within_component_continue_probability
@@ -120,6 +130,12 @@ def schedule(
                         phase_id=phase_id,
                     )
                 )
+        if has_timing and deliveries and selected.timing is not PhaseTiming.CONCURRENT:
+            last_date = max(
+                _as_date(delivered_at) for delivered_at in deliveries
+            )
+            cursor_date = last_date + timedelta(days=1)
+            concurrent_anchor = cursor_date
 
     administrations.sort(
         key=lambda administration: (
@@ -133,6 +149,7 @@ def schedule(
         administrations=tuple(administrations),
         selected_protocol=selected_protocol,
         skipped_phases=tuple(skipped_phases),
+        phase_start_dates=phase_start_dates,
     )
 
 
@@ -213,3 +230,13 @@ def _is_radiation(component_part: Any) -> bool:
         )
     ).lower()
     return "radiotherap" in text or "radiation" in text
+
+
+def _as_date(value: Any) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if hasattr(value, "to_pydatetime"):
+        return value.to_pydatetime().date()
+    if isinstance(value, date):
+        return value
+    raise TypeError(f"Unsupported schedule date value: {value!r}")

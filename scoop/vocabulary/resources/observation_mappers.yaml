@@ -1,5 +1,5 @@
 smoking_history:
-  observation_concept_id: 43054909
+  observation_concept_id: 43054909       # Tobacco smoking status (LOINC)
   type: categorical
-  value_map: smoking_history           # refers to a concept_mapper domain
+  value_map: smoking_history             # concept_maps.yaml domain
   drop: true

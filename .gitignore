@@ -84,6 +84,7 @@ ipython_config.py
 
 # Dev docker compose
 docker-compose.override.yaml
+!docker-compose.override.yaml
 
 # data
 data/
@@ -218,3 +219,8 @@ _design/
 source_guidelines/
 *.pdf
 _old/
+.devcontainer/
+notebooks/
+docker*
+.env*
+DOCKER*

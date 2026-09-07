@@ -9,6 +9,7 @@ class Observation(BaseModel):
     observation_id: int = Field(default_factory=observation_id_seq.next)
     observation_concept_id: int
     observation_date: date
+    observation_type_concept_id: int | None = None
     value_as_concept_id: int | None = None
     value_as_number: float | None = None
     observation_source_value: str | None = None
@@ -26,6 +27,7 @@ class Observation(BaseModel):
             "person_id": self.person_id,
             "observation_concept_id": self.observation_concept_id,
             "observation_date": self.observation_date,
+            "observation_type_concept_id": self.observation_type_concept_id,
             "observation_datetime": as_datetime(self.observation_date),
             "observation_source_value": self.observation_source_value,
         }
@@ -42,6 +44,7 @@ class ObservationField(ClinicalFieldBase):
     concept_field = "observation_concept_id"
     date_field = "observation_date"
     value_source_field = "observation_source_value"
+    type_concept_field = "observation_type_concept_id"
 
     def to_observation(self, person, value):
         return self.to_record(person, value)

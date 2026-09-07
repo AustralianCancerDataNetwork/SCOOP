@@ -221,6 +221,13 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
     """
     Assign a relevant, clinically plausible regimen based on the Condition_Occurrence & Person parameters.
     """
+    protocol_schedule = overrides.pop("protocol_schedule", None)
+
+    def finalize(episode: Treatment_Episode) -> Treatment_Episode:
+        if protocol_schedule is not None:
+            episode.attach_schedule(protocol_schedule)
+        return episode
+
     graph_sample = condition_occurrence.graph_sample
     if not graph_sample:
         regimen_type = overrides.pop("regimen_type", "registry_unresolved")
@@ -228,7 +235,7 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
             "Assigning unresolved regimen for Condition[%s] because no graph sample was attached.",
             condition_occurrence.condition_occurrence_id,
         )
-        return Treatment_Episode(
+        return finalize(Treatment_Episode(
             regimen_type=regimen_type,
             regimen_category_id=regimen_type,
             condition_occurrence_id=condition_occurrence.condition_occurrence_id,
@@ -237,7 +244,7 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
             registry_resolver_type="none",
             decision_context={},
             **overrides,
-        )
+        ))
 
     context = get_active_simulation_context()
     intervention_catalog = getattr(context, "intervention_catalog", None)
@@ -254,7 +261,7 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
             condition_occurrence.condition_occurrence_id,
             exc,
         )
-        return Treatment_Episode(
+        return finalize(Treatment_Episode(
             regimen_type="registry_unresolved",
             regimen_category_id="registry_unresolved",
             graph_endpoint=None,
@@ -271,7 +278,7 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
             condition_occurrence_id=condition_occurrence.condition_occurrence_id,
             person_id=condition_occurrence.person_id,
             **overrides,
-        )
+        ))
 
     logger.debug(
         "Assigning regimen '%s' for Condition[%s] from graph endpoint '%s'",
@@ -298,7 +305,7 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
                 for step in entry.resolution.steps
             ],
         }
-    return Treatment_Episode(
+    return finalize(Treatment_Episode(
         regimen_type=outcome.primary_category_id,
         regimen_category_id=outcome.primary_category_id,
         graph_endpoint=outcome.graph_endpoint,
@@ -312,4 +319,4 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
         person_id=condition_occurrence.person_id,
         **bundle_kwargs,
         **overrides,
-    )
+    ))

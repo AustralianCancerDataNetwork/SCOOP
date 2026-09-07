@@ -9,6 +9,9 @@ from ..patients.clinical_field_base import ClinicalFieldType
 
 ValueMap: TypeAlias = Callable[[Any], Any]
 
+# concept_maps.yaml domain holding one provenance concept per CDM event table.
+RECORD_TYPE_DOMAIN = "record_type"
+
 
 def _build_numeric_proxy_map(entry: dict[str, Any]) -> ValueMap:
     raw_map = entry.get("value_proxy_map", {})
@@ -62,11 +65,27 @@ class ClinicalMapperBase:
         if not isinstance(mapping, dict):
             raise ValueError("Mapping must be a dict or path to valid YAML file")
         
+        default_type_concept_id = self._default_type_concept_id(concept_mapper)
+
         for name, entry in mapping.items():
             concept_id_key = f"{self.record_name}_concept_id" if self.record_name != "clinical_field" else "concept_id"
             concept_id = entry.get(concept_id_key)
-            if concept_id is None:
-                raise ValueError(f"Missing {concept_id_key} for field '{name}'")
+            concept_map_name = entry.get("concept_map")
+            if concept_id is None and concept_map_name is None:
+                raise ValueError(
+                    f"Field '{name}' must declare either {concept_id_key} or "
+                    "concept_map"
+                )
+            if concept_id is not None and concept_map_name is not None:
+                raise ValueError(
+                    f"Field '{name}' declares both {concept_id_key} and "
+                    "concept_map; the entity concept can only come from one."
+                )
+            concept_map = (
+                concept_mapper(concept_map_name)
+                if concept_map_name is not None
+                else None
+            )
 
             type_ = entry.get("type", "categorical")
             try:
@@ -96,11 +115,17 @@ class ClinicalMapperBase:
             else:
                 value_map = float if type_ == "numeric" else lambda x: x
 
+            type_concept_id = entry.get("type_concept_id", default_type_concept_id)
+
             field = self.field_class(
                 concept_id=concept_id,
                 value_map=value_map,
+                concept_map=concept_map,
                 field_type=field_type,
                 unit_concept_id=unit_concept_id,
+                type_concept_id=(
+                    int(type_concept_id) if type_concept_id is not None else None
+                ),
                 source_field=name,
                 event_id_attr=str(event_id_attr) if event_id_attr is not None else None,
                 event_field_concept_id=(
@@ -111,6 +136,19 @@ class ClinicalMapperBase:
                 drop=entry.get("drop", True),
             )
             self.fields[name] = field
+
+    def _default_type_concept_id(self, concept_mapper: ConceptMapper) -> int | None:
+        """Resolve this record's provenance concept from the `record_type` domain.
+
+        Returns None when a profile ships a concept map without the domain, so
+        that such profiles keep working and simply emit no type concept.
+        """
+
+        try:
+            record_types = concept_mapper(RECORD_TYPE_DOMAIN)
+        except KeyError:
+            return None
+        return record_types(self.record_name) or None
 
     def __call__(self, name: str):
         """Return a Field object for the given source name."""
