@@ -15,7 +15,11 @@ from scoop.patients.condition_episode import Condition_Episode
 from scoop.patients import episode_base as episode_base_module
 from scoop.patients.episode_base import Episode_Base
 from scoop.patients.condition_occurrence import Condition_Occurrence
-from scoop.patients.build import build_case_bundle, build_condition_episode
+from scoop.patients.build import assign_regimen, build_case_bundle, build_condition_episode
+from scoop.profiles.context import (
+    get_active_simulation_context,
+    set_active_simulation_context,
+)
 from scoop.patients.person import Person
 from scoop.patients.treatment_episode import build_graph_outcome
 from scoop.vocabulary import condition_resolver as condition_resolver_module
@@ -460,6 +464,70 @@ class RegimenAssignmentTests(unittest.TestCase):
             auto_assign_regimen=False,
         )
         self.assertEqual(overridden.to_omop_row().condition_type_concept_id, 32879)
+
+    def _assign_regimen_for_endpoint(self, endpoint: str) -> "Treatment_Episode":
+        # restore rather than clear: other tests depend on the ambient context
+        previous_context = get_active_simulation_context()
+        set_active_simulation_context(self.context)
+        try:
+            condition = Condition_Occurrence(
+                person_id=1,
+                morphology="squamous",
+                topog="upper",
+                condition_domain="lung",
+                year_of_diagnosis=2021,
+                graph_sample={f"treatment_episode.{endpoint}": endpoint},
+                auto_assign_regimen=False,
+            )
+            return assign_regimen(condition)
+        finally:
+            set_active_simulation_context(previous_context)
+
+    def test_assign_regimen_records_a_protocolref_target(self):
+        # `port`'s resolution is `protocol: surgery_then_port`
+        # (nsclc_interventions.yaml) -- a plain ProtocolRef.
+        treatment = self._assign_regimen_for_endpoint("port")
+
+        self.assertEqual(treatment.registry_resolver_type, "protocolref")
+        self.assertEqual(treatment.bundle_recipe_id, "surgery_then_port")
+        self.assertEqual(treatment.bundle_phase_summary, [])
+
+    def test_assign_regimen_records_a_phaseref_target(self):
+        # `sbrt`'s resolution is `phase: {id: definitive_rt, technique: sbrt}`.
+        treatment = self._assign_regimen_for_endpoint("sbrt")
+
+        self.assertEqual(treatment.registry_resolver_type, "phaseref")
+        self.assertIsNone(treatment.bundle_recipe_id)
+        self.assertEqual(
+            treatment.bundle_phase_summary,
+            [{"phase_id": "definitive_rt", "source_type": "phaseref"}],
+        )
+
+    def test_assign_regimen_records_every_choice_alternative(self):
+        # `ici_monotherapy_or_ici_with_chemotherapy_nonsquamous` is a Choice
+        # between `ici_monotherapy` and `ici_w_chemo_nonsquamous`, both
+        # PhaseRefs.
+        treatment = self._assign_regimen_for_endpoint(
+            "ici_monotherapy_or_ici_with_chemotherapy_nonsquamous"
+        )
+
+        self.assertEqual(treatment.registry_resolver_type, "choice")
+        self.assertEqual(
+            treatment.bundle_phase_summary,
+            [
+                {"phase_id": "ici_monotherapy", "source_type": "phaseref"},
+                {"phase_id": "ici_w_chemo_nonsquamous", "source_type": "phaseref"},
+            ],
+        )
+
+    def test_assign_regimen_records_no_target_for_non_hemonc(self):
+        # `surgery_only`'s resolution is `non_hemonc: {label: surgery}` --
+        # nothing to schedule.
+        treatment = self._assign_regimen_for_endpoint("surgery_only")
+
+        self.assertEqual(treatment.registry_resolver_type, "nonhemonc")
+        self.assertIsNone(treatment.bundle_recipe_id)
+        self.assertEqual(treatment.bundle_phase_summary, [])
 
     def test_condition_model_dump_omits_biomarker_measurement_for_unknown_gene(self):
         # An unmapped gene resolves to 0, which means "no OMOP concept": the row

@@ -10,7 +10,14 @@ from .condition_episode import Condition_Episode
 from .episode_base import Episode_Base
 from .treatment_episode import Treatment_Episode, build_graph_outcome
 from .contracts import PatientBuildInput, PatientBuildOutput
-from ..selection.interventions import Recipe
+from ..selection.interventions import (
+    Choice,
+    InterventionSpec,
+    NonHemOnc,
+    PhaseRef,
+    ProtocolRef,
+    Recipe,
+)
 
 from ..profiles.context import get_active_simulation_context
 
@@ -217,6 +224,25 @@ def make_condition_occurrence(person: Person, graph_sample: dict[str, Any] | Non
     return Condition_Occurrence(**condition_fields)
 
 
+def _choice_alternative_summary(member_spec: InterventionSpec) -> dict[str, Any]:
+    """One `bundle_phase_summary` entry for a `Choice` alternative.
+
+    Only handles a plain phase or protocol reference one level deep -- a
+    Choice made of Choices isn't supported here.
+    """
+
+    member_resolution = member_spec.resolution
+    if isinstance(member_resolution, PhaseRef):
+        return {"phase_id": member_resolution.phase_id, "source_type": "phaseref"}
+    if isinstance(member_resolution, ProtocolRef):
+        return {"protocol_id": member_resolution.protocol_id, "source_type": "protocolref"}
+    raise ValueError(
+        f"Choice member {member_spec.intervention_id!r} has an unsupported "
+        f"nested resolution {type(member_resolution).__name__}; only PhaseRef "
+        "and ProtocolRef choice members are currently supported."
+    )
+
+
 def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any) -> "Treatment_Episode":
     """
     Assign a relevant, clinically plausible regimen based on the Condition_Occurrence & Person parameters.
@@ -286,13 +312,14 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
         condition_occurrence.condition_occurrence_id,
         outcome.graph_endpoint,
     )
+    resolution = entry.resolution
     bundle_kwargs: dict[str, Any] = {}
-    if isinstance(entry.resolution, Recipe):
+    if isinstance(resolution, Recipe):
         bundle_kwargs = {
             "bundle_recipe_id": outcome.primary_category_id,
             "bundle_sequence_template": (
-                entry.resolution.sequence_template.value
-                if entry.resolution.sequence_template is not None
+                resolution.sequence_template.value
+                if resolution.sequence_template is not None
                 else None
             ),
             "bundle_phase_summary": [
@@ -302,9 +329,26 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
                     "timing": step.timing.value if step.timing is not None else None,
                     "source_type": type(step.reference).__name__.lower(),
                 }
-                for step in entry.resolution.steps
+                for step in resolution.steps
             ],
         }
+    elif isinstance(resolution, ProtocolRef):
+        bundle_kwargs = {"bundle_recipe_id": resolution.protocol_id}
+    elif isinstance(resolution, PhaseRef):
+        bundle_kwargs = {
+            "bundle_phase_summary": [
+                {"phase_id": resolution.phase_id, "source_type": "phaseref"}
+            ],
+        }
+    elif isinstance(resolution, Choice):
+        bundle_kwargs = {
+            "bundle_phase_summary": [
+                _choice_alternative_summary(intervention_catalog.specs[member_id])
+                for member_id in resolution.intervention_ids
+            ],
+        }
+    elif isinstance(resolution, NonHemOnc):
+        pass  # e.g. surgery -- nothing to schedule
     return finalize(Treatment_Episode(
         regimen_type=outcome.primary_category_id,
         regimen_category_id=outcome.primary_category_id,
