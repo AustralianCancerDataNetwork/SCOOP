@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Mapping, Protocol, Sequence, runtime_checkable
+
+import sqlalchemy as sa
 
 from ..spec import PhaseSpec
 
 if TYPE_CHECKING:
     from ..candidates import RegimenCandidate
+
+
+def _freeze_sig(sig: Any) -> Any:
+    """Detach one HemOnc `Sigs` ORM row into a plain, deepcopy-safe snapshot."""
+    mapper = sa.inspect(sig).mapper
+    fields = {column.name: getattr(sig, column.name) for column in mapper.columns}
+    fields["drug_object"] = getattr(sig, "drug_object", None)
+    return SimpleNamespace(**fields)
 
 
 @runtime_checkable
@@ -77,5 +88,11 @@ class SqlHemOncGateway:
                 condition_cuis=condition_cuis,
                 models=self.models,
             )
-            self._cache[phase_id] = tuple(get_regimen_candidate_list(sigdict))
+            candidates = get_regimen_candidate_list(sigdict)
+            self._cache[phase_id] = tuple(
+                candidate.model_copy(
+                    update={"sigs": [_freeze_sig(sig) for sig in candidate.sigs]}
+                )
+                for candidate in candidates
+            )
         return list(self._cache[phase_id])

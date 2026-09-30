@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -45,6 +46,32 @@ def candidate(
 
 def phase(phase_id: str) -> PhaseSpec:
     return PhaseSpec(source_phase_id=phase_id)
+
+
+def _fake_sig(**overrides) -> SimpleNamespace:
+    """A minimal stand-in for a real HemOnc sig row.
+
+    Omits `seqrelwhat` on purpose -- real sig rows never carry it either.
+    """
+
+    fields = dict(
+        doseminnum=1, dosemaxnum=1, doseunit="mg",
+        dosecapnum=None, dosecapunit=None,
+        durationunit=None, durationmaxnum=None, durationminnum=None,
+        route="oral", frequency=None, alldays=[1], timing_sequence=None,
+        component="cisplatin",
+        seqrel_items=[], seqrelwhen_items=[], seqrelwhenunit_items=[],
+        sequence=None, id=1, phase="phase-1", divided=False,
+    )
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+def test_regimen_candidate_repr_does_not_require_legacy_seqrelwhat_field():
+    regimen_candidate = candidate("test", phase="phase-1", sigs=[_fake_sig()])
+
+    assert "cisplatin" in repr(regimen_candidate)
+    assert "cisplatin" in regimen_candidate._repr_html_()
 
 
 def test_assembly_groups_rows_by_candidate_identity():

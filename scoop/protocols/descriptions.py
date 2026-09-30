@@ -11,11 +11,11 @@ def repr_cannonical_iv(comp_sigs):
     return f"\n".join(lines)
 
 
-def sig_component_obj(doseminnum, dosemaxnum, doseunit, 
+def sig_component_obj(*, doseminnum, dosemaxnum, doseunit,
                                dosecapnum, dosecapunit,
-                              durationunit, durationmaxnum, durationminnum, 
+                              durationunit, durationmaxnum, durationminnum,
                               route, frequency, alldays, timing_sequence, component,
-                               seqrel_items, seqrelwhen_items, seqrelwhat,
+                               seqrel_items, seqrelwhen_items, seqrelwhat=None,
                                sequence, id, phase, seqrelwhenunit_items, divided,
                               **kwargs):
     dose_size = sig_comp_dose_size(doseminnum, dosemaxnum)
