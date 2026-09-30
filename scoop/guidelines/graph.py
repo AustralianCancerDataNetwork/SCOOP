@@ -44,7 +44,7 @@ class NumericDistribution(BaseDistribution):
     as_int: bool = False
     kind: Literal["numeric"] = "numeric"
 
-    def sample(self, rng: random.Random | None = None):
+    def sample(self, rng: random.Random | None = None) -> int | float:
         rng = rng or random
         # Uniform if no sd
         if not self.sd:
@@ -86,7 +86,7 @@ class DiscreteDistribution(BaseDistribution):
 
     @field_validator("probs")
     @classmethod
-    def validate_probs(cls, v: Dict[Union[int, float, str], float]):
+    def validate_probs(cls, v: Dict[Union[int, float, str], float]) -> Dict[Union[int, float, str], float]:
         total = sum(v.values())
         if abs(total - 1.0) > 1e-6:
             raise ValueError(f"Probabilities must sum to 1 (got {total}) for {cls.name}")
@@ -315,7 +315,7 @@ class NumericNode(BaseGraphNode):
         return v
 
     @model_validator(mode="after")
-    def build_numeric_distribution(self):
+    def build_numeric_distribution(self) -> NumericNode:
         self.built_distribution = NumericDistribution(
             mean=self.mean,
             sd=self.sd,
@@ -509,7 +509,7 @@ class TransformationGraph(BaseModel):
     graph: Dict[str, List[str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def build_graph_and_order(self):
+    def build_graph_and_order(self) -> TransformationGraph:
         # 1. Assign names to nodes based on dict keys
         for name, node in self.nodes.items():
             node.name = name

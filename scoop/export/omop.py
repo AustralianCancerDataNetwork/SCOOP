@@ -26,14 +26,11 @@ _OmopRow = TypeVar("_OmopRow")
 
 
 def require_populated_columns(row: _OmopRow) -> _OmopRow:
-    """Raise if any NOT-NULL column on this omop_alchemy ORM row is unset.
+    """Raise if any NOT-NULL column on this ORM row is unset.
 
-    The requirement is read straight off the row's own SQLAlchemy mapper --
-    the same constraint the real CDM schema enforces at insert time -- so
-    there is no hand-maintained list of "required fields" to keep in sync as
-    tables or columns change. Returns the row unchanged, so a `to_omop_row()`
-    implementation can wrap its return value:
-    `return require_populated_columns(omop_model.X(...))`.
+    Reads the requirement straight off the row's own mapper, so it stays in
+    sync automatically as the CDM schema changes. Returns the row unchanged,
+    so a `to_omop_row()` can wrap its return value with this.
     """
 
     mapper = sa.inspect(row).mapper

@@ -65,11 +65,8 @@ class LungConditionConceptResolver(ConditionConceptResolver):
 
 condition_concept_resolvers: tuple[ConditionConceptResolver, ...] = (
     LungConditionConceptResolver(),
-    # TODO: bladder has no resolver here, so its condition_concept_id never
-    # resolves -- every bladder case exports with a null concept id. Needs a
-    # BladderConditionConceptResolver (morphology/topography -> OMOP concept)
-    # once bladder's ICD-O mapping data is available. Tracked as a known gap
-    # in tests/test_profile_cdm_completeness.py.
+    # TODO: no bladder resolver yet, so bladder cases export with a null
+    # condition_concept_id (tracked in tests/test_profile_cdm_completeness.py).
 )
 
 

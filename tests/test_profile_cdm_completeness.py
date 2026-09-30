@@ -1,16 +1,10 @@
 """Every profile must produce OMOP-exportable cases.
 
-`Condition_Occurrence.to_omop_row()` raises when any NOT-NULL CDM column
-never resolved -- see `require_populated_columns` in `export/omop.py`. This
-test exercises that check across every profile and several seeds each, so a
-profile graph that forgets to sample a required field (as `sclc.yaml` once
-did for `person.year_of_diagnosis`) fails here instead of only surfacing
-later, at the point of a real CDM export.
+Samples several seeds per profile and checks `to_omop_row()` succeeds, so a
+profile missing a required field is caught here instead of at export time.
 
-Condition-concept resolution (morphology + topography -> a real OMOP concept)
-needs the configured OMOP vocabulary database, so unlike the rest of this test
-suite, this one is not DB-free -- it skips if no vocabulary database is
-reachable, the same tradeoff notebooks make via `require_vocabulary_database`.
+Needs a real OMOP vocabulary database (for concept resolution), so unlike
+the rest of the suite this one skips rather than failing when it's down.
 """
 
 import unittest
@@ -24,9 +18,7 @@ from scoop.vocabulary.database import get_omop_engine
 CONFIG_ROOT = Path(__file__).resolve().parents[1] / "scoop"
 SEEDS = range(10)
 
-# TODO: bladder has no ConditionConceptResolver (condition_resolver.py only
-# covers lung/nsclc/sclc), so condition_concept_id never resolves. Remove
-# this once bladder concept resolution is implemented.
+# TODO: remove once bladder has a ConditionConceptResolver (condition_resolver.py).
 _KNOWN_GAPS = {"bladder": "condition_concept_id"}
 
 
@@ -53,8 +45,7 @@ class ProfileCDMCompletenessTests(unittest.TestCase):
             )
 
     def test_every_profile_is_nonempty(self):
-        # A regression guard on discovery itself: if `list_profiles` ever
-        # returned nothing, every check below would vacuously pass.
+        # otherwise the loop below would vacuously pass
         self.assertTrue(list_profiles(CONFIG_ROOT))
 
     def test_every_profile_produces_a_valid_condition_occurrence_row(self):

@@ -12,6 +12,7 @@ from ..export.omop import OmopExportBundle, as_datetime, require_populated_colum
 if TYPE_CHECKING:
     from .build import assign_regimen
     from .condition_episode import Condition_Episode
+    from omop_alchemy.cdm.model import Condition_Occurrence as OmopConditionOccurrence
 
 def _resolved_year_of_diagnosis(condition: "Condition_Occurrence") -> int | None:
     if condition.year_of_diagnosis is not None:
@@ -136,11 +137,11 @@ class Condition_Occurrence(TransformableBase):
             and self.condition_source_value is not None
         )
 
-    def _resolve_condition_concept(self):
+    def _resolve_condition_concept(self) -> "Condition_Occurrence":
         self._apply_named_persisted_bundle_transform("condition_concept_resolution")
         return self
 
-    def _create_overarching_condition_episode(self):
+    def _create_overarching_condition_episode(self) -> "Condition_Occurrence":
         if (
             self.overarching_episode is None
             and (
@@ -155,14 +156,14 @@ class Condition_Occurrence(TransformableBase):
             )
         return self
 
-    def _assign_treatment(self):
+    def _assign_treatment(self) -> "Condition_Occurrence":
         from .build import assign_regimen
         if self.regimen is None and self.auto_assign_regimen:
             self.regimen = assign_regimen(condition_occurrence=self)
         return self
 
     @model_validator(mode="after")
-    def _finalize_condition_dependencies(self):
+    def _finalize_condition_dependencies(self) -> "Condition_Occurrence":
         # managed all post-creation dependencies in one place to ensure
         # correct ordering and avoid multiple passes over the data
         self._resolve_condition_concept()
@@ -170,11 +171,11 @@ class Condition_Occurrence(TransformableBase):
         self._assign_treatment()
         return self
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.regimen:
             drug_exposures, procedures = self.regimen.roll_events()
 
-    def to_omop_row(self):
+    def to_omop_row(self) -> "OmopConditionOccurrence":
         from omop_alchemy.cdm import model as omop_model
 
         row = omop_model.Condition_Occurrence(
@@ -216,7 +217,7 @@ class Condition_Occurrence(TransformableBase):
         "from_attributes": True  
     }
 
-    def __init__(self, **data: Any):
+    def __init__(self, **data: Any) -> None:
         """
         Allow initialization with either a Person or a person_id.
         """

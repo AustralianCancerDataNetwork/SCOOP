@@ -276,7 +276,7 @@ class ProfileLoader:
         self,
         base_dir: Path,
         vocabulary_gateway: VocabularyGateway | None = None,
-    ):
+    ) -> None:
         self.base_dir = base_dir
         self.vocabulary_gateway = vocabulary_gateway or DefaultVocabularyGateway(
             base_dir
@@ -571,14 +571,9 @@ def _validate_declared_interventions(
 
 
 def _validate_graph_topology(manifest: ProfileManifest, config_root: Path) -> None:
-    """Validate every graph in the profile against `TransformationGraph.validate_graph`.
-
-    Each graph is checked with visibility into every *other* graph's node
-    names (the entry graph's shared state, or a sibling tail graph's), so a
-    reference to state a tail graph inherits from its entry graph -- the
-    normal pattern in this multi-graph architecture -- is not mistaken for a
-    genuinely dangling reference.
-    """
+    """Validate every graph in the profile, allowing each to reference the
+    others' nodes (a tail graph reading state its entry graph defines is
+    normal here, not a dangling reference)."""
 
     graphs: dict[str, TransformationGraph] = {
         graph_name: load_transformation_graph(
