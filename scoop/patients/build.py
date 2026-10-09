@@ -256,7 +256,7 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
 
     graph_sample = condition_occurrence.graph_sample
     if not graph_sample:
-        regimen_type = overrides.pop("regimen_type", "registry_unresolved")
+        regimen_type = overrides.pop("regimen_type", "unresolved_treatment")
         logger.debug(
             "Assigning unresolved regimen for Condition[%s] because no graph sample was attached.",
             condition_occurrence.condition_occurrence_id,
@@ -288,8 +288,8 @@ def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any)
             exc,
         )
         return finalize(Treatment_Episode(
-            regimen_type="registry_unresolved",
-            regimen_category_id="registry_unresolved",
+            regimen_type="unresolved_treatment",
+            regimen_category_id="unresolved_treatment",
             graph_endpoint=None,
             graph_alias_used=None,
             registry_resolver_type="none",

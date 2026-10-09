@@ -1,15 +1,17 @@
+import json
 import unittest
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 from test_schedule_rollout import StubSignature
 
 from scoop.patients.treatment_episode import Treatment_Episode
 from scoop.protocols.candidates import RegimenCandidate
 from scoop.protocols.hemonc.gateway import FakeHemOncGateway
-from scoop.protocols.spec import RegistrySpec
+from scoop.protocols.spec import ProtocolSpec, RegistrySpec
 from scoop.schedule.bridge import resolve_schedule_for_treatment
-from scoop.schedule.rollout import ProtocolSchedule
+from scoop.schedule.rollout import ProtocolSchedule, ScheduleConfig, SystemicAdministration
 from scoop.vocabulary.database import get_omop_engine
 
 REGISTRY_PATH = (
@@ -47,6 +49,40 @@ def _treatment_episode(**overrides) -> Treatment_Episode:
     }
     fields.update(overrides)
     return Treatment_Episode(**fields)
+
+
+def _registry_requiring_morphology(registry: RegistrySpec, phase_id: str) -> RegistrySpec:
+    protocol = ProtocolSpec.generate(
+        phase_id,
+        {
+            "protocol_id": phase_id,
+            "source_phase_ids": [phase_id],
+            "selection_requires": ["condition_occurrence.morphology"],
+        },
+        source_phases=registry.source_phases,
+    )
+    return registry.model_copy(
+        update={"protocols": {**registry.protocols, phase_id: protocol}}
+    )
+
+
+def _run_nsclc_candidate(candidate, registry, phase_id, decision_context):
+    gateway = FakeHemOncGateway(candidates={phase_id: [candidate]})
+    treatment = _treatment_episode(
+        bundle_recipe_id=phase_id,
+        decision_context=decision_context,
+    )
+    result = resolve_schedule_for_treatment(
+        treatment,
+        registry,
+        gateway,
+        start_date=date(2026, 1, 1),
+        seed=11,
+        config=ScheduleConfig(max_cycles=3),
+    )
+    if result is not None:
+        treatment.attach_schedule(result)
+    return result, treatment.roll_events(), gateway.calls
 
 
 class ScheduleBridgeUnitTests(unittest.TestCase):
@@ -289,11 +325,6 @@ class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
 
 
 def test_real_nsclc_candidate_snapshot_through_registry_bridge():
-    import json
-    from types import SimpleNamespace
-
-    from scoop.schedule.rollout import ScheduleConfig, SystemicAdministration
-
     fixture = json.loads(
         (
             Path(__file__).parent / "fixtures/nsclc_pembrolizumab_schedule.json"
@@ -330,3 +361,51 @@ def test_real_nsclc_candidate_snapshot_through_registry_bridge():
         for a in result.administrations
     )
     assert gateway.calls == [phase_id]
+
+
+def test_nsclc_selected_treatment_emits_reproducible_context_events():
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures/nsclc_pembrolizumab_schedule.json"
+        ).read_text()
+    )
+    payload = fixture["candidate"]
+    payload["sigs"] = [SimpleNamespace(**sig) for sig in payload["sigs"]]
+    candidate = RegimenCandidate.model_validate(payload)
+    phase_id = fixture["phase_id"]
+    registry = _registry_requiring_morphology(
+        RegistrySpec.from_path(REGISTRY_PATH), phase_id
+    )
+    missing_context = _run_nsclc_candidate(candidate, registry, phase_id, {})
+    first = _run_nsclc_candidate(
+        candidate,
+        registry,
+        phase_id,
+        {"condition_occurrence.morphology": "nonsquamous"},
+    )
+    second = _run_nsclc_candidate(
+        candidate,
+        registry,
+        phase_id,
+        {"condition_occurrence.morphology": "nonsquamous"},
+    )
+    result, (drugs, procedures), gateway_calls = first
+    assert missing_context[0] is None
+    assert result is not None
+    selected_candidate = result.selected_protocol.phases[0].regimen
+    signature = selected_candidate.sigs[0]
+    assert first == second
+    assert gateway_calls == [phase_id]
+    assert not procedures
+    assert len(drugs) == 3
+    assert {event["drug_source_value"] for event in drugs} == {signature.component}
+    assert {event["source_sig_id"] for event in drugs} == {signature.id}
+    assert {event["component_hemonc_cui"] for event in drugs} == {
+        signature.component_cui
+    }
+    assert all(event["dose"] == 200 for event in drugs)
+    assert all(
+        not key.endswith("_concept_id")
+        for event in drugs + procedures
+        for key in event
+    )

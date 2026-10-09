@@ -1,16 +1,12 @@
-# SCOOP Docs
+# SCOOP documentation
 
-This folder is for project-facing documentation that explains how to extend SCOOP's profile system.
+Find the guide that matches what you want to do:
 
-Current pages:
+| If you want to… | Read… |
+| --- | --- |
+| Understand how a treatment schedule is represented | [Treatment schedules](scheduling-rollout.md) |
+| See how treatment decisions connect to HemOnc regimen candidates | [How treatment matching works](hemonc_grouping_model.md) |
+| Add a disease profile or edit its YAML | [Create a profile](creating_new_profile.md) |
+| Validate the canonical profile and treatment files | [Validate profile YAML](../schema/linkml/README.md) |
 
-- [Creating A New Profile](./creating_new_profile.md)
-- [HemOnc Grouping Model](./hemonc_grouping_model.md)
-- [Lung Profile Config Map](./lung_profile_config_map.md)
-
-The project currently has its most developed example under [`scoop/profiles/nsclc/`](../scoop/profiles/nsclc), where the NSCLC work shows the current pattern:
-
-- stage-specific transformation graphs
-- a regimen registry
-- supporting exploratory notebooks for HemOnc-backed regimen discovery
-- local source guideline PDFs used to anchor the design
+The [repository README](../README.md) covers installation and the project’s current scope.

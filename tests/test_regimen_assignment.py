@@ -253,7 +253,7 @@ class RegimenAssignmentTests(unittest.TestCase):
             graph_sample=sample,
             source_profile="nsclc",
         )
-        self.assertEqual(condition.regimen.regimen_type, "registry_unresolved")
+        self.assertEqual(condition.regimen.regimen_type, "unresolved_treatment")
         self.assertEqual(condition.regimen.registry_resolver_type, "none")
         self.assertIn("No active treatment_episode endpoints", condition.regimen.registry_notes)
 

@@ -283,6 +283,36 @@ def test_phase_blocks_use_full_prior_cycles_and_preserve_same_day_components():
     assert max(a.cycle_number for a in capped.administrations) == 3
 
 
+def test_two_drug_components_are_retained_as_same_day_episode_events():
+    cisplatin = StubSignature("cisplatin")
+    pemetrexed = StubSignature("pemetrexed")
+    pemetrexed.id = cisplatin.id + 1
+    selected = _selected(cisplatin)
+    selected.phases[0].regimen.sigs.append(pemetrexed)
+
+    protocol_schedule = schedule(selected, date(2026, 1, 1), seed=11)
+    episode = Treatment_Episode(
+        person_id=1,
+        condition_occurrence_id=1,
+        regimen_type="test",
+        regimen_category_id="test",
+    ).attach_schedule(protocol_schedule)
+    drugs, procedures = episode.roll_events()
+
+    assert not procedures
+    assert {event["drug_source_value"] for event in drugs} == {
+        "cisplatin",
+        "pemetrexed",
+    }
+    assert len({event["drug_exposure_start_date"] for event in drugs}) == 1
+    assert len({event["cycle_number"] for event in drugs}) == 1
+    assert all(
+        not key.endswith("_concept_id")
+        for event in drugs + procedures
+        for key in event
+    )
+
+
 def test_overlapping_blocks_inherit_the_shared_cycle_anchor():
     first = StubSignature("first")
     first.timing_sequence = "1,2,3"
@@ -409,6 +439,7 @@ def test_numeric_day_continuation_is_bounded_by_cycle_end(probability, days):
         config=ScheduleConfig(within_component_continue_probability=probability),
     )
     assert [a.date.day for a in result.administrations] == days
+    assert [a.cycle_number for a in result.administrations] == [1] * len(days)
 
 
 @pytest.mark.parametrize("field", ["alldays", "timing_sequence"])
@@ -511,6 +542,13 @@ def test_declining_all_optional_cycles_produces_an_empty_schedule():
     )
     assert result.administrations == ()
     assert result.skipped_phases == ()
+    episode = Treatment_Episode(
+        person_id=1,
+        condition_occurrence_id=1,
+        regimen_type="test",
+        regimen_category_id="test",
+    ).attach_schedule(result)
+    assert episode.roll_events() == ([], [])
 
 
 def test_nonnumeric_dose_is_retained_without_inventing_a_quantity():

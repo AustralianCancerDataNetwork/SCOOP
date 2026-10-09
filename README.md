@@ -1,7 +1,6 @@
-# SCOOP: Synthetic Creation of OMOP Oncology Patients
+# SCOOP
 
 SCOOP is a Python library designed to generate synthetic oncology patient data conforming to the OMOP Common Data Model (CDM). It provides tools to create realistic patient profiles, including demographics, diagnoses, treatments, and outcomes, facilitating dataset alignment and software development for healthcare analytics without compromising patient privacy.
-
 ## Key Features
 * HemOnc integration — realistic longitudinal roll-out of systemic therapy regimens.
 * Configurable attributes — define demographic, clinical, and molecular distributions via YAML or code.
@@ -15,6 +14,7 @@ The functionality of SCOOP should be considered in four broad phases:
 3. **Synthesis**: Applying defined transformations to the sampled attributes to generate the final patient data
 4. **Serialisation**: Converting the generated patient data into a format compatible with the OMOP CDM for storage and analysis.
 
+
 ## Flow
 
 1. a Person object is created with basic attributes (sampled from flat distributions - no dependencies)
@@ -23,3 +23,32 @@ The functionality of SCOOP should be considered in four broad phases:
 4. exposure events (procedures, drug administration events) are created based on the Regimen object
 5. treatment response and outcome events are created based on the Condition and Regimen objects
 6. all objects are serialised to OMOP CDM tables
+
+## Start here
+
+Install the project dependencies with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+```
+
+## Choose a guide
+
+- [Documentation home](docs/index.md): find the guide for your task.
+- [Treatment schedules](docs/scheduling-rollout.md): understand dates, repeated cycles, optional treatment, and unresolved timing.
+- [How treatment matching works](docs/hemonc_grouping_model.md): understand how a treatment decision connects to HemOnc regimen candidates.
+- [Create a profile](docs/creating_new_profile.md): add or adapt a disease profile.
+- [Validate profile YAML](schema/linkml/README.md): check the canonical authoring files.
+
+## Profiles
+
+Profiles are YAML files under [`scoop/profiles/`](scoop/profiles/). NSCLC is the most complete example of the current graph, treatment registry, intervention catalog, and routed-profile format. See [Create a profile](docs/creating_new_profile.md) before copying or extending one.
+
+## Development
+
+Install development dependencies and run the test suite:
+
+```bash
+uv sync --extra dev
+uv run pytest -q
+```
