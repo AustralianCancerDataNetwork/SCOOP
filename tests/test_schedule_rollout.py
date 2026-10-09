@@ -6,12 +6,15 @@ from scoop.patients.build import assign_regimen
 from scoop.patients.condition_occurrence import Condition_Occurrence
 from scoop.patients.treatment_episode import Treatment_Episode
 from scoop.protocols.candidates import RegimenCandidate
+from scoop.schedule import UnresolvedScheduleError
 from scoop.schedule.rollout import (
+    ProtocolSchedule,
     RadiationAdministration,
     ScheduleConfig,
     SystemicAdministration,
     schedule,
 )
+from scoop.schedule.systemic import Component
 from scoop.selection.choose import (
     SelectedProtocol,
     SelectedRegimen,
@@ -80,6 +83,12 @@ def _selected(signature):
         protocol_id="protocol",
         phases=(SelectedRegimen(phase_id="phase", regimen=regimen),),
     )
+
+
+def _schedule_signature(signature, *, seed=11, config=None):
+    return schedule(
+        _selected(signature), date(2026, 1, 1), seed=seed, config=config
+    ).administrations
 
 
 def test_schedule_rolls_signature_into_typed_systemic_administration():
@@ -340,38 +349,64 @@ def test_negative_days_do_not_receive_the_positive_day_offset():
     ]
 
 
-@pytest.mark.parametrize("component", ["cisplatin", "External beam radiotherapy"])
-@pytest.mark.parametrize("days,dated_count", [("7|8|9", 0), ("1,8|9", 1), (None, 0)])
-def test_unresolved_days_are_kept_with_status_and_episode_provenance(
-    component, days, dated_count
+@pytest.mark.parametrize(
+    "component", ["cisplatin", "External beam radiotherapy", "131I-tositumomab"]
+)
+@pytest.mark.parametrize(
+    "days,expected_count,choice_groups",
+    [
+        ("1,8|9", 2, ((8, 9),)),
+        ("1,8|9,12|13", 3, ((8, 9), (12, 13))),
+        ("7|8|9|10|11|12|13|14|15", 1, (tuple(range(7, 16)),)),
+    ],
+)
+def test_choice_days_are_picked_reproducibly_for_fresh_signatures(
+    component, days, expected_count, choice_groups
 ):
     sig = StubSignature(component)
     sig.alldays = days
-    result = schedule(_selected(sig), date(2026, 1, 1), seed=11)
-    unresolved = [a for a in result.administrations if a.date is None]
-    assert len(result.administrations) == dated_count + 1
-    assert len(unresolved) == 1
-    assert unresolved[0].timing_status.startswith("unresolved:")
-    episode = Treatment_Episode(
-        person_id=1,
-        condition_occurrence_id=1,
-        regimen_type="test",
-        regimen_category_id="test",
-    )
-    episode.attach_schedule(result)
-    drugs, procedures = episode.roll_events()
-    assert (drugs + procedures)[-1]["timing_status"] == unresolved[0].timing_status
-
-
-def test_cycle_gap_surfaces_unresolved_instead_of_stopping_or_guessing():
-    sig = StubSignature()
-    sig.timing_sequence = "1,3"
-    result = schedule(_selected(sig), date(2026, 1, 1), seed=11)
-    assert len(result.administrations) == 2
+    result = _schedule_signature(sig)
+    fresh_sig = StubSignature(component)
+    fresh_sig.alldays = days
+    assert result == _schedule_signature(fresh_sig)
+    assert len(result) == expected_count
+    assert all(administration.date is not None for administration in result)
+    selected_days = [administration.date.day for administration in result]
+    for choices in choice_groups:
+        assert sum(day in choices for day in selected_days) == 1
     assert all(
-        a.date is None and "non-contiguous" in a.timing_status
-        for a in result.administrations
+        not administration.timing_status.startswith("unresolved:")
+        for administration in result
     )
+
+
+def test_choice_resolution_deduplicates_a_selected_existing_day():
+    sig = StubSignature()
+    sig.alldays = "1,1|8"
+
+    result = _schedule_signature(sig)
+
+    assert len(result) == 2
+    assert len({administration.date for administration in result}) == 2
+
+
+@pytest.mark.parametrize(
+    "field,value,reason",
+    [
+        ("alldays", None, "no explicit dosing days"),
+        ("timing_sequence", "1,3", "non-contiguous"),
+        ("alldays", "1,(+n)", "day continuation has no numeric repeat interval"),
+    ],
+)
+def test_unresolved_source_timing_raises_a_typed_schedule_error(field, value, reason):
+    sig = StubSignature()
+    setattr(sig, field, value)
+    with pytest.raises(UnresolvedScheduleError, match=reason) as exc:
+        _schedule_signature(sig)
+
+    assert exc.value.sig_id == 42
+    assert exc.value.phase_id == "phase"
+    assert reason in exc.value.reason
 
 
 def test_radiation_classification_uses_the_class_not_the_name():
@@ -442,17 +477,6 @@ def test_numeric_day_continuation_is_bounded_by_cycle_end(probability, days):
     assert [a.cycle_number for a in result.administrations] == [1] * len(days)
 
 
-@pytest.mark.parametrize("field", ["alldays", "timing_sequence"])
-def test_indefinite_markers_without_cadence_remain_unresolved(field):
-    sig = StubSignature()
-    setattr(sig, field, "1,(+n)")
-    result = schedule(_selected(sig), date(2026, 1, 1), seed=11)
-    assert len(result.administrations) == 2
-    assert result.administrations[0].date == date(2026, 1, 1)
-    assert result.administrations[1].date is None
-    assert "no numeric repeat interval" in result.administrations[1].timing_status
-
-
 def test_certain_unbounded_continuation_requires_a_limit():
     sig = StubSignature()
     sig.timing_sequence = "1,(+1)"
@@ -483,9 +507,27 @@ def test_continuation_and_doses_are_reproducible_for_fresh_signatures():
     assert run() == run()
 
 
-def test_unknown_phase_end_does_not_create_a_dated_successor():
+def test_choice_resolution_does_not_consume_dose_or_cycle_continuation_draws():
+    fixed_sig = StubSignature()
+    fixed_sig.timing_sequence = "1,(+1)"
+    fixed = _schedule_signature(
+        fixed_sig, seed=37, config=ScheduleConfig(max_cycles=8)
+    )
+    chosen_sig = StubSignature()
+    chosen_sig.alldays = "1,8|9"
+    chosen_sig.timing_sequence = "1,(+1)"
+    chosen = _schedule_signature(
+        chosen_sig, seed=37, config=ScheduleConfig(max_cycles=8)
+    )
+    assert {a.cycle_number for a in fixed} == {a.cycle_number for a in chosen}
+    fixed_day_one = next(a for a in fixed if a.date == date(2026, 1, 1))
+    chosen_day_one = next(a for a in chosen if a.date == date(2026, 1, 1))
+    assert fixed_day_one.dose == chosen_day_one.dose
+
+
+def test_unknown_phase_end_raises_before_returning_a_partial_schedule():
     first = StubSignature()
-    first.alldays = "7|8"
+    first.alldays = None
     selected = SelectedProtocol(
         protocol_id="test",
         phases=(
@@ -501,12 +543,46 @@ def test_unknown_phase_end_does_not_create_a_dated_successor():
             ),
         ),
     )
-    result = schedule(selected, date(2026, 1, 1), seed=11)
-    assert result.phase_start_dates["post"] is None
-    assert all(a.date is None for a in result.administrations)
-    assert "previous phase end" in next(
-        a.timing_status for a in result.administrations if a.phase_id == "post"
+    with pytest.raises(UnresolvedScheduleError) as exc:
+        schedule(selected, date(2026, 1, 1), seed=11)
+
+    assert exc.value.sig_id == 42
+    assert exc.value.phase_id == "pre"
+    assert "no explicit dosing days" in exc.value.reason
+
+
+@pytest.mark.parametrize("marker", ["(+c)", "(+n21)"])
+def test_letter_cycle_marker_repeats_geometrically_and_respects_max_cycles(marker):
+    sig = StubSignature()
+    sig.timing_sequence = f"1,{marker}"
+    sampled = _schedule_signature(sig, seed=31, config=ScheduleConfig(max_cycles=20))
+    fresh_sig = StubSignature()
+    fresh_sig.timing_sequence = f"1,{marker}"
+    assert sampled == _schedule_signature(
+        fresh_sig, seed=31, config=ScheduleConfig(max_cycles=20)
     )
+    assert 1 <= len(sampled) <= 20
+    assert [administration.cycle_number for administration in sampled] == list(
+        range(1, len(sampled) + 1)
+    )
+
+    capped_sig = StubSignature()
+    capped_sig.timing_sequence = f"1,{marker}"
+    capped = _schedule_signature(
+        capped_sig,
+        seed=31,
+        config=ScheduleConfig(
+            max_cycles=4,
+            within_component_continue_probability=1,
+            within_cycleset_continue_probability=1,
+        ),
+    )
+    assert [administration.cycle_number for administration in capped] == [
+        1,
+        2,
+        3,
+        4,
+    ]
 
 
 def test_day_continuation_uses_full_calendar_month_boundaries():
@@ -560,13 +636,23 @@ def test_nonnumeric_dose_is_retained_without_inventing_a_quantity():
 
 
 @pytest.mark.parametrize("component", ["cisplatin", "External beam radiotherapy"])
-def test_omop_export_rejects_unresolved_schedule_and_episode_payloads(component):
+def test_omop_export_rejects_manually_constructed_undated_schedule_and_episode_payloads(
+    component,
+):
     from scoop.export.omop import OmopExportConfig, _export_event_payloads, export
     from scoop.vocabulary.gateway import FakeVocabularyGateway
 
-    sig = StubSignature(component)
-    sig.alldays = "7|8"
-    result = schedule(_selected(sig), date(2026, 1, 1), seed=11)
+    result = ProtocolSchedule(
+        administrations=(
+            SystemicAdministration(
+                date=None,
+                component=Component.from_sig(StubSignature(component)),
+                phase_id="phase",
+                source_sig_id=42,
+                timing_status="unresolved: fixture timing",
+            ),
+        )
+    )
     gateway = FakeVocabularyGateway()
     config = OmopExportConfig(person_id=1)
     with pytest.raises(ValueError, match="Cannot export unresolved administration"):
@@ -608,7 +694,7 @@ def test_continuing_later_block_keeps_its_predecessor_anchor():
     ]
 
 
-def test_continuation_does_not_resolve_a_source_block_with_an_unknown_anchor():
+def test_unknown_cycle_anchor_raises_a_typed_schedule_error():
     first = StubSignature("first")
     first.timing_sequence = "1,(+1)"
     later = StubSignature("later")
@@ -616,22 +702,23 @@ def test_continuation_does_not_resolve_a_source_block_with_an_unknown_anchor():
     later.timing_sequence = "2"
     selected = _selected(first)
     selected.phases[0].regimen.sigs.append(later)
-    result = schedule(
-        selected,
-        date(2026, 1, 1),
-        seed=11,
-        config=ScheduleConfig(
-            max_cycles=3,
-            within_component_continue_probability=1,
-            within_cycleset_continue_probability=1,
-        ),
-    )
-    later_event = next(a for a in result.administrations if a.component.name == "later")
-    assert later_event.date is None
-    assert later_event.timing_status.startswith("unresolved:")
+    with pytest.raises(UnresolvedScheduleError) as exc:
+        schedule(
+            selected,
+            date(2026, 1, 1),
+            seed=11,
+            config=ScheduleConfig(
+                max_cycles=3,
+                within_component_continue_probability=1,
+                within_cycleset_continue_probability=1,
+            ),
+        )
+
+    assert exc.value.sig_id == 43
+    assert exc.value.phase_id == "phase"
 
 
-def test_day_continuation_does_not_guess_past_an_unresolved_choice():
+def test_day_continuation_uses_the_seeded_choice_as_its_anchor():
     sig = StubSignature()
     sig.alldays = "1,8|9,(+2)"
     result = schedule(
@@ -640,12 +727,13 @@ def test_day_continuation_does_not_guess_past_an_unresolved_choice():
         seed=11,
         config=ScheduleConfig(within_component_continue_probability=1),
     )
-    assert [a.date for a in result.administrations if a.date is not None] == [
-        date(2026, 1, 1)
-    ]
-    assert any(
-        "continuation depends on an unresolved day choice" in a.timing_status
-        for a in result.administrations
+    days = [administration.date.day for administration in result.administrations]
+    assert days[0] == 1
+    assert days[1] in (8, 9)
+    assert all(right - left == 2 for left, right in zip(days[1:], days[2:]))
+    assert all(
+        not administration.timing_status.startswith("unresolved:")
+        for administration in result.administrations
     )
 
 

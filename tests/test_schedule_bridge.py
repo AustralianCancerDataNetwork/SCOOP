@@ -205,6 +205,34 @@ class ScheduleBridgeUnitTests(unittest.TestCase):
         self.assertIsNone(result)
 
 
+def test_schedule_bridge_returns_dated_events_for_a_source_day_choice():
+    registry = RegistrySpec.from_path(REGISTRY_PATH)
+    candidate = _candidate(
+        "SBRT", phase="definitive_rt", component="External beam radiotherapy"
+    )
+    candidate.sigs[0].alldays = "1,8|9"
+    treatment = _treatment_episode(
+        bundle_phase_summary=[
+            {"phase_id": "definitive_rt", "source_type": "phaseref"}
+        ],
+    )
+    gateway = FakeHemOncGateway(candidates={"definitive_rt": [candidate]})
+
+    result = resolve_schedule_for_treatment(
+        treatment,
+        registry,
+        gateway,
+        start_date=date(2026, 1, 1),
+        seed=11,
+        config=ScheduleConfig(max_cycles=1),
+    )
+
+    assert isinstance(result, ProtocolSchedule)
+    assert len(result.administrations) == 2
+    assert result.administrations[0].date == date(2026, 1, 1)
+    assert result.administrations[1].date in {date(2026, 1, 8), date(2026, 1, 9)}
+
+
 class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
     """Integration tests against the real HemOnc database.
 

@@ -1,7 +1,6 @@
-"""Patient continuation decisions around HemOnc's deterministic phase rollout.
+"""Sample cycle and day continuation around HemOnc's deterministic rollout.
 
-Only numeric (+k) markers supply a repeat cadence. Letter markers and missing
-source timing remain visible as unresolved instructions. No source sig is mutated.
+Cycle letter markers repeat every cycle; day-level letter markers remain unresolved.
 """
 
 from __future__ import annotations
@@ -44,8 +43,11 @@ def _continuing_cycles(
 ) -> dict[int, list[int]]:
     """Sample a block's and each component's survival at each repeat opportunity."""
     marker = block.timing_indefinite
-    if marker is None or marker.interval is None or not block.cycle_numbers:
+    if marker is None or not block.cycle_numbers:
         return {}
+    interval = 1 if marker.interval is None else marker.interval
+    if interval < 1:
+        raise ValueError("cycle continuation interval must be positive")
     component_prob = _probability(
         config.within_component_continue_probability, WITHIN_COMPONENT_CONTINUE_PROB
     )
@@ -58,14 +60,14 @@ def _continuing_cycles(
         )
     active = list(dict.fromkeys(id(event.sig) for event in block.events))
     extra = {}
-    cycle = block.last_cycle + marker.interval
+    cycle = block.last_cycle + interval
     while active and (config.max_cycles is None or cycle <= config.max_cycles):
         if not sampler._get_bool(block_prob):
             break
         active = [sig_id for sig_id in active if sampler._get_bool(component_prob)]
         if active:
             extra[cycle] = active.copy()
-        cycle += marker.interval
+        cycle += interval
     return extra
 
 
@@ -256,17 +258,6 @@ def _continuation_events(
                     ),
                 )
             )
-    unknown_cycles = {}
-    for event in output:
-        if (
-            event.cycle_indefinite is not None
-            and event.cycle_indefinite.interval is None
-        ):
-            unknown_cycles[id(event.schedule_event.sig)] = event
-    additions.extend(
-        _unresolved(event, "cycle continuation has no numeric repeat interval")
-        for event in unknown_cycles.values()
-    )
     return additions
 
 

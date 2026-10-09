@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
@@ -16,6 +17,7 @@ from hemonc_alchemy.toolkit.analytics.treatment.scheduling import (
     group_into_blocks,
     schedule_events,
 )
+from hemonc_alchemy.toolkit.analytics.treatment.scheduling.tokens import Day
 
 from ..selection.choose import SelectedProtocol
 from ..selection.interventions import PhaseTiming
@@ -23,13 +25,26 @@ from .sampling import sample_phase
 from .systemic import BaseRandomSampler, Component
 
 logger = logging.getLogger(__name__)
+_CHOICE_STREAM_SALT = 0x5EEDC01C
+
+
+class UnresolvedScheduleError(ValueError):
+    """A selected source instruction could not be assigned a calendar date."""
+
+    def __init__(self, *, sig_id: int | None, phase_id: str, reason: str) -> None:
+        self.sig_id = sig_id
+        self.phase_id = phase_id
+        self.reason = reason
+        super().__init__(
+            f"Unresolved schedule for sig {sig_id!r} in phase {phase_id!r}: {reason}"
+        )
 
 
 @dataclass(frozen=True)
 class Administration:
-    """One delivery, or an explicitly unresolved source instruction."""
+    """One dated source-based delivery."""
 
-    date: date | None
+    date: date
     component: Component
     phase_id: str
     source_sig_id: int | None = None
@@ -82,7 +97,7 @@ class ProtocolSchedule:
     administrations: tuple[Administration, ...] = field(default_factory=tuple)
     selected_protocol: SelectedProtocol | None = None
     skipped_phases: tuple[str, ...] = field(default_factory=tuple)
-    phase_start_dates: dict[str, date | None] = field(default_factory=dict)
+    phase_start_dates: dict[str, date] = field(default_factory=dict)
 
 
 def schedule(
@@ -105,7 +120,7 @@ def schedule(
 
     administrations: list[Administration] = []
     skipped_phases: list[str] = []
-    phase_start_dates: dict[str, date | None] = {}
+    phase_start_dates: dict[str, date] = {}
     has_timing = any(
         selected.timing is not None for selected in selected_protocol.phases
     )
@@ -134,25 +149,20 @@ def schedule(
             config=config,
         )
         dose_sampler = BaseRandomSampler(seed=seed + phase_index)
-        administrations.extend(
+        phase_administrations = [
             _administration_from_event(event, phase_id=phase_id, sampler=dose_sampler)
             for event in deliveries
-        )
-        dated_deliveries = [
-            event.calendar_date for event in deliveries if event.calendar_date
         ]
         if has_timing and deliveries and selected.timing is not PhaseTiming.CONCURRENT:
-            cursor_date = (
-                max(dated_deliveries) + timedelta(days=1)
-                if len(dated_deliveries) == len(deliveries)
-                else None
-            )
+            cursor_date = max(
+                item.date for item in phase_administrations
+            ) + timedelta(days=1)
             concurrent_anchor = cursor_date
+        administrations.extend(phase_administrations)
 
     administrations.sort(
         key=lambda administration: (
-            administration.date is None,
-            administration.date or date.max,
+            administration.date,
             administration.phase_id,
             administration.component.name,
             administration.source_sig_id or -1,
@@ -192,24 +202,26 @@ def _is_schedulable_signature(signature: Any) -> bool:
 def _phase_schedule(
     signatures: list[Any],
     *,
-    phase_start: date | None,
+    phase_start: date,
     seed: int,
     config: ScheduleConfig,
 ) -> list[TimedEvent]:
     events = schedule_events(SimpleNamespace(component_sigs=signatures))
+    choice_rng = random.Random(seed ^ _CHOICE_STREAM_SALT)
+    events = [
+        replace(
+            event,
+            days=tuple(dict.fromkeys((
+                *event.days,
+                *(Day(choice_rng.choice(choice.options)) for choice in event.choices),
+            ))),
+            choices=(),
+        )
+        for event in events
+    ]
     anchored = anchor_blocks(group_into_blocks(events))
     # Decay is an analytical intensity tail, never another administration.
-    origin = phase_start if phase_start is not None else 0
-    sampled = sample_phase(anchored, phase_start=origin, seed=seed, config=config)
-    if phase_start is None:
-        return [
-            replace(
-                event,
-                timing_status=f"unresolved: previous phase end is unresolved; {event.timing_status}",
-            )
-            for event in sampled
-        ]
-    return sampled
+    return sample_phase(anchored, phase_start=phase_start, seed=seed, config=config)
 
 
 def _administration_from_event(
@@ -218,6 +230,17 @@ def _administration_from_event(
     phase_id: str,
     sampler: BaseRandomSampler,
 ) -> Administration:
+    if event.calendar_date is None or event.timing_status.startswith("unresolved:"):
+        reason = (
+            event.timing_status.removeprefix("unresolved:").strip()
+            if event.timing_status.startswith("unresolved:")
+            else "no calendar date was produced"
+        )
+        raise UnresolvedScheduleError(
+            sig_id=getattr(event.schedule_event.sig, "id", None),
+            phase_id=phase_id,
+            reason=reason or "timing could not be resolved",
+        )
     source = event.schedule_event
     sig = source.sig
     common = {
