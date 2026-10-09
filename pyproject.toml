@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
-    "hemonc-alchemy>=0.1.0,<1.0",
+    "hemonc-alchemy>=0.2.0,<1.0",
     "omop-alchemy>=1.1.0,<2.0",
     "omop-graph>=2.1.0,<3.0",
     "oa-configurator>=1.0.0,<2.0.0",

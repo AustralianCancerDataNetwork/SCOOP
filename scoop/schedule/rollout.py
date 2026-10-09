@@ -1,23 +1,40 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date
-from datetime import datetime, timedelta
+import logging
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
-from .systemic import Component
-from .modality import Modality
+from hemonc_alchemy.toolkit.analytics.treatment.classification import (
+    RAD_SIG_CLASS_VALUE,
+    sig_class_value,
+)
+from hemonc_alchemy.toolkit.analytics.treatment.scheduling import (
+    TimedEvent,
+    anchor_blocks,
+    group_into_blocks,
+    schedule_events,
+)
+
 from ..selection.choose import SelectedProtocol
 from ..selection.interventions import PhaseTiming
+from .sampling import sample_phase
+from .systemic import BaseRandomSampler, Component
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class Administration:
-    """Common identity for one fixed delivery record."""
+    """One delivery, or an explicitly unresolved source instruction."""
 
-    date: date
+    date: date | None
     component: Component
     phase_id: str
     source_sig_id: int | None = None
+    timing_status: str = field(default="resolved", kw_only=True)
+    elapsed_day: int | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -26,7 +43,8 @@ class SystemicAdministration(Administration):
     dose_unit: str | None = None
     dose_unit_cui: int | None = None
     route: str | None = None
-    cycle_number: int = 1
+    route_group: str | None = field(default=None, kw_only=True)
+    cycle_number: int | None = 1
 
 
 @dataclass(frozen=True)
@@ -62,23 +80,21 @@ class ScheduleConfig:
 @dataclass(frozen=True)
 class ProtocolSchedule:
     administrations: tuple[Administration, ...] = field(default_factory=tuple)
-    selected_protocol: "SelectedProtocol | None" = None
+    selected_protocol: SelectedProtocol | None = None
     skipped_phases: tuple[str, ...] = field(default_factory=tuple)
-    phase_start_dates: dict[str, date] = field(default_factory=dict)
+    phase_start_dates: dict[str, date | None] = field(default_factory=dict)
 
 
 def schedule(
-    selected_protocol: "SelectedProtocol",
+    selected_protocol: SelectedProtocol,
     start_date: date,
     seed: int,
     config: ScheduleConfig | None = None,
 ) -> ProtocolSchedule:
     """Roll selected HemOnc signatures into typed administration records.
 
-    The current selected-protocol contract carries phase signatures but not
-    recipe timing. Consequently each selected phase is scheduled from the
-    supplied start date; cross-phase sequencing remains an explicit follow-up
-    once timing is represented on ``SelectedProtocol``.
+    HemOnc owns each phase's cycle dates. SCOOP owns patient sampling and
+    recipe sequencing (including the existing last-delivery-plus-one rule).
     """
 
     if not isinstance(selected_protocol, SelectedProtocol):
@@ -89,8 +105,10 @@ def schedule(
 
     administrations: list[Administration] = []
     skipped_phases: list[str] = []
-    phase_start_dates: dict[str, date] = {}
-    has_timing = any(selected.timing is not None for selected in selected_protocol.phases)
+    phase_start_dates: dict[str, date | None] = {}
+    has_timing = any(
+        selected.timing is not None for selected in selected_protocol.phases
+    )
     cursor_date = start_date.date() if isinstance(start_date, datetime) else start_date
     concurrent_anchor = cursor_date
     for phase_index, selected in enumerate(selected_protocol.phases, start=1):
@@ -109,37 +127,32 @@ def schedule(
         if has_timing and selected.timing is PhaseTiming.CONCURRENT:
             phase_start = concurrent_anchor
         phase_start_dates[phase_id] = phase_start
-        phase_schedule = _phase_schedule(sigs, seed=seed + phase_index)
-        deliveries = phase_schedule.get_scheduled_dates(
-            phase_start,
-            max_cycles=config.max_cycles,
-            within_component_continue_probability=(
-                config.within_component_continue_probability
-            ),
-            within_cycleset_continue_probability=(
-                config.within_cycleset_continue_probability
-            ),
-            optional_cycle_probability=config.optional_cycle_probability,
+        deliveries = _phase_schedule(
+            sigs,
+            phase_start=phase_start,
+            seed=seed + phase_index,
+            config=config,
         )
-        for delivered_at, component_parts in deliveries.items():
-            for component_part in component_parts:
-                administrations.append(
-                    _administration_from_part(
-                        delivered_at,
-                        component_part,
-                        phase_id=phase_id,
-                    )
-                )
+        dose_sampler = BaseRandomSampler(seed=seed + phase_index)
+        administrations.extend(
+            _administration_from_event(event, phase_id=phase_id, sampler=dose_sampler)
+            for event in deliveries
+        )
+        dated_deliveries = [
+            event.calendar_date for event in deliveries if event.calendar_date
+        ]
         if has_timing and deliveries and selected.timing is not PhaseTiming.CONCURRENT:
-            last_date = max(
-                _as_date(delivered_at) for delivered_at in deliveries
+            cursor_date = (
+                max(dated_deliveries) + timedelta(days=1)
+                if len(dated_deliveries) == len(deliveries)
+                else None
             )
-            cursor_date = last_date + timedelta(days=1)
             concurrent_anchor = cursor_date
 
     administrations.sort(
         key=lambda administration: (
-            administration.date,
+            administration.date is None,
+            administration.date or date.max,
             administration.phase_id,
             administration.component.name,
             administration.source_sig_id or -1,
@@ -160,83 +173,84 @@ def _is_schedulable_signature(signature: Any) -> bool:
         "cycle_length_lb",
         "cycle_length_ub",
         "cycle_length_unit",
-        "cyclesigs",
         "step_number",
         "component",
         "component_cui",
+        "drug_object",
+        "phase",
+        "phase_step",
+        "portion",
+        "route",
+        "frequency",
+        "doseminnum",
+        "dosemaxnum",
+        "doseunit",
     )
     return all(hasattr(signature, field) for field in required)
 
 
-def _phase_schedule(signatures: list[Any], *, seed: int):
-    from .systemic import PhaseSchedule
+def _phase_schedule(
+    signatures: list[Any],
+    *,
+    phase_start: date | None,
+    seed: int,
+    config: ScheduleConfig,
+) -> list[TimedEvent]:
+    events = schedule_events(SimpleNamespace(component_sigs=signatures))
+    anchored = anchor_blocks(group_into_blocks(events))
+    # Decay is an analytical intensity tail, never another administration.
+    origin = phase_start if phase_start is not None else 0
+    sampled = sample_phase(anchored, phase_start=origin, seed=seed, config=config)
+    if phase_start is None:
+        return [
+            replace(
+                event,
+                timing_status=f"unresolved: previous phase end is unresolved; {event.timing_status}",
+            )
+            for event in sampled
+        ]
+    return sampled
 
-    return PhaseSchedule.from_component_sigs(signatures, seed=seed)
 
-
-def _administration_from_part(delivered_at: Any, component_part: Any, *, phase_id: str):
-    delivered_date = (
-        delivered_at.date()
-        if isinstance(delivered_at, datetime)
-        else delivered_at.to_pydatetime().date()
-        if hasattr(delivered_at, "to_pydatetime")
-        else delivered_at
-    )
-    dose, dose_unit = _dose_details(component_part)
-    component = component_part.component
+def _administration_from_event(
+    event: TimedEvent,
+    *,
+    phase_id: str,
+    sampler: BaseRandomSampler,
+) -> Administration:
+    source = event.schedule_event
+    sig = source.sig
     common = {
-        "date": delivered_date,
-        "component": component,
+        "date": event.calendar_date,
+        "elapsed_day": event.elapsed_day,
+        "timing_status": event.timing_status,
+        "component": Component.from_sig(sig),
         "phase_id": phase_id,
-        "source_sig_id": component_part.source_sig_id,
+        "source_sig_id": getattr(sig, "id", None),
     }
-    if _is_radiation(component_part):
+    dose = None
+    if source.dose_min is not None and source.dose_max is not None:
+        try:
+            lower, upper = float(source.dose_min), float(source.dose_max)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Nonnumeric dose bounds for sig %s; retaining a null dose",
+                getattr(sig, "id", None),
+            )
+        else:
+            dose = sampler._get_value_in_range(lower, upper)
+    if sig_class_value(sig) == RAD_SIG_CLASS_VALUE:
         return RadiationAdministration(
             **common,
-            fraction_number=None,
             fraction_dose=dose,
-            dose_unit=dose_unit,
-            technique=None,
+            dose_unit=source.dose_unit,
         )
     return SystemicAdministration(
         **common,
         dose=dose,
-        dose_unit=dose_unit,
-        dose_unit_cui=(
-            component_part.dose_info.doseunit_cui
-            if component_part.dose_info is not None
-            else None
-        ),
-        route=component_part.route,
-        cycle_number=1,
+        dose_unit=source.dose_unit,
+        dose_unit_cui=getattr(sig, "doseunit_cui", None),
+        route=getattr(sig.route, "value", sig.route),
+        route_group=source.route_group,
+        cycle_number=event.cycle_number,
     )
-
-
-def _dose_details(component_part: Any) -> tuple[float | None, str | None]:
-    if component_part.duration is not None:
-        return component_part.duration.get_duration(), component_part.duration.durationunit
-    if component_part.dose_info is not None:
-        return component_part.dose_info.get_dose(), component_part.dose_info.doseunit
-    return None, None
-
-
-def _is_radiation(component_part: Any) -> bool:
-    text = " ".join(
-        str(value or "")
-        for value in (
-            component_part.component.name,
-            component_part.role,
-            component_part.class_field,
-        )
-    ).lower()
-    return "radiotherap" in text or "radiation" in text
-
-
-def _as_date(value: Any) -> date:
-    if isinstance(value, datetime):
-        return value.date()
-    if hasattr(value, "to_pydatetime"):
-        return value.to_pydatetime().date()
-    if isinstance(value, date):
-        return value
-    raise TypeError(f"Unsupported schedule date value: {value!r}")

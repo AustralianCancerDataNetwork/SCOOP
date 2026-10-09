@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
-from typing import Any, TypeVar
+from typing import Any
 
 import sqlalchemy as sa
 
@@ -22,10 +22,7 @@ def as_datetime(value: date | datetime | None) -> datetime | None:
     return datetime.combine(value, time.min)
 
 
-_OmopRow = TypeVar("_OmopRow")
-
-
-def require_populated_columns(row: _OmopRow) -> _OmopRow:
+def require_populated_columns[OmopRow](row: OmopRow) -> OmopRow:
     """Raise if any NOT-NULL column on this ORM row is unset.
 
     Reads the requirement straight off the row's own mapper, so it stays in
@@ -59,7 +56,7 @@ class OmopExportBundle:
     drug_exposures: list[Any] = field(default_factory=list)
     procedures: list[Any] = field(default_factory=list)
 
-    def merge(self, other: "OmopExportBundle") -> "OmopExportBundle":
+    def merge(self, other: OmopExportBundle) -> OmopExportBundle:
         if self.person is None:
             self.person = other.person
         self.condition_occurrences.extend(other.condition_occurrences)
@@ -152,6 +149,11 @@ def export(
     next_drug_id = config.first_drug_exposure_id
     next_procedure_id = config.first_procedure_occurrence_id
     for administration in schedule.administrations:
+        if administration.date is None or administration.timing_status.startswith("unresolved:"):
+            raise ValueError(
+                f"Cannot export unresolved administration for sig {administration.source_sig_id}: "
+                f"{administration.timing_status}"
+            )
         if isinstance(administration, SystemicAdministration):
             drug_type_concept_id = _record_type_concept_id(
                 config, gateway, event_table="drug_exposure"
@@ -270,6 +272,10 @@ def _export_event_payloads(
     config: OmopExportConfig,
 ) -> OmopExportBundle:
     from omop_alchemy.cdm import model as omop_model
+
+    for event in [*drug_events, *procedure_events]:
+        if event.get("timing_status", "").startswith("unresolved:"):
+            raise ValueError(f"Cannot export unresolved administration: {event['timing_status']}")
 
     drug_type_concept_id = (
         _record_type_concept_id(config, gateway, event_table="drug_exposure")

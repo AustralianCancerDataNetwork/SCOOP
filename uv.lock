@@ -1063,7 +1063,7 @@ wheels = [
 
 [[package]]
 name = "hemonc-alchemy"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
@@ -1073,9 +1073,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/57/c72c8342f0c6d314cfed114f1dc6778ce77517ce41ab4686afeaa83c4397/hemonc_alchemy-0.1.0.tar.gz", hash = "sha256:b1584e7a10842c3311b5661d8f3fbb53c5912339121ed6ec4916dec4de22e194", size = 342236, upload-time = "2026-09-06T06:26:56.299Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/9b/61738c22dfbd84d5f389fff8df476b7b096a5a40ba4123b6ff6e1d840e99/hemonc_alchemy-0.2.0.tar.gz", hash = "sha256:231ac706831310c12b08ac81586b19e8410d07c4f43642cce16b599005e5fce2", size = 424228, upload-time = "2026-10-07T03:42:30.217Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/77/44c1a35a806da612cf95223f85cba9a97bc09348238d9e7e8592a9ca6376/hemonc_alchemy-0.1.0-py3-none-any.whl", hash = "sha256:b534762eca7351b68c0018109159610185023bba6aa5def75c0e975125881060", size = 115992, upload-time = "2026-09-06T06:26:54.734Z" },
+    { url = "https://files.pythonhosted.org/packages/40/cb/f6254fa447db76c3a4f01beecad047dcdfcae326d25574d1c42b16e532fd/hemonc_alchemy-0.2.0-py3-none-any.whl", hash = "sha256:5d7117b247d5f0d9c8a1617022faee68f4ee4ebaf64ddd99bdd67ebf69a01ebe", size = 174235, upload-time = "2026-10-07T03:42:28.434Z" },
 ]
 
 [[package]]
@@ -4080,7 +4080,7 @@ exploration = [
 
 [package.metadata]
 requires-dist = [
-    { name = "hemonc-alchemy", specifier = ">=0.1.0,<1.0" },
+    { name = "hemonc-alchemy", specifier = ">=0.2.0,<1.0" },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "jupyterlab", marker = "extra == 'exploration'", specifier = ">=4.4" },
     { name = "linkml", marker = "extra == 'authoring'", specifier = ">=1.9.6" },

@@ -2,6 +2,8 @@ import unittest
 from datetime import date
 from pathlib import Path
 
+from test_schedule_rollout import StubSignature
+
 from scoop.patients.treatment_episode import Treatment_Episode
 from scoop.protocols.candidates import RegimenCandidate
 from scoop.protocols.hemonc.gateway import FakeHemOncGateway
@@ -9,7 +11,6 @@ from scoop.protocols.spec import RegistrySpec
 from scoop.schedule.bridge import resolve_schedule_for_treatment
 from scoop.schedule.rollout import ProtocolSchedule
 from scoop.vocabulary.database import get_omop_engine
-from test_schedule_rollout import StubSignature
 
 REGISTRY_PATH = (
     Path(__file__).resolve().parents[1]
@@ -35,15 +36,15 @@ def _candidate(name: str, *, phase: str, component: str) -> RegimenCandidate:
 
 
 def _treatment_episode(**overrides) -> Treatment_Episode:
-    fields = dict(
-        person_id=1,
-        condition_occurrence_id=1,
-        regimen_type="test",
-        regimen_category_id="test",
-        bundle_recipe_id=None,
-        bundle_phase_summary=[],
-        decision_context={},
-    )
+    fields = {
+        "person_id": 1,
+        "condition_occurrence_id": 1,
+        "regimen_type": "test",
+        "regimen_category_id": "test",
+        "bundle_recipe_id": None,
+        "bundle_phase_summary": [],
+        "decision_context": {},
+    }
     fields.update(overrides)
     return Treatment_Episode(**fields)
 
@@ -192,7 +193,8 @@ class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
             )
         try:
             from sqlalchemy.orm import Session
-            from scoop.config import get_hemonc_context, create_hemonc_engine
+
+            from scoop.config import create_hemonc_engine, get_hemonc_context
             from scoop.protocols.hemonc.gateway import SqlHemOncGateway
 
             _, resolved = get_hemonc_context()
@@ -284,3 +286,47 @@ class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
                 treatment, self.registry, self.gateway,
                 start_date=date(2021, 1, 1), seed=1,
             )
+
+
+def test_real_nsclc_candidate_snapshot_through_registry_bridge():
+    import json
+    from types import SimpleNamespace
+
+    from scoop.schedule.rollout import ScheduleConfig, SystemicAdministration
+
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures/nsclc_pembrolizumab_schedule.json"
+        ).read_text()
+    )
+    payload = fixture["candidate"]
+    payload["sigs"] = [SimpleNamespace(**sig) for sig in payload["sigs"]]
+    candidate = RegimenCandidate.model_validate(payload)
+    phase_id = fixture["phase_id"]
+    registry = RegistrySpec.from_path(REGISTRY_PATH)
+    gateway = FakeHemOncGateway(candidates={phase_id: [candidate]})
+    treatment = _treatment_episode(
+        bundle_phase_summary=[{"phase_id": phase_id, "source_type": "phaseref"}]
+    )
+    result = resolve_schedule_for_treatment(
+        treatment,
+        registry,
+        gateway,
+        start_date=date(2026, 1, 1),
+        seed=11,
+        config=ScheduleConfig(max_cycles=3),
+    )
+    assert result.selected_protocol.phases[0].regimen.variant_cui == 133537
+    assert [a.date for a in result.administrations] == [
+        date(2026, 1, 1),
+        date(2026, 1, 22),
+        date(2026, 2, 12),
+    ]
+    assert [a.cycle_number for a in result.administrations] == [1, 2, 3]
+    assert all(
+        isinstance(a, SystemicAdministration)
+        and a.source_sig_id == 20450
+        and a.dose == 200
+        for a in result.administrations
+    )
+    assert gateway.calls == [phase_id]

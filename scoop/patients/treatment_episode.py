@@ -1,15 +1,19 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any
+
 from pydantic import Field
-from .transforms import TransformableBase
+
 from ..profiles.context import get_active_simulation_context
-from ..selection.interventions import InterventionCatalog, Recipe
 from ..schedule.rollout import (
     ProtocolSchedule,
     RadiationAdministration,
     SystemicAdministration,
 )
+from ..selection.interventions import InterventionCatalog, Recipe
+from .transforms import TransformableBase
+
 
 class Treatment_Episode(TransformableBase):
 
@@ -44,7 +48,7 @@ class Treatment_Episode(TransformableBase):
             procedures.extend(dict(event) for event in phase.get("procedures", []))
         return drug_exposures, procedures
 
-    def attach_schedule(self, protocol_schedule: ProtocolSchedule) -> "Treatment_Episode":
+    def attach_schedule(self, protocol_schedule: ProtocolSchedule) -> Treatment_Episode:
         """Attach typed schedule administrations as explicit event payloads."""
 
         if not isinstance(protocol_schedule, ProtocolSchedule):
@@ -60,6 +64,8 @@ class Treatment_Episode(TransformableBase):
                 "phase_id": administration.phase_id,
                 "event_date": administration.date,
                 "source_sig_id": administration.source_sig_id,
+                "timing_status": administration.timing_status,
+                "elapsed_day": administration.elapsed_day,
                 "component_hemonc_cui": administration.component.cui,
                 "component_source_value": administration.component.name,
             }
@@ -72,6 +78,7 @@ class Treatment_Episode(TransformableBase):
                         "dose": administration.dose,
                         "dose_unit": administration.dose_unit,
                         "route_source_value": administration.route,
+                        "route_group": administration.route_group,
                         "cycle_number": administration.cycle_number,
                     }
                 )
