@@ -23,7 +23,7 @@ Design decisions recorded here, not silently assumed:
 - Fake HemOnc rows are derived mechanically from each source phase's own
   declared `component_requirements.component_lists` in the registry: one
   synthetic `RegimenCandidate` per declared inner list, with that
-  candidate's `components` copied verbatim from the list. Nothing is
+  candidate's `components` populated from each term's display label. Nothing is
   invented; a phase with N declared component-list groups gets exactly N
   fake candidates, and a phase with zero declared groups gets exactly one
   placeholder candidate with no components, clearly named
@@ -65,7 +65,12 @@ from scoop.protocols.candidates import (
     assemble,
 )
 from scoop.protocols.hemonc.gateway import FakeHemOncGateway
-from scoop.protocols.spec import PhaseSpec, ProtocolSpec, RegistrySpec
+from scoop.protocols.spec import (
+    PhaseSpec,
+    ProtocolSpec,
+    RegistrySpec,
+    component_term_label,
+)
 from scoop.selection.bridge import DeclarativeInterventionBridge, resolve
 from scoop.selection.choose import NoSelection, PatientContext, SelectedProtocol, select
 from scoop.selection.interventions import (
@@ -124,7 +129,7 @@ def fake_candidates_for_phase(phase_id: str, phase_spec: PhaseSpec) -> list[Regi
             variant_cui=9000 + index,
             sigs=[f"{phase_id}-sig-{index}"],
             regimen=phase_id,
-            components=set(group),
+            components=sorted(component_term_label(term) for term in group),
             phase=phase_id,
             study="fixture-study",
             variant=f"group{index}",

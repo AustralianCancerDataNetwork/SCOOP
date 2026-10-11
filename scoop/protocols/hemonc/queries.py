@@ -13,6 +13,11 @@ from hemonc_alchemy.model import (
     drugs_Canmed_minor_classMap,
     sigs_StudyMap,
 )
+from hemonc_alchemy.model.enums import (
+    Sigs_PhaseEnum,
+    Studies_IntentEnum,
+    StudyResults_IntentEnum,
+)
 from hemonc_alchemy.toolkit.core.sigs import SigSelectionSpec, sig_search_statement
 from scoop.protocols.hemonc.models import ( 
     _load_hemonc_models, HemOncModels, 
@@ -20,6 +25,7 @@ from scoop.protocols.hemonc.models import (
     join_not_distinct, COMPONENT_CLASS_MAPS
     )
 from scoop.protocols.hemonc.filters import query_rt_inc_study_ids
+from scoop.protocols.spec import ComponentCui, ComponentTerm
 
 
 logger = logging.getLogger(__name__)
@@ -46,8 +52,103 @@ def component_search_by_name(search_terms: str | list[str], table: Any) -> Any:
     )
 
 
-def get_sig_component_stmt(condition_cuis, models, non_curative=False):
-    del models
+def component_search_by_terms(terms: list[ComponentTerm], table: Any) -> Any:
+    """Match named components by text and bound components by HemOnc CUI."""
+    expressions = []
+    names = [term for term in terms if isinstance(term, str)]
+    cuis = [term.cui for term in terms if isinstance(term, ComponentCui)]
+    if names:
+        expressions.extend(_component_search_expressions(names, table))
+    if cuis:
+        expressions.append(table.c.component_cui.in_(cuis))
+    return (
+        sa.select(table.c.component_cui)
+        .where(sa.or_(*expressions))
+        .distinct()
+        .subquery()
+    )
+
+
+def hemonc_subsumes_descendant_cuis(
+    session: so.Session,
+    root_cuis: list[str | int],
+    *,
+    max_depth: int = 32,
+) -> set[str]:
+    """Walk valid HemOnc ``Subsumes`` edges with cycle and depth guards."""
+    if max_depth < 1:
+        raise ValueError("max_depth must be positive")
+    concept, relation = omop_vocabulary_tables(session)
+    root_codes = {str(cui) for cui in root_cuis}
+    root_ids = set(
+        session.scalars(
+            sa.select(concept.c.concept_id).where(
+                concept.c.concept_code.in_(root_codes),
+                concept.c.vocabulary_id == "HemOnc",
+                sa.func.nullif(sa.func.trim(concept.c.invalid_reason), "").is_(None),
+            )
+        )
+    )
+    if not root_ids:
+        raise LookupError(f"No HemOnc concepts resolve for {root_cuis!r}.")
+    visited = set(root_ids)
+    frontier = set(root_ids)
+    for depth in range(max_depth + 1):
+        statement = (
+            sa.select(relation.c.concept_id_2)
+            .select_from(relation)
+            .join(concept, concept.c.concept_id == relation.c.concept_id_2)
+            .where(
+                relation.c.concept_id_1.in_(frontier),
+                relation.c.relationship_id == "Subsumes",
+                concept.c.vocabulary_id == "HemOnc",
+                sa.func.nullif(sa.func.trim(relation.c.invalid_reason), "").is_(None),
+                sa.func.nullif(sa.func.trim(concept.c.invalid_reason), "").is_(None),
+            )
+        )
+        next_ids = set(session.scalars(statement)) - visited
+        if not next_ids:
+            break
+        if depth == max_depth:
+            raise RuntimeError(
+                f"HemOnc Subsumes hierarchy exceeds depth limit {max_depth}."
+            )
+        visited.update(next_ids)
+        frontier = next_ids
+    descendants = visited - root_ids
+    if not descendants:
+        return set()
+    return set(
+        session.scalars(
+            sa.select(concept.c.concept_code).where(
+                concept.c.concept_id.in_(descendants),
+                concept.c.vocabulary_id == "HemOnc",
+            )
+        )
+    )
+
+
+def omop_vocabulary_tables(session: so.Session) -> tuple[sa.Table, sa.Table]:
+    """Reflect the separate OMOP vocabulary tables used by HemOnc."""
+    bind = session.get_bind()
+    metadata = sa.MetaData()
+    try:
+        concept = sa.Table("concept", metadata, schema="omop", autoload_with=bind)
+        relation = sa.Table(
+            "concept_relationship", metadata, schema="omop", autoload_with=bind
+        )
+    except sa.exc.NoSuchTableError as exc:
+        raise RuntimeError("The OMOP vocabulary tables are unavailable.") from exc
+    return concept, relation
+
+
+def get_sig_component_stmt(
+    condition_cuis,
+    models,
+    non_curative=False,
+    unknown_context_policy="exclude",
+    phase_type=None,
+):
     stmt = sig_search_statement(
         SigSelectionSpec.for_conditions(condition_cuis)
     ).outerjoin(Drugs, Drugs.drug_cui == Sigs.component_cui).outerjoin(
@@ -58,7 +159,11 @@ def get_sig_component_stmt(condition_cuis, models, non_curative=False):
         drugs_Canmed_minor_classMap.parent_id == Drugs.id,
     )
     context_studies = get_stmt_studies_by_curative_context(
-        condition_cuis, non_curative=non_curative
+        condition_cuis,
+        models=models,
+        non_curative=non_curative,
+        unknown_context_policy=unknown_context_policy,
+        phase_type=phase_type,
     )
     return stmt.with_only_columns(
         Sigs.id,
@@ -76,14 +181,109 @@ def get_sig_component_stmt(condition_cuis, models, non_curative=False):
     ).where(Studies.study.in_(context_studies))
 
 
-def get_stmt_studies_by_curative_context(condition_cuis, models=None, non_curative = False):
-    del models
-    context_operator = (StudyResults.context == "Non-curative therapy") if non_curative else (StudyResults.context != "Non-curative therapy")
+def _intent_predicates(studies, results, intent_map, non_curative):
+    target_study_intent = (
+        Studies_IntentEnum.NON_TO_CURATIVE_INTENT
+        if non_curative
+        else Studies_IntentEnum.CURATIVE_INTENT
+    )
+    target_result_intent = (
+        StudyResults_IntentEnum.NON_TO_CURATIVE_INTENT
+        if non_curative
+        else StudyResults_IntentEnum.CURATIVE_INTENT
+    )
+    has_study_intent = sa.exists(
+        sa.select(1)
+        .select_from(intent_map)
+        .where(
+            intent_map.parent_id == studies.id,
+            intent_map.intent != Studies_IntentEnum.UNSPECIFIED_INTENT,
+        )
+        .correlate(studies)
+    )
+    study_intent_match = sa.exists(
+        sa.select(1)
+        .select_from(intent_map)
+        .where(
+            intent_map.parent_id == studies.id,
+            intent_map.intent == target_study_intent,
+        )
+        .correlate(studies)
+    )
+    result_intent_match = sa.exists(
+        sa.select(1)
+        .select_from(results)
+        .where(
+            results.study == studies.study,
+            results.intent == target_result_intent,
+        )
+        .correlate(studies)
+    )
+    has_result_intent = sa.exists(
+        sa.select(1)
+        .select_from(results)
+        .where(
+            results.study == studies.study,
+            results.intent != StudyResults_IntentEnum.UNSPECIFIED_INTENT,
+        )
+        .correlate(studies)
+    )
+    classified_match = sa.or_(
+        study_intent_match,
+        sa.and_(sa.not_(has_study_intent), result_intent_match),
+    )
+    return classified_match, has_study_intent, has_result_intent
+
+
+def _unknown_intent_predicate(
+    studies, models, has_any_intent, unknown_context_policy, phase_type,
+):
+    if unknown_context_policy == "include":
+        return sa.not_(has_any_intent)
+    elif unknown_context_policy == "phase_type" and phase_type:
+        phase = Sigs_PhaseEnum(phase_type)
+        sigs = models.Sigs
+        sig_studies = models.sigs_StudyMap
+        phase_studies = (
+            sa.select(sig_studies.study)
+            .join(sigs, sig_studies.parent_id == sigs.id)
+            .where(sigs.phase == phase)
+        )
+        return sa.and_(
+            sa.not_(has_any_intent),
+            studies.study.in_(phase_studies),
+        )
+    return sa.false()
+
+
+def get_stmt_studies_by_curative_context(
+    condition_cuis,
+    models=None,
+    non_curative=False,
+    unknown_context_policy="exclude",
+    phase_type=None,
+):
+    models = models or _load_hemonc_models()
+    studies = models.Studies
+    classified_match, has_study_intent, has_result_intent = _intent_predicates(
+        studies, models.StudyResults, models.studies_IntentMap, non_curative
+    )
+    has_any_intent = sa.or_(has_study_intent, has_result_intent)
+    unknown_match = _unknown_intent_predicate(
+        studies,
+        models,
+        has_any_intent,
+        unknown_context_policy,
+        phase_type,
+    )
     return (
-        sa.select(Studies.study)
-        .join(StudyResults, Studies.study == StudyResults.study)
-        .where(sa.and_(Studies.condition_cui.in_(condition_cuis), context_operator))
-        .distinct()
+        sa.select(studies.study)
+        .where(
+            sa.and_(
+                studies.condition_cui.in_(condition_cuis),
+                sa.or_(classified_match, unknown_match),
+            )
+        )
     )
 
 
@@ -207,7 +407,9 @@ def build_component_expressions(component_lists, categorised_components):
     """
     expressions = []
     for component_list in component_lists:
-        component_cuis = sa.select(component_search_by_name(component_list, categorised_components))
+        component_cuis = sa.select(
+            component_search_by_terms(component_list, categorised_components)
+        )
         expressions.append(
             sa.func.sum(
                 sa.case(
@@ -317,7 +519,9 @@ def get_base_sigs_df(
         else list(getattr(phase_spec, "condition_cuis", ()))
     )
     components = get_sig_component_stmt(condition_cuis, models, 
-                                        non_curative=(not phase_spec.curative_intent))
+                                        non_curative=(not phase_spec.curative_intent),
+                                        unknown_context_policy=phase_spec.unknown_context_policy,
+                                        phase_type=phase_spec.type)
     components = subset_components_by_study_stmt(phase_spec.study_restriction,
                                                  condition_cuis, components)
     components = subset_components_stmt_by_regimens(components, phase_spec.regimens)

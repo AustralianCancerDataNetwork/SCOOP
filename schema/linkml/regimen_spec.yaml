@@ -128,8 +128,17 @@ classes:
       components:
         required: true
         multivalued: true
-        range: string
+        any_of:
+          - range: string
+          - range: integer
+          - range: ComponentCui
         minimum_cardinality: 1
+
+  ComponentCui:
+    description: A HemOnc drug CUI with an optional label.
+    attributes:
+      cui: {required: true, range: integer}
+      name: {range: string}
 
   CategoryRestriction:
     description: A restriction keyed by one broad delivery category.

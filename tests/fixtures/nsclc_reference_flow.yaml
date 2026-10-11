@@ -134,7 +134,7 @@ endpoints:
           options:
           - name: adjuvant_osimertinib::group1
             components:
-            - osimertinib
+            - Osimertinib
             source_phase_id: adjuvant_osimertinib
             variant: group1
       selection:
@@ -202,7 +202,7 @@ endpoints:
           options:
           - name: adjuvant_osimertinib::group1
             components:
-            - osimertinib
+            - Osimertinib
             source_phase_id: adjuvant_osimertinib
             variant: group1
       selection:
@@ -235,7 +235,7 @@ endpoints:
           options:
           - name: adjuvant_pembrolizumab::group1
             components:
-            - pembrolizumab
+            - Pembrolizumab
             source_phase_id: adjuvant_pembrolizumab
             variant: group1
       selection:
@@ -262,8 +262,9 @@ endpoints:
         - index: 1
           label: alk_intervention
           conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
+          - 46104
+          - 642
+          - 30824
           no_candidates: null
           options:
           - name: alk_intervention::group1
@@ -308,8 +309,9 @@ endpoints:
         - index: 1
           label: braf_intervention
           conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
+          - 46104
+          - 642
+          - 30898
           no_candidates: null
           options:
           - name: braf_intervention::group1
@@ -685,18 +687,18 @@ endpoints:
         - index: 1
           label: egfr_intervention
           conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
+          - 46104
+          - 642
+          - 30910
           no_candidates: null
           options:
           - name: egfr_intervention::group1
             components:
+            - Osimertinib
             - afatinib
             - dacomitinib
             - erlotinib
             - gefitinib
-            - geftinib
-            - osimertinib
             source_phase_id: egfr_intervention
             variant: group1
       selection:
@@ -723,8 +725,9 @@ endpoints:
         - index: 1
           label: erbb2_intervention
           conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
+          - 46104
+          - 642
+          - 52958
           no_candidates: null
           options:
           - name: erbb2_intervention::group1
@@ -830,7 +833,7 @@ endpoints:
           - index: 1
             label: ici_w_chemo_nonsquamous
             conditions:
-            - Non-small cell lung cancer squamous
+            - 25309
             no_candidates: null
             options:
             - name: ici_w_chemo_nonsquamous::group1
@@ -945,7 +948,7 @@ endpoints:
         - index: 1
           label: ici_w_chemo_nonsquamous
           conditions:
-          - Non-small cell lung cancer squamous
+          - 25309
           no_candidates: null
           options:
           - name: ici_w_chemo_nonsquamous::group1
@@ -1035,13 +1038,15 @@ endpoints:
           - index: 1
             label: met_tki
             conditions:
-            - Lung cancer
-            - Non-small cell lung cancer
+            - 46104
+            - 642
+            - 13094
+            - 154361
             no_candidates: null
             options:
             - name: met_tki::group1
               components:
-              - capamatinib
+              - capmatinib
               - tepotinib
               source_phase_id: met_tki
               variant: group1
@@ -1127,7 +1132,7 @@ endpoints:
       candidates:
       - name: neoadjuvant_or_perioperative_ici_w_chemo
         fan_out_reason:
-          shared_component: durvalumab
+          shared_component: Pembrolizumab
         phases:
         - index: 1
           label: neoadjuvant_chemo_ici
@@ -1138,9 +1143,9 @@ endpoints:
           options:
           - name: neoadjuvant_chemo_ici::group1
             components:
+            - Pembrolizumab
             - durvalumab
             - nivolumab
-            - pembrolizumab
             - tislelizumab
             source_phase_id: neoadjuvant_chemo_ici
             variant: group1
@@ -1164,9 +1169,54 @@ endpoints:
           options:
           - name: adjuvant_ici::group1
             components:
+            - Pembrolizumab
             - durvalumab
             - nivolumab
-            - pembrolizumab
+            - tislelizumab
+            source_phase_id: adjuvant_ici
+            variant: group1
+      - name: neoadjuvant_or_perioperative_ici_w_chemo
+        fan_out_reason:
+          shared_component: durvalumab
+        phases:
+        - index: 1
+          label: neoadjuvant_chemo_ici
+          conditions:
+          - Lung cancer
+          - Non-small cell lung cancer
+          no_candidates: null
+          options:
+          - name: neoadjuvant_chemo_ici::group1
+            components:
+            - Pembrolizumab
+            - durvalumab
+            - nivolumab
+            - tislelizumab
+            source_phase_id: neoadjuvant_chemo_ici
+            variant: group1
+        - index: 2
+          label: surgery_only
+          conditions:
+          - Lung cancer
+          - Non-small cell lung cancer
+          no_candidates: null
+          options:
+          - name: surgery_only::no-declared-components
+            components: []
+            source_phase_id: surgery_only
+            variant: placeholder
+        - index: 3
+          label: adjuvant_ici
+          conditions:
+          - Lung cancer
+          - Non-small cell lung cancer
+          no_candidates: null
+          options:
+          - name: adjuvant_ici::group1
+            components:
+            - Pembrolizumab
+            - durvalumab
+            - nivolumab
             - tislelizumab
             source_phase_id: adjuvant_ici
             variant: group1
@@ -1183,9 +1233,9 @@ endpoints:
           options:
           - name: neoadjuvant_chemo_ici::group1
             components:
+            - Pembrolizumab
             - durvalumab
             - nivolumab
-            - pembrolizumab
             - tislelizumab
             source_phase_id: neoadjuvant_chemo_ici
             variant: group1
@@ -1209,54 +1259,9 @@ endpoints:
           options:
           - name: adjuvant_ici::group1
             components:
+            - Pembrolizumab
             - durvalumab
             - nivolumab
-            - pembrolizumab
-            - tislelizumab
-            source_phase_id: adjuvant_ici
-            variant: group1
-      - name: neoadjuvant_or_perioperative_ici_w_chemo
-        fan_out_reason:
-          shared_component: pembrolizumab
-        phases:
-        - index: 1
-          label: neoadjuvant_chemo_ici
-          conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
-          no_candidates: null
-          options:
-          - name: neoadjuvant_chemo_ici::group1
-            components:
-            - durvalumab
-            - nivolumab
-            - pembrolizumab
-            - tislelizumab
-            source_phase_id: neoadjuvant_chemo_ici
-            variant: group1
-        - index: 2
-          label: surgery_only
-          conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
-          no_candidates: null
-          options:
-          - name: surgery_only::no-declared-components
-            components: []
-            source_phase_id: surgery_only
-            variant: placeholder
-        - index: 3
-          label: adjuvant_ici
-          conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
-          no_candidates: null
-          options:
-          - name: adjuvant_ici::group1
-            components:
-            - durvalumab
-            - nivolumab
-            - pembrolizumab
             - tislelizumab
             source_phase_id: adjuvant_ici
             variant: group1
@@ -1273,9 +1278,9 @@ endpoints:
           options:
           - name: neoadjuvant_chemo_ici::group1
             components:
+            - Pembrolizumab
             - durvalumab
             - nivolumab
-            - pembrolizumab
             - tislelizumab
             source_phase_id: neoadjuvant_chemo_ici
             variant: group1
@@ -1299,9 +1304,9 @@ endpoints:
           options:
           - name: adjuvant_ici::group1
             components:
+            - Pembrolizumab
             - durvalumab
             - nivolumab
-            - pembrolizumab
             - tislelizumab
             source_phase_id: adjuvant_ici
             variant: group1
@@ -1318,9 +1323,9 @@ endpoints:
           options:
           - name: neoadjuvant_chemo_ici::group1
             components:
+            - Pembrolizumab
             - durvalumab
             - nivolumab
-            - pembrolizumab
             - tislelizumab
             source_phase_id: neoadjuvant_chemo_ici
             variant: group1
@@ -1363,8 +1368,8 @@ endpoints:
         - index: 1
           label: ntrk_intervention
           conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
+          - 46104
+          - 642
           no_candidates: null
           options:
           - name: ntrk_intervention::group1
@@ -1408,8 +1413,8 @@ endpoints:
             variant: group1
           - name: platinum_doublet_3rd_gen_agent::group2
             components:
+            - Taxane
             - gemcitabine
-            - taxane
             - vinorelbine
             source_phase_id: platinum_doublet_3rd_gen_agent
             variant: group2
@@ -1603,8 +1608,9 @@ endpoints:
         - index: 1
           label: ret_intervention
           conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
+          - 46104
+          - 642
+          - 18383
           no_candidates: null
           options:
           - name: ret_intervention::group1
@@ -1637,15 +1643,16 @@ endpoints:
         - index: 1
           label: ros1_intervention
           conditions:
-          - Lung cancer
-          - Non-small cell lung cancer
+          - 46104
+          - 642
+          - 30982
           no_candidates: null
           options:
           - name: ros1_intervention::group1
             components:
             - crizotinib
             - entrectinib
-            - reptrectinib
+            - repotrectinib
             source_phase_id: ros1_intervention
             variant: group1
       selection:

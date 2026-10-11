@@ -19,8 +19,9 @@ from hemonc_alchemy.toolkit.analytics.treatment.selection import (
 from hemonc_alchemy.toolkit.core.conditions import (
     condition_cuis_by_names as _condition_cuis_by_names,
 )
+from hemonc_alchemy.model import Sigs
 
-from ..spec import ConditionRef, ComponentRule, PhaseSpec
+from ..spec import ComponentCui, ConditionRef, ComponentRule, PhaseSpec
 from .models import HemOncModels, _load_hemonc_models
 
 
@@ -64,12 +65,31 @@ def _condition_cuis(
 
 def _component_requirements(
     requirements: ComponentRule,
+    session: so.Session | None = None,
 ) -> tuple[ComponentRequirement, ...]:
     return tuple(
-        ComponentRequirement.from_terms(terms)
+        ComponentRequirement.from_terms(
+            tuple(_component_search_terms(term, session) for term in terms)
+        )
         for terms in requirements.component_lists
         if terms
     )
+
+
+def _component_search_terms(term: str | ComponentCui, session: so.Session | None) -> str:
+    if isinstance(term, str) or term.name:
+        return term if isinstance(term, str) else term.name
+    if session is None:
+        raise TypeError("A session is required for a CUI-only component reference.")
+    name = session.scalar(
+        sa.select(Sigs.component)
+        .where(Sigs.component_cui == term.cui)
+        .order_by(Sigs.component)
+        .limit(1)
+    )
+    if name is None:
+        raise LookupError(f"No HemOnc component label exists for CUI {term.cui}.")
+    return name
 
 
 def _category_requirements(
@@ -91,10 +111,11 @@ def _selection_spec(
     *,
     regimens: tuple[str | int, ...] = (),
     phase: str | None = None,
+    session: so.Session | None = None,
 ) -> TreatmentSelectionSpec:
     return TreatmentSelectionSpec.for_conditions(
         condition_cuis,
-        component_requirements=_component_requirements(requirements),
+        component_requirements=_component_requirements(requirements, session),
         category_requirements=_category_requirements(requirements),
         regimens=regimens,
         phase=phase,
@@ -115,12 +136,14 @@ def _query_spec(
             _condition_cuis(query.conditions, session),
             regimens=tuple(query.regimens or ()),
             phase=query.type if query.type and str(query.type).lower() != "none" else None,
+            session=session,
         )
     if condition_cuis is None:
         raise TypeError("condition_cuis is required for component requirements.")
     return _selection_spec(
         query,
         _condition_cuis(condition_cuis, session),
+        session=session,
     )
 
 
@@ -150,6 +173,7 @@ def build_variant_cui_subquery(
     spec = _selection_spec(
         component_requirements,
         _condition_cuis(condition_cuis, session),
+        session=session,
     )
     return _build_variant_query_artifacts(
         spec,

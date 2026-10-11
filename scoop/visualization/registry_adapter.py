@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..protocols.spec import RegistrySpec
+from ..protocols.spec import RegistrySpec, component_term_label
 from ..selection.interventions import (
     Choice,
     InterventionCatalog,
@@ -107,7 +107,10 @@ def _group_from_phase(phase: Any) -> GroupView:
     return GroupView(
         condition_set=condition_set,
         default_condition_cuis=condition_cuis,
-        component_lists=tuple(tuple(items) for items in requirements.component_lists),
+        component_lists=tuple(
+            tuple(component_term_label(item) for item in items)
+            for items in requirements.component_lists
+        ),
         category_restrictions={
             str(category): restriction.model_dump()
             for category, restriction in requirements.category_restrictions.items()

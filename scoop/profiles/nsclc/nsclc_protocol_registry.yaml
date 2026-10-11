@@ -33,8 +33,7 @@ source_phases:
   adj_osimertinib:
     component_requirements:
       component_lists:
-      - components:
-        - Osimertinib
+      - {components: [{name: Osimertinib, cui: 375}]}
       category_restrictions:
       - category: chemotherapy
         type: min
@@ -47,11 +46,7 @@ source_phases:
   neoadjuvant_chemo_ici:
     component_requirements:
       component_lists:
-      - components:
-        - nivolumab
-        - pembrolizumab
-        - durvalumab
-        - tislelizumab
+      - {components: [{name: nivolumab, cui: 357}, {name: Pembrolizumab, cui: 394}, {name: durvalumab, cui: 173}, {name: tislelizumab, cui: 64463}]}
       category_restrictions:
       - category: chemotherapy
         type: min
@@ -66,11 +61,7 @@ source_phases:
   adjuvant_ici:
     component_requirements:
       component_lists:
-      - components:
-        - nivolumab
-        - pembrolizumab
-        - durvalumab
-        - tislelizumab
+      - {components: [{name: nivolumab, cui: 357}, {name: Pembrolizumab, cui: 394}, {name: durvalumab, cui: 173}, {name: tislelizumab, cui: 64463}]}
       category_restrictions:
       - category: immunotherapy
         type: exact
@@ -82,8 +73,7 @@ source_phases:
   adjuvant_pembrolizumab:
     component_requirements:
       component_lists:
-      - components:
-        - pembrolizumab
+      - {components: [{name: Pembrolizumab, cui: 394}]}
       category_restrictions:
       - category: immunotherapy
         type: exact
@@ -95,9 +85,7 @@ source_phases:
   adjuvant_atezolizumab_pembrolizumab:
     component_requirements:
       component_lists:
-      - components:
-        - atezolizumab
-        - Pembrolizumab
+      - {components: [{name: atezolizumab, cui: 49}, {name: Pembrolizumab, cui: 394}]}
       category_restrictions:
       - category: immunotherapy
         type: exact
@@ -109,8 +97,7 @@ source_phases:
   adjuvant_osimertinib:
     component_requirements:
       component_lists:
-      - components:
-        - osimertinib
+      - {components: [{name: Osimertinib, cui: 375}]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -122,9 +109,7 @@ source_phases:
   adjuvant_cisplatin_based:
     component_requirements:
       component_lists:
-      - components:
-        - cisplatin
-        - carboplatin
+      - {components: [{name: cisplatin, cui: 105}, {name: carboplatin, cui: 88}]}
       category_restrictions:
       - category: chemotherapy
         type: min
@@ -136,8 +121,7 @@ source_phases:
   adjuvant_optchemo_alectinib:
     component_requirements:
       component_lists:
-      - components:
-        - alectinib
+      - {components: [{name: alectinib, cui: 16}]}
       category_restrictions:
       - category: chemotherapy
         type: min
@@ -157,6 +141,7 @@ source_phases:
         type: exact
         amount: 1
     source_phase_id: conc_crt
+    type: concurrent
     conditions:
       names: *id001
   seq_crt_chemo:
@@ -169,6 +154,7 @@ source_phases:
     study_restriction: must_have_rt
     standalone: false
     source_phase_id: seq_crt_chemo
+    type: pre-definitive
     conditions:
       names: *id001
   definitive_rt:
@@ -191,39 +177,33 @@ source_phases:
   consolidation_durvalumab:
     component_requirements:
       component_lists:
-      - components:
-        - durvalumab
+      - {components: [{name: durvalumab, cui: 173}]}
       category_restrictions:
       - category: immunotherapy
         type: exact
         amount: 1
     standalone: false
     source_phase_id: consolidation_durvalumab
+    type: consolidation
     conditions:
       names: *id001
   consolidation_osimertinib:
     component_requirements:
       component_lists:
-      - components:
-        - Osimertinib
+      - {components: [{name: Osimertinib, cui: 375}]}
       category_restrictions:
       - category: chemotherapy
         type: exact
         amount: 1
     standalone: false
     source_phase_id: consolidation_osimertinib
+    type: consolidation
     conditions:
       names: *id001
   egfr_intervention:
     component_requirements:
       component_lists:
-      - components:
-        - osimertinib
-        - geftinib
-        - erlotinib
-        - afatinib
-        - dacomitinib
-        - gefitinib
+      - {components: [{name: Osimertinib, cui: 375}, {name: erlotinib, cui: 198}, {name: afatinib, cui: 13}, {name: dacomitinib, cui: 133}, {name: gefitinib, cui: 242}]}
       category_restrictions:
       - category: immunotherapy
         type: min
@@ -233,80 +213,83 @@ source_phases:
         amount: 1
     source_phase_id: egfr_intervention
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
+      - 30910
   alk_intervention:
     component_requirements:
       component_lists:
-      - components:
-        - alectinib
-        - brigatinib
-        - lorlatinib
-        - crizotinib
-        - ceritinib
+      - {components: [{name: alectinib, cui: 16}, {name: brigatinib, cui: 78}, {name: lorlatinib, cui: 314}, {name: crizotinib, cui: 119}, {name: ceritinib, cui: 96}]}
       category_restrictions: []
     source_phase_id: alk_intervention
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
+      - 30824
   ros1_intervention:
     component_requirements:
       component_lists:
-      - components:
-        - crizotinib
-        - entrectinib
-        - reptrectinib
+      - {components: [{name: crizotinib, cui: 119}, {name: entrectinib, cui: 188}, {name: repotrectinib, cui: 136156}]}
       category_restrictions: []
     source_phase_id: ros1_intervention
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
+      - 30982
   braf_intervention:
     component_requirements:
       component_lists:
-      - components:
-        - dabrafenib
-      - components:
-        - trametinib
+      - {components: [{name: dabrafenib, cui: 131}]}
+      - {components: [{name: trametinib, cui: 508}]}
       category_restrictions: []
     source_phase_id: braf_intervention
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
+      - 30898
   ret_intervention:
     component_requirements:
       component_lists:
-      - components:
-        - pralsetinib
-        - selpercatinib
+      - {components: [{name: pralsetinib, cui: 25527}, {name: selpercatinib, cui: 13759}]}
       category_restrictions: []
     source_phase_id: ret_intervention
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
+      - 18383
   erbb2_intervention:
     component_requirements:
       component_lists:
-      - components:
-        - Trastuzumab deruxtecan
+      - {components: [{name: Trastuzumab deruxtecan, cui: 3590}]}
       category_restrictions: []
     source_phase_id: erbb2_intervention
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
+      - 52958
   ntrk_intervention:
     component_requirements:
       component_lists:
-      - components:
-        - entrectinib
-        - larotrectinib
+      - {components: [{name: entrectinib, cui: 188}, {name: larotrectinib, cui: 298}]}
       category_restrictions:
       - category: chemotherapy
         type: exact
         amount: 1
     source_phase_id: ntrk_intervention
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
   met_tki:
     component_requirements:
       component_lists:
-      - components:
-        - capamatinib
-        - tepotinib
+      - {components: [{name: capmatinib, cui: 3231}, {name: tepotinib, cui: 19782}]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -314,12 +297,15 @@ source_phases:
     standalone: false
     source_phase_id: met_tki
     conditions:
-      names: *id001
+      cuis:
+      - 46104
+      - 642
+      - 13094
+      - 154361
   met_ptdb:
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
+      - {components: [Platinum agent]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -331,10 +317,8 @@ source_phases:
   met_ptdb_w_ici:
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
-      - components:
-        - Immunostimulatory monoclonal antibody
+      - {components: [Platinum agent]}
+      - {components: [Immunostimulatory monoclonal antibody]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -356,24 +340,19 @@ source_phases:
       - category: radiotherapy
         type: min
         amount: 0
-    curative_intent: false
     source_phase_id: best_supportive_care
     conditions:
       names: *id001
   platinum_doublet_3rd_gen_agent:
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
-      - components:
-        - taxane
-        - gemcitabine
-        - vinorelbine
+      - {components: [Platinum agent]}
+      - {components: [Taxane, {name: gemcitabine, cui: 243}, {name: vinorelbine, cui: 540}]}
       category_restrictions:
       - category: chemotherapy
         type: exact
         amount: 2
-    type: None
+    type: null
     source_phase_id: platinum_doublet_3rd_gen_agent
     conditions:
       names: *id001
@@ -383,26 +362,23 @@ source_phases:
       - 25309
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
+      - {components: [Platinum agent]}
       category_restrictions:
       - category: chemotherapy
         type: exact
         amount: 2
-    type: None
+    type: null
     source_phase_id: platinum_doublet_nonsquamous
   ici_w_chemo_nonsquamous:
     conditions:
-      names:
-      - Non-small cell lung cancer squamous
+      cuis:
+      - 25309
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
-      - components:
-        - Immunostimulatory monoclonal antibody
+      - {components: [Platinum agent]}
+      - {components: [Immunostimulatory monoclonal antibody]}
       category_restrictions: []
-    type: None
+    type: null
     source_phase_id: ici_w_chemo_nonsquamous
   ici_w_chemo_squamous:
     conditions:
@@ -410,23 +386,20 @@ source_phases:
       - 25316
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
-      - components:
-        - Immunostimulatory monoclonal antibody
+      - {components: [Platinum agent]}
+      - {components: [Immunostimulatory monoclonal antibody]}
       category_restrictions: []
-    type: None
+    type: null
     source_phase_id: ici_w_chemo_squamous
   ici_monotherapy:
     component_requirements:
       component_lists:
-      - components:
-        - Immunostimulatory monoclonal antibody
+      - {components: [Immunostimulatory monoclonal antibody]}
       category_restrictions:
       - category: immunotherapy
         type: exact
         amount: 1
-    type: None
+    type: null
     source_phase_id: ici_monotherapy
     conditions:
       names: *id001
@@ -436,8 +409,7 @@ source_phases:
       - 25316
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
+      - {components: [Platinum agent]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -450,10 +422,7 @@ source_phases:
       - 25316
     component_requirements:
       component_lists:
-      - components:
-        - gemcitabine
-        - vinorelbine
-        - docetaxel
+      - {components: [{name: gemcitabine, cui: 243}, {name: vinorelbine, cui: 540}, {name: docetaxel, cui: 164}]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -466,8 +435,7 @@ source_phases:
       - 25309
     component_requirements:
       component_lists:
-      - components:
-        - Platinum agent
+      - {components: [Platinum agent]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -480,11 +448,7 @@ source_phases:
       - 25309
     component_requirements:
       component_lists:
-      - components:
-        - gemcitabine
-        - vinorelbine
-        - docetaxel
-        - pemetrexed
+      - {components: [{name: gemcitabine, cui: 243}, {name: vinorelbine, cui: 540}, {name: docetaxel, cui: 164}, {name: pemetrexed, cui: 395}]}
       category_restrictions:
       - category: chemotherapy
         type: exact
@@ -497,14 +461,122 @@ source_phases:
       - 25316
     component_requirements:
       component_lists:
-      - components:
-        - atezolizumab
+      - {components: [{name: atezolizumab, cui: 49}]}
       category_restrictions:
       - category: immunotherapy
         type: exact
         amount: 1
     standalone: false
     source_phase_id: atezolizumab
+phase_context_policies:
+  surgery_only:
+    curative_intent: true
+    unknown_context_policy: phase_type
+  port:
+    curative_intent: true
+    unknown_context_policy: include
+  adj_osimertinib:
+    curative_intent: true
+    unknown_context_policy: include
+  neoadjuvant_chemo_ici:
+    curative_intent: true
+    unknown_context_policy: include
+  adjuvant_ici:
+    curative_intent: true
+    unknown_context_policy: include
+  adjuvant_pembrolizumab:
+    curative_intent: true
+    unknown_context_policy: include
+  adjuvant_atezolizumab_pembrolizumab:
+    curative_intent: true
+    unknown_context_policy: include
+  adjuvant_osimertinib:
+    curative_intent: true
+    unknown_context_policy: include
+  adjuvant_cisplatin_based:
+    curative_intent: true
+    unknown_context_policy: phase_type
+  adjuvant_optchemo_alectinib:
+    curative_intent: true
+    unknown_context_policy: include
+  conc_crt:
+    curative_intent: true
+    unknown_context_policy: phase_type
+  seq_crt_chemo:
+    curative_intent: true
+    unknown_context_policy: include
+  definitive_rt:
+    curative_intent: true
+    unknown_context_policy: include
+  consolidation_durvalumab:
+    curative_intent: true
+    unknown_context_policy: include
+  consolidation_osimertinib:
+    curative_intent: true
+    unknown_context_policy: include
+  egfr_intervention:
+    curative_intent: false
+    unknown_context_policy: exclude
+  alk_intervention:
+    curative_intent: false
+    unknown_context_policy: exclude
+  ros1_intervention:
+    curative_intent: false
+    unknown_context_policy: include
+  braf_intervention:
+    curative_intent: false
+    unknown_context_policy: include
+  ret_intervention:
+    curative_intent: false
+    unknown_context_policy: include
+  erbb2_intervention:
+    curative_intent: false
+    unknown_context_policy: include
+  ntrk_intervention:
+    curative_intent: false
+    unknown_context_policy: include
+  met_tki:
+    curative_intent: false
+    unknown_context_policy: include
+  met_ptdb:
+    curative_intent: false
+    unknown_context_policy: exclude
+  met_ptdb_w_ici:
+    curative_intent: false
+    unknown_context_policy: include
+  best_supportive_care:
+    curative_intent: false
+    unknown_context_policy: exclude
+  platinum_doublet_3rd_gen_agent:
+    curative_intent: false
+    unknown_context_policy: exclude
+  platinum_doublet_nonsquamous:
+    curative_intent: false
+    unknown_context_policy: exclude
+  ici_w_chemo_nonsquamous:
+    curative_intent: false
+    unknown_context_policy: include
+  ici_w_chemo_squamous:
+    curative_intent: false
+    unknown_context_policy: include
+  ici_monotherapy:
+    curative_intent: false
+    unknown_context_policy: exclude
+  ptdb_squamous:
+    curative_intent: false
+    unknown_context_policy: exclude
+  single_chemo_squamous:
+    curative_intent: false
+    unknown_context_policy: include
+  ptdb_nonsquamous:
+    curative_intent: false
+    unknown_context_policy: exclude
+  single_chemo_nonsquamous:
+    curative_intent: false
+    unknown_context_policy: include
+  atezolizumab:
+    curative_intent: false
+    unknown_context_policy: include
 union_phases:
   met_intervention:
     phase_id: met_intervention

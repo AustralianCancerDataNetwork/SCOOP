@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 from yaml import safe_dump, safe_load
+from hemonc_alchemy.model.enums import Sigs_PhaseEnum
 
 if TYPE_CHECKING:
     from scoop.vocabulary.gateway import VocabularyGateway
@@ -79,17 +80,43 @@ class ConditionRef(BaseModel):
         return list(self.names) if self.names is not None else list(self.cuis or [])
 
 
+class ComponentCui(BaseModel):
+    cui: int = Field(gt=0)
+    name: str | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+def _component_term(value: Any) -> Any:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return {"cui": value}
+    return value
+
+
+ComponentTerm = Annotated[str | ComponentCui, BeforeValidator(_component_term)]
+
+
+def component_term_label(term: ComponentTerm) -> str:
+    if isinstance(term, str):
+        return term
+    return term.name or f"CUI {term.cui}"
+
+
 def rescue_component_input(value: Any) -> Any:
     if value is None or value == []:
         return []
-    if isinstance(value, str):
+    if isinstance(value, (str, int)) and not isinstance(value, bool):
         return [[value]]
-    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+    if isinstance(value, list) and all(
+        isinstance(item, (str, int)) and not isinstance(item, bool)
+        or isinstance(item, Mapping) and set(item) <= {"cui", "name"}
+        for item in value
+    ):
         return [value]
     return value
 
 
-ComponentLists = Annotated[list[list[str]], BeforeValidator(rescue_component_input)]
+ComponentLists = Annotated[list[list[ComponentTerm]], BeforeValidator(rescue_component_input)]
 
 
 class CategoryRule(BaseModel):
@@ -117,7 +144,9 @@ class ComponentRule(BaseModel):
 
     @field_validator("component_lists")
     @classmethod
-    def reject_empty_component_lists(cls, value: list[list[str]]) -> list[list[str]]:
+    def reject_empty_component_lists(
+        cls, value: list[list[ComponentTerm]]
+    ) -> list[list[ComponentTerm]]:
         if any(not components for components in value):
             raise ValueError("component_lists cannot contain empty lists")
         return value
@@ -190,6 +219,7 @@ class PhaseSpec(BaseModel):
     component_requirements: ComponentRule = Field(default_factory=ComponentRule)
     study_restriction: Literal["must_have_rt"] | None = None
     curative_intent: bool = True
+    unknown_context_policy: Literal["exclude", "include", "phase_type"] = "exclude"
     regimens: RegimenList | None = Field(default_factory=list)
     type: str | None = None
     standalone: bool = True
@@ -206,6 +236,19 @@ class PhaseSpec(BaseModel):
     def normalize_regimens(cls, value: Any) -> Any:
         if isinstance(value, (int, str)) and not isinstance(value, bool):
             return [value]
+        return value
+
+    @field_validator("type")
+    @classmethod
+    def validate_phase_type(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                Sigs_PhaseEnum(value)
+            except ValueError as exc:
+                allowed = ", ".join(phase.value for phase in Sigs_PhaseEnum)
+                raise ValueError(
+                    f"unknown HemOnc phase type {value!r}; expected one of: {allowed}"
+                ) from exc
         return value
 
     @classmethod
@@ -336,6 +379,28 @@ class ProtocolSpec(BaseModel):
         return self.source_phases
 
 
+def _apply_phase_context_policies(source_phases, policies):
+    if not policies:
+        return source_phases
+    if not isinstance(policies, Mapping) or set(policies) != set(source_phases):
+        raise ValueError("phase_context_policies must declare every source phase")
+    for phase_id, policy in policies.items():
+        if not isinstance(policy, Mapping) or set(policy) != {
+            "curative_intent",
+            "unknown_context_policy",
+        }:
+            raise ValueError(
+                f"phase context policy for {phase_id!r} must declare "
+                "curative_intent and unknown_context_policy"
+            )
+        if not isinstance(policy["curative_intent"], bool):
+            raise ValueError(f"curative_intent for {phase_id!r} must be a boolean")
+        if policy["unknown_context_policy"] not in {"exclude", "include", "phase_type"}:
+            raise ValueError(f"unknown context policy for {phase_id!r} is invalid")
+        source_phases[phase_id] = source_phases[phase_id].model_copy(update=policy)
+    return source_phases
+
+
 class RegistrySpec(BaseModel):
     label: str
     default_conditions: ConditionRef
@@ -367,7 +432,7 @@ class RegistrySpec(BaseModel):
         missing = required - raw.keys()
         if missing:
             raise ValueError(f"registry is missing: {sorted(missing)}")
-        unknown = set(raw) - required
+        unknown = set(raw) - required - {"phase_context_policies"}
         if unknown:
             raise ValueError(
                 f"registry has unknown field(s): {sorted(unknown)}"
@@ -381,6 +446,9 @@ class RegistrySpec(BaseModel):
             )
             for phase_id, phase_data in raw["source_phases"].items()
         }
+        source_phases = _apply_phase_context_policies(
+            source_phases, raw.get("phase_context_policies", {})
+        )
         union_phases: dict[str, PhaseChoiceSpec] = {}
         for union_id, union_data in raw["union_phases"].items():
             unknown = set(union_data) - {"phase_id", "source_phase_ids"}

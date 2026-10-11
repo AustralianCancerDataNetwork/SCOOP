@@ -38,6 +38,9 @@ dev = [
     "pytest>=9.0.3",
 ]
 
+[project.scripts]
+scoop-lint-nsclc-registry = "scoop.protocols.hemonc.registry_lint:main"
+
 [tool.uv]
 # Prefer uv's own versioned interpreter installs over whatever an unversioned
 # system symlink such as /usr/local/bin/python3 currently points at. A macOS

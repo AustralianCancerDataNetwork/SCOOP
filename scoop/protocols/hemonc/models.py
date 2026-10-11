@@ -12,6 +12,7 @@ from hemonc_alchemy.model import (
     drugs_Canmed_major_classMap,
     drugs_Canmed_minor_classMap,
     sigs_StudyMap,
+    studies_IntentMap,
     variants_StudyMap,
     Variants,
 )
@@ -90,6 +91,7 @@ class HemOncModels:
     sigs_StudyMap: Any = sigs_StudyMap
     Conditions: Any = Conditions
     StudyResults: Any = StudyResults
+    studies_IntentMap: Any = studies_IntentMap
 
 
 def _load_hemonc_models() -> HemOncModels:
@@ -150,5 +152,4 @@ def join_not_distinct(col1, col2):
         col1 == col2,
         sa.and_(col1.is_(None), col2.is_(None))
     )
-
 
