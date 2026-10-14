@@ -1,14 +1,13 @@
 [project]
 name = "onco-scoop"
 version = "0.1.0"
-description = "Add your description here"
+description = "Generate synthetic oncology cohorts with HemOnc-guided treatment schedules and OMOP CDM export."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
     "hemonc-alchemy>=0.2.0,<1.0",
     "omop-alchemy>=1.1.0,<2.0",
-    "omop-graph>=2.1.0,<3.0",
     "oa-configurator>=1.0.0,<2.0.0",
     "pandas>=3.0.2",
     "psycopg-binary>=2.9.11",
@@ -39,6 +38,7 @@ dev = [
 ]
 
 [project.scripts]
+onco-scoop = "scoop.cli:main"
 scoop-lint-nsclc-registry = "scoop.protocols.hemonc.registry_lint:main"
 scoop-lint-profile-components = "scoop.protocols.hemonc.component_lint:main"
 

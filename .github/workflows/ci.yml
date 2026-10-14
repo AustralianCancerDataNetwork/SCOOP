@@ -15,3 +15,8 @@ jobs:
 
   build-test:
     uses: AustralianCancerDataNetwork/cava-devops/.github/workflows/build-test.yml@main
+    with:
+      # The shared workflow defaults to src/, but this repository's package is scoop/.
+      ty-src: scoop/selection
+      # Repository-wide Ruff currently reports existing baseline violations.
+      ruff: false
