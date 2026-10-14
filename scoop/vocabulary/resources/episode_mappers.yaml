@@ -1,0 +1,20 @@
+overarching_condition_episode:
+  episode_concept_id: 32533
+  episode_type_concept_id: 32545
+  episode_source_value: episode_of_care
+  episode_event_field_concept_id: 1147127   # condition_occurrence.condition_occurrence_id (CDM)
+  episode_event_field_concept_ids:
+    condition_occurrence: 1147127
+  episode_concept_field: condition_concept_id
+  episode_start_date_field: condition_start_date
+treatment_episode:
+  episode_concept_id: 32531              # Treatment Regimen (Episode)
+  episode_type_concept_id: 32545         # Episode algorithmically derived from EHR
+                                         # (Episode Type)
+  episode_source_value: treatment_episode
+  episode_event_field_concept_id: 1147082   # procedure_occurrence.procedure_occurrence_id (CDM)
+  episode_event_field_concept_ids:
+    drug_exposure: 1147094               # drug_exposure.drug_exposure_id (CDM150)
+    procedure_occurrence: 1147082        # procedure_occurrence.procedure_occurrence_id (CDM138)
+  episode_concept_field: procedure_concept_id
+  episode_start_date_field: procedure_start_date

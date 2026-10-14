@@ -1,30 +1,36 @@
 import re
 import random
+import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
-
 from pydantic import ValidationError
 import yaml
-import sqlalchemy as sa
-from scoop.configuration.config_loader import (
+
+from scoop.profiles.manifest import (
     list_profiles,
     load_routed_profile,
     load_profile_manifest,
     load_transformation_graph,
 )
-from scoop.configuration.regimen_registry import RegimenRegistry, load_regimen_registry
-from scoop.schema.treatment_episode import extract_active_treatment_endpoints
-from scoop.utils.hemonc_query import (
-    apply_default_component_requirements,
-    build_component_requirement_expressions,
+from scoop.protocols.spec import (
+    DEFAULT_CATEGORY_RULES,
+    EXCLUDE_RESTRICTION,
+    CategoryRule,
+    ConditionRef,
+    ComponentRule,
+    PhaseChoiceSpec,
+    ProtocolSpec,
+    RegistrySpec,
+    PhaseSpec,
 )
-from scoop.utils.hemonc_bundle import assemble_bundle_matches, execute_bundle_query
+from scoop.patients.treatment_episode import extract_active_treatment_endpoints
+from scoop.vocabulary.gateway import FakeVocabularyGateway
+from scoop.vocabulary.gateway import DefaultVocabularyGateway
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY_PATH = ROOT / "scoop" / "configuration" / "profiles" / "nsclc" / "nsclc_regimen_registry.yaml"
-GRAPH_DIR = ROOT / "scoop" / "configuration" / "profiles" / "nsclc"
+REGISTRY_PATH = ROOT / "scoop" / "profiles" / "nsclc" / "nsclc_protocol_registry.yaml"
+GRAPH_DIR = ROOT / "scoop" / "profiles" / "nsclc"
 STAGE_SPECIFIC_GRAPHS = [
     "nsclc_stg1.yaml",
     "nsclc_stg23_resectable.yaml",
@@ -34,24 +40,254 @@ STAGE_SPECIFIC_GRAPHS = [
 ]
 NON_REGISTRY_TREATMENT_STATE_NODES = {"resection_margin"}
 
-
 class NSCLCRegistryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with REGISTRY_PATH.open("r", encoding="utf-8") as handle:
-            raw = yaml.safe_load(handle)
-        cls.registry = raw["registry"]
-        cls.loaded_registry = load_regimen_registry(REGISTRY_PATH)
-        cls.entries = cls.registry["entries"]
-        cls.hemonc_groups = cls.registry.get("hemonc_groups", {})
-        cls.hemonc_bundle_groups = cls.registry.get("hemonc_bundle_groups", {})
+            cls.raw = yaml.safe_load(handle)
+        cls.registry = cls.raw
+        intervention_path = REGISTRY_PATH.with_name("nsclc_interventions.yaml")
+        with intervention_path.open("r", encoding="utf-8") as handle:
+            interventions = yaml.safe_load(handle)
+        cls.interventions = {
+            item["intervention_id"] for item in interventions["interventions"]
+        }
+        cls.loaded_registry = RegistrySpec.from_path(REGISTRY_PATH)
+
+    # --- registry loading ---------------------------------------------------
 
     def test_registry_yaml_loads(self):
-        self.assertEqual(self.registry["disease"], "nsclc")
-        self.assertEqual(self.registry["version"], 1)
+        self.assertEqual(self.loaded_registry.label, "nsclc")
+        self.assertEqual(self.loaded_registry.version, self.registry["version"])
+
+    def test_registry_populates_every_section(self):
+        registry = self.loaded_registry
+        self.assertEqual(set(registry.source_phases), set(self.registry["source_phases"]))
+        self.assertEqual(set(registry.union_phases), set(self.registry["union_phases"]))
+        self.assertEqual(set(registry.protocols), set(self.registry["protocols"]))
+
+    def test_default_conditions_are_preserved(self):
+        self.assertEqual(
+            self.loaded_registry.default_conditions.names,
+            self.registry["default_conditions"]["names"],
+        )
+
+    def test_source_phases_are_labelled_from_yaml_keys(self):
+        for phase_id, phase in self.loaded_registry.source_phases.items():
+            self.assertEqual(phase.source_phase_id, phase_id)
+
+    def test_source_phases_inherit_default_conditions_when_omitted(self):
+        for phase_id, phase in self.loaded_registry.source_phases.items():
+            raw_conditions = self.registry["source_phases"][phase_id]["conditions"]
+            self.assertEqual(phase.conditions, ConditionRef.model_validate(raw_conditions))
+
+    def test_protocols_reference_known_source_phases(self):
+        known = set(self.loaded_registry.source_phases)
+        for protocol_id, protocol in self.loaded_registry.protocols.items():
+            self.assertEqual(protocol.protocol_id, protocol_id)
+            for phase_id in protocol.source_phase_ids:
+                self.assertIn(phase_id, known, f"{protocol_id} -> {phase_id}")
+
+    def test_union_phases_reference_known_source_phases(self):
+        known = set(self.loaded_registry.source_phases)
+        for union_id, union in self.loaded_registry.union_phases.items():
+            self.assertEqual(union.phase_id, union_id)
+            for phase_id in union.source_phase_ids:
+                self.assertIn(phase_id, known, f"{union_id} -> {phase_id}")
+
+    def test_from_path_is_not_hardcoded_to_nsclc(self):
+        """Registry parsing uses the declared label, not a fixed profile."""
+        relabelled = dict(self.raw)
+        relabelled["label"] = "bladder"
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "bladder_protocol_registry.yaml"
+            target.write_text(yaml.safe_dump(relabelled), encoding="utf-8")
+            registry = RegistrySpec.from_path(target)
+        self.assertEqual(registry.label, "bladder")
+        self.assertEqual(set(registry.protocols), set(self.loaded_registry.protocols))
+
+    # --- condition resolution -----------------------------------------------
+
+    def test_condition_names_are_preserved_until_resolution(self):
+        phase = PhaseSpec.generate(
+            {"conditions": "Lung cancer"},
+            "phase",
+            self.loaded_registry.default_conditions,
+        )
+        self.assertEqual(phase.conditions.names, ["Lung cancer"])
+
+    def test_condition_cuis_are_preserved_until_resolution(self):
+        phase = PhaseSpec.generate(
+            {"conditions": [11, 12]},
+            "phase",
+            self.loaded_registry.default_conditions,
+        )
+        self.assertEqual(phase.conditions.cuis, [11, 12])
+
+    def test_condition_names_do_not_require_a_session(self):
+        phase = PhaseSpec.generate(
+            {"conditions": ["Lung cancer"]},
+            "phase",
+            self.loaded_registry.default_conditions,
+        )
+        self.assertEqual(phase.conditions.names, ["Lung cancer"])
+
+    def test_condition_ref_resolves_only_through_an_explicit_gateway(self):
+        ref = ConditionRef(names=["Lung cancer"])
+        gateway = FakeVocabularyGateway(condition_names={"Lung cancer": 123})
+        self.assertEqual(ref.resolve(gateway), (123,))
+        self.assertEqual(ConditionRef(cuis=[456]).resolve(gateway), (456,))
+
+    def test_registry_round_trips_through_canonical_yaml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "round_trip.yaml"
+            target.write_text(self.loaded_registry.to_yaml(), encoding="utf-8")
+            round_tripped = RegistrySpec.from_path(target)
+        self.assertEqual(round_tripped, self.loaded_registry)
+
+    # --- component requirement defaults --------------------------------------
+
+    def test_omitted_category_restrictions_use_neutral_anchor(self):
+        requirements = ComponentRule.with_defaults(None)
+        self.assertEqual(
+            requirements.category_restrictions,
+            {"chemotherapy": CategoryRule(type="min", amount=0)},
+        )
+        self.assertEqual(requirements.component_lists, [])
+
+    def test_provided_category_restrictions_overlay_full_defaults(self):
+        requirements = ComponentRule.with_defaults(
+            {"category_restrictions": {"surgery": {"type": "min", "amount": 1}}}
+        )
+        self.assertEqual(
+            requirements.category_restrictions["surgery"],
+            CategoryRule(type="min", amount=1),
+        )
+        for category in DEFAULT_CATEGORY_RULES:
+            if category != "surgery":
+                self.assertEqual(
+                    requirements.category_restrictions[category], EXCLUDE_RESTRICTION, category
+                )
+
+    def test_supportive_is_never_excluded_by_default(self):
+        self.assertNotIn("supportive", DEFAULT_CATEGORY_RULES)
+        requirements = ComponentRule.with_defaults(
+            {"category_restrictions": {"surgery": {"type": "min", "amount": 1}}}
+        )
+        self.assertNotIn("supportive", requirements.category_restrictions)
+
+    def test_component_lists_survive_default_application(self):
+        requirements = ComponentRule.with_defaults(
+            {"component_lists": [["cisplatin", "etoposide"]]}
+        )
+        self.assertEqual(requirements.component_lists, [["cisplatin", "etoposide"]])
+
+    # --- categorisation ------------------------------------------------------
+
+    def test_categorise_reports_only_non_excluded_categories(self):
+        self.assertEqual(
+            self.loaded_registry.source_phases["surgery_only"]
+            .delivered_categories(),
+            {"surgery"},
+        )
+
+    def test_categorise_returns_none_without_category_restrictions(self):
+        phase = PhaseSpec.model_validate(
+            {
+                "study_restriction": None,
+                "type": None,
+                "conditions": [],
+                "component_requirements": ComponentRule(),
+            }
+        )
+        self.assertIsNone(phase.delivered_categories())
+
+    # --- input coercion and validation ---------------------------------------
+
+    def test_component_lists_rescue_flat_list_and_scalar(self):
+        self.assertEqual(
+            ComponentRule.model_validate(
+                {"component_lists": ["carboplatin"]}
+            ).component_lists,
+            [["carboplatin"]],
+        )
+        self.assertEqual(
+            ComponentRule.model_validate(
+                {"component_lists": "carboplatin"}
+            ).component_lists,
+            [["carboplatin"]],
+        )
+
+    def test_empty_component_list_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            ComponentRule.model_validate({"component_lists": [[]]})
+
+    def test_regimen_list_rescues_scalar_input(self):
+        phase = PhaseSpec.model_validate(
+            {"study_restriction": None, "type": None, "regimens": "pembrolizumab"}
+        )
+        self.assertEqual(phase.regimens, ["pembrolizumab"])
+
+    def test_source_phase_rejects_unknown_fields(self):
+        with self.assertRaises(ValidationError):
+            PhaseSpec.model_validate(
+                {"study_restriction": None, "type": None, "unexpected": True}
+            )
+
+    def test_component_requirements_reject_unknown_fields(self):
+        with self.assertRaises(ValidationError):
+            ComponentRule.model_validate({"not_a_field": 1})
+
+    def test_invalid_category_restriction_key_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            ComponentRule.model_validate(
+                {"category_restrictions": {"not_a_category": {"type": "min", "amount": 1}}}
+            )
+
+    def test_invalid_category_restriction_type_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            CategoryRule.model_validate({"type": "at_most", "amount": 1})
+
+    def test_protocol_generate_reads_phases_and_optional_phases(self):
+        protocol = ProtocolSpec.generate(
+            "port_then_osi",
+            {
+                "protocol_id": "port_then_osi",
+                "source_phase_ids": ["surgery_only", "port"],
+            },
+        )
+        self.assertEqual(protocol.protocol_id, "port_then_osi")
+        self.assertEqual(protocol.source_phase_ids, ["surgery_only", "port"])
+        self.assertIsNone(protocol.optional_phases)
+
+    def test_phase_references_are_validated_at_registry_load(self):
+        with self.assertRaises(ValidationError) as error:
+            RegistrySpec.model_validate(
+                {
+                    "label": "fixture",
+                    "default_conditions": {"cuis": [1]},
+                    "version": 1,
+                    "source_phases": {
+                        "known": {"conditions": {"cuis": [1]}},
+                    },
+                    "union_phases": {},
+                    "protocols": {
+                        "broken": {"protocol_id": "broken", "source_phase_ids": ["missing"]},
+                    },
+                }
+            )
+        self.assertIn("broken", str(error.exception))
+
+    def test_phase_choice_requires_two_distinct_members(self):
+        with self.assertRaises(ValidationError):
+            PhaseChoiceSpec.model_validate(
+                {"phase_id": "choice", "source_phase_ids": ["one", "one"]}
+            )
+
+    # --- profile wiring -------------------------------------------------------
 
     def test_profile_manifest_loads(self):
-        manifest = load_profile_manifest("nsclc", base_dir=ROOT / "scoop" / "configuration")
+        manifest = load_profile_manifest("nsclc", base_dir=ROOT / "scoop")
         self.assertEqual(manifest.profile_id, "nsclc")
         self.assertIn("nsclc_stg4_driver", manifest.graphs)
         self.assertEqual(manifest.entry_graph, "nsclc")
@@ -59,611 +295,24 @@ class NSCLCRegistryTests(unittest.TestCase):
             manifest.pathways["nsclc_stage4_nodrivers"],
             "nsclc_stg4_nodrivers",
         )
-        self.assertIn("nsclc", list_profiles(ROOT / "scoop" / "configuration"))
+        self.assertIn("nsclc", list_profiles(ROOT / "scoop"))
 
     def test_routed_runtime_loads_for_nsclc(self):
-        runtime = load_routed_profile("nsclc", base_dir=ROOT / "scoop" / "configuration")
+        runtime = load_routed_profile(
+            "nsclc",
+            base_dir=ROOT / "scoop",
+            vocabulary_gateway=DefaultVocabularyGateway(
+                ROOT / "scoop",
+                engine_factory=lambda: None,
+            ),
+        )
         self.assertEqual(runtime.entry_graph_name, "nsclc")
         self.assertIn("nsclc_stage1", runtime.pathway_to_graph)
         self.assertIn("nsclc_stg1", runtime.tail_contexts)
 
-    def test_every_entry_has_required_fields(self):
-        required = {
-            "public",
-            "stage_scope",
-            "clinical_group",
-            "graph_sources",
-            "resolver",
-        }
-        for entry_id, entry in self.entries.items():
-            self.assertTrue(required.issubset(entry.keys()), entry_id)
-            self.assertIn("type", entry["resolver"], entry_id)
-
-    def test_aliases_default_to_empty_list_when_omitted(self):
-        registry = RegimenRegistry.model_validate(
-            {
-                "disease": "test",
-                "version": 1,
-                "entries": {
-                    "simple": {
-                        "public": True,
-                        "stage_scope": [],
-                        "clinical_group": "test_group",
-                        "graph_sources": [],
-                        "resolver": {"type": "none"},
-                        "notes": None,
-                    }
-                },
-            }
-        )
-        self.assertEqual(registry.entries["simple"].aliases, [])
-
-    def test_component_query_tracks_if_category_restrictions_were_omitted(self):
-        registry = RegimenRegistry.model_validate(
-            {
-                "disease": "test",
-                "version": 1,
-                "entries": {
-                    "omitted": {
-                        "public": True,
-                        "stage_scope": [],
-                        "clinical_group": "test_group",
-                        "graph_sources": [],
-                        "resolver": {
-                            "type": "component_query",
-                            "default_condition_cuis": [1],
-                            "component_lists": [["drug_a"]],
-                        },
-                    },
-                    "explicit_empty": {
-                        "public": True,
-                        "stage_scope": [],
-                        "clinical_group": "test_group",
-                        "graph_sources": [],
-                        "resolver": {
-                            "type": "component_query",
-                            "default_condition_cuis": [1],
-                            "component_lists": [["drug_a"]],
-                            "category_restrictions": {},
-                        },
-                    },
-                },
-            }
-        )
-        omitted = registry.resolve_hemonc_query("omitted")
-        explicit_empty = registry.resolve_hemonc_query("explicit_empty")
-        self.assertIsNotNone(omitted)
-        self.assertIsNotNone(explicit_empty)
-        self.assertFalse(omitted.category_restrictions_provided)
-        self.assertTrue(explicit_empty.category_restrictions_provided)
-
-    def test_omitted_category_restrictions_use_compatibility_defaults(self):
-        normalized = apply_default_component_requirements(
-            {
-                "component_lists": [["drug_a"]],
-                "category_restrictions_provided": False,
-            }
-        )
-        self.assertEqual(
-            normalized,
-            {
-                "component_lists": [["drug_a"]],
-                "category_restrictions": {
-                    "chemotherapy": {"type": "min", "amount": 0},
-                },
-            },
-        )
-
-    def test_explicit_empty_category_restrictions_remain_strict(self):
-        normalized = apply_default_component_requirements(
-            {
-                "component_lists": [["drug_a"]],
-                "category_restrictions": {},
-                "category_restrictions_provided": True,
-            }
-        )
-        self.assertEqual(
-            normalized["category_restrictions"],
-            {
-                "radiotherapy": {"type": "exact", "amount": 0},
-                "surgery": {"type": "exact", "amount": 0},
-                "chemotherapy": {"type": "exact", "amount": 0},
-                "immunotherapy": {"type": "exact", "amount": 0},
-            },
-        )
-
-    def test_explicit_chemotherapy_min_zero_uses_compatibility_defaults(self):
-        normalized = apply_default_component_requirements(
-            {
-                "component_lists": [["drug_a"]],
-                "category_restrictions": {
-                    "chemotherapy": {"type": "min", "amount": 0},
-                },
-                "category_restrictions_provided": True,
-            }
-        )
-        self.assertEqual(
-            normalized,
-            {
-                "component_lists": [["drug_a"]],
-                "category_restrictions": {
-                    "chemotherapy": {"type": "min", "amount": 0},
-                },
-            },
-        )
-
-    def test_invalid_category_restriction_key_is_rejected(self):
-        with self.assertRaises(ValidationError):
-            RegimenRegistry.model_validate(
-                {
-                    "disease": "test",
-                    "version": 1,
-                    "entries": {
-                        "invalid": {
-                            "public": True,
-                            "stage_scope": [],
-                            "clinical_group": "test_group",
-                            "graph_sources": [],
-                            "resolver": {
-                                "type": "component_query",
-                                "default_condition_cuis": [1],
-                                "component_lists": [["drug_a"]],
-                                "category_restrictions": {
-                                    "invalid_category": {"type": "exact", "amount": 0}
-                                },
-                            },
-                        }
-                    },
-                }
-            )
-
-    def test_component_query_entries_have_required_fields(self):
-        for entry_id, entry in self.entries.items():
-            resolver = entry["resolver"]
-            if resolver["type"] == "component_query":
-                if "group_id" in resolver:
-                    self.assertIn(resolver["group_id"], self.hemonc_groups, entry_id)
-                else:
-                    self.assertIn("default_condition_cuis", resolver, entry_id)
-                    self.assertIn("component_lists", resolver, entry_id)
-                    self.assertIn("category_restrictions", resolver, entry_id)
-            elif resolver["type"] == "bundle_recipe":
-                self.assertIn("group_id", resolver, entry_id)
-                self.assertIn(resolver["group_id"], self.hemonc_bundle_groups, entry_id)
-            elif resolver["type"] == "composite":
-                self.assertIn("members", resolver, entry_id)
-
-    def test_hemonc_groups_have_required_fields(self):
-        self.assertIn("egfr_intervention", self.hemonc_groups)
-        for group_id, group in self.hemonc_groups.items():
-            self.assertIn("basis", group, group_id)
-            self.assertIn("component_lists", group, group_id)
-            self.assertIn("category_restrictions", group, group_id)
-            self.assertTrue(
-                ("condition_set" in group) or ("default_condition_cuis" in group),
-                group_id,
-            )
-
-    def test_hemonc_bundle_groups_have_required_fields(self):
-        self.assertIn("sequential_crt", self.hemonc_bundle_groups)
-        for group_id, group in self.hemonc_bundle_groups.items():
-            self.assertIn("basis", group, group_id)
-            self.assertIn("assembly_mode", group, group_id)
-            self.assertIn("phases", group, group_id)
-            self.assertTrue(group["phases"], group_id)
-
-    def test_loaded_registry_resolves_group_backed_component_queries(self):
-        resolved = self.loaded_registry.resolve_hemonc_query("egfr_intervention")
-        self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.group_id, "egfr_intervention")
-        self.assertEqual(
-            resolved.default_condition_cuis,
-            self.registry["condition_sets"]["lung_nsclc_all"],
-        )
-        self.assertEqual(
-            resolved.component_lists,
-            [["osimertinib", "gefitinib", "erlotinib", "afatinib", "dacomitinib"]],
-        )
-
-    def test_resolved_query_category_restrictions_work_in_hemonc_helper(self):
-        resolved = self.loaded_registry.resolve_hemonc_query("egfr_intervention")
-        self.assertIsNotNone(resolved)
-
-        categorised = sa.table(
-            "categorised_components",
-            sa.column("broad_category"),
-            sa.column("component_cui"),
-            sa.column("canmed_major_class"),
-            sa.column("canmed_minor_class"),
-            sa.column("main_class"),
-            sa.column("component"),
-        )
-        expressions = build_component_requirement_expressions(
-            {
-                "component_lists": resolved.component_lists,
-                "category_restrictions": resolved.category_restrictions,
-            },
-            categorised,
-        )
-        self.assertGreaterEqual(len(expressions), 1)
-
-    def test_targeted_driver_query_normalization_preserves_explicit_output(self):
-        resolved = self.loaded_registry.resolve_hemonc_query("egfr_intervention")
-        self.assertIsNotNone(resolved)
-        normalized = apply_default_component_requirements(
-            {
-                "component_lists": resolved.component_lists,
-                "category_restrictions": resolved.category_restrictions,
-                "category_restrictions_provided": resolved.category_restrictions_provided,
-            }
-        )
-        self.assertEqual(normalized["category_restrictions"]["chemotherapy"], {"type": "min", "amount": 1})
-        self.assertEqual(normalized["category_restrictions"]["immunotherapy"], {"type": "min", "amount": 0})
-
-    def test_chemo_ici_query_normalization_preserves_explicit_output(self):
-        resolved = self.loaded_registry.resolve_hemonc_query("ici_w_chemo_nonsquamous")
-        self.assertIsNotNone(resolved)
-        normalized = apply_default_component_requirements(
-            {
-                "component_lists": resolved.component_lists,
-                "category_restrictions": resolved.category_restrictions,
-                "category_restrictions_provided": resolved.category_restrictions_provided,
-            }
-        )
-        self.assertEqual(normalized["category_restrictions"]["chemotherapy"], {"type": "min", "amount": 0})
-        self.assertEqual(
-            normalized["category_restrictions"],
-            {"chemotherapy": {"type": "min", "amount": 0}},
-        )
-
-    def test_legacy_targeted_driver_query_uses_compatibility_defaults(self):
-        resolved = self.loaded_registry.resolve_hemonc_query("alk_intervention")
-        self.assertIsNotNone(resolved)
-        normalized = apply_default_component_requirements(
-            {
-                "component_lists": resolved.component_lists,
-                "category_restrictions": resolved.category_restrictions,
-                "category_restrictions_provided": resolved.category_restrictions_provided,
-            }
-        )
-        self.assertEqual(
-            normalized["category_restrictions"],
-            {"chemotherapy": {"type": "min", "amount": 0}},
-        )
-
-    def test_supportive_query_normalization_preserves_explicit_output(self):
-        resolved = self.loaded_registry.resolve_hemonc_query("best_supportive_care")
-        self.assertIsNotNone(resolved)
-        normalized = apply_default_component_requirements(
-            {
-                "component_lists": resolved.component_lists,
-                "category_restrictions": resolved.category_restrictions,
-                "category_restrictions_provided": resolved.category_restrictions_provided,
-            }
-        )
-        self.assertEqual(normalized["category_restrictions"]["supportive"], {"type": "min", "amount": 1})
-        self.assertEqual(normalized["category_restrictions"]["chemotherapy"], {"type": "exact", "amount": 0})
-
-    def test_loaded_registry_keeps_composites_non_queryable(self):
-        self.assertIsNone(
-            self.loaded_registry.resolve_hemonc_query("met_intervention")
-        )
-
-    def test_loaded_registry_resolves_bundle_recipes(self):
-        resolved = self.loaded_registry.resolve_hemonc_bundle(
-            "sequential_crt_adjuvant_durvalumab"
-        )
-        self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.group_id, "sequential_crt_adjuvant_durvalumab")
-        self.assertEqual(resolved.assembly_mode, "variant_plus_rt")
-        self.assertEqual(resolved.sequence_template, "sequential")
-        self.assertEqual(
-            [phase.phase_id for phase in resolved.phases],
-            ["systemic", "radiotherapy", "adjuvant_durvalumab"],
-        )
-        self.assertEqual(resolved.phases[0].source_group_id, "nsclc_crt_backbone")
-        self.assertEqual(resolved.phases[1].component_terms, ["External beam radiotherapy"])
-        self.assertEqual(
-            resolved.phases[2].resolved_query.component_lists,
-            [["durvalumab"]],
-        )
-
-    def test_bundle_assembly_supports_variant_and_sig_phases(self):
-        resolved = self.loaded_registry.resolve_hemonc_bundle("sequential_crt")
-        self.assertIsNotNone(resolved)
-
-        class FakeSig:
-            def __init__(self, sig_id, component, variant_cui=None):
-                self.sig_id = sig_id
-                self.component = component
-                self.variant_cui = variant_cui
-
-        class FakeVariant:
-            def __init__(self, variant_cui, regimen, sig_ids):
-                self.variant_cui = variant_cui
-                self.regimen = regimen
-                self.component_sigs = [
-                    FakeSig(sig_id, "Cisplatin", variant_cui=variant_cui) for sig_id in sig_ids
-                ]
-
-        bundles = assemble_bundle_matches(
-            resolved,
-            {
-                "systemic": [FakeVariant(101, "CRT backbone", [1, 2])],
-                "radiotherapy": [FakeSig(99, "External beam radiotherapy")],
-            },
-        )
-        self.assertEqual(len(bundles), 1)
-        self.assertEqual(bundles[0].variant_cui, 101)
-        self.assertEqual(
-            [phase.phase_type for phase in bundles[0].phases],
-            ["systemic", "radiotherapy"],
-        )
-        self.assertIn("External beam radiotherapy", bundles[0].bundle_name)
-
-    def test_execute_bundle_query_filters_incompatible_crt_pairs_by_study(self):
-        resolved = self.loaded_registry.resolve_hemonc_bundle("sequential_crt")
-        self.assertIsNotNone(resolved)
-
-        class FakeStudy:
-            def __init__(self, study):
-                self.study = study
-
-        class FakeSig:
-            def __init__(self, sig_id, component, studies, variant_cui=None):
-                self.sig_id = sig_id
-                self.component = component
-                self.variant_cui = variant_cui
-                self.study_objects = [FakeStudy(study) for study in studies]
-
-        class FakeVariant:
-            def __init__(self, variant_cui, regimen, sig_ids, studies):
-                self.variant_cui = variant_cui
-                self.regimen = regimen
-                self.component_sigs = [
-                    FakeSig(sig_id, "Cisplatin", studies, variant_cui=variant_cui)
-                    for sig_id in sig_ids
-                ]
-
-        class FakeResult:
-            def __init__(self, records):
-                self.records = records
-
-            def unique(self):
-                return self
-
-            def scalars(self):
-                return self
-
-            def all(self):
-                return list(self.records)
-
-        class FakeSession:
-            def __init__(self, records_by_stmt):
-                self.records_by_stmt = records_by_stmt
-
-            def execute(self, stmt):
-                return FakeResult(self.records_by_stmt[stmt])
-
-        systemic_variant = FakeVariant(101, "CRT backbone", [1, 2], ["Shared Trial"])
-        compatible_rt = FakeSig(99, "External beam radiotherapy", ["Shared Trial"])
-        incompatible_rt = FakeSig(100, "External beam radiotherapy", ["Other Trial"])
-        session = FakeSession(
-            {
-                "systemic": [systemic_variant],
-                "radiotherapy": [compatible_rt, incompatible_rt],
-            }
-        )
-
-        with patch(
-            "scoop.utils.hemonc_bundle.build_bundle_phase_statement",
-            side_effect=lambda phase, models=None: phase.phase_id,
-        ):
-            bundles = execute_bundle_query(session, resolved)
-
-        self.assertEqual(len(bundles), 1)
-        self.assertEqual(bundles[0].variant_cui, 101)
-        self.assertEqual(
-            [phase.phase_id for phase in bundles[0].phases],
-            ["systemic", "radiotherapy"],
-        )
-
-    def test_execute_bundle_query_allows_post_adjuvant_phase_with_distinct_study(self):
-        resolved = self.loaded_registry.resolve_hemonc_bundle(
-            "sequential_crt_adjuvant_durvalumab"
-        )
-        self.assertIsNotNone(resolved)
-
-        class FakeStudy:
-            def __init__(self, study):
-                self.study = study
-
-        class FakeSig:
-            def __init__(self, sig_id, component, studies, variant_cui=None):
-                self.sig_id = sig_id
-                self.component = component
-                self.variant_cui = variant_cui
-                self.study_objects = [FakeStudy(study) for study in studies]
-
-        class FakeVariant:
-            def __init__(self, variant_cui, regimen, component, studies):
-                self.variant_cui = variant_cui
-                self.regimen = regimen
-                self.component_sigs = [
-                    FakeSig(variant_cui, component, studies, variant_cui=variant_cui)
-                ]
-
-        class FakeResult:
-            def __init__(self, records):
-                self.records = records
-
-            def unique(self):
-                return self
-
-            def scalars(self):
-                return self
-
-            def all(self):
-                return list(self.records)
-
-        class FakeSession:
-            def __init__(self, records_by_stmt):
-                self.records_by_stmt = records_by_stmt
-
-            def execute(self, stmt):
-                return FakeResult(self.records_by_stmt[stmt])
-
-        session = FakeSession(
-            {
-                "systemic": [FakeVariant(201, "CRT backbone", "Cisplatin", ["Shared Trial"])],
-                "radiotherapy": [
-                    FakeSig(301, "External beam radiotherapy", ["Shared Trial"])
-                ],
-                "adjuvant_durvalumab": [
-                    FakeVariant(401, "Durvalumab", "Durvalumab", ["PACIFIC"])
-                ],
-            }
-        )
-
-        with patch(
-            "scoop.utils.hemonc_bundle.build_bundle_phase_statement",
-            side_effect=lambda phase, models=None: phase.phase_id,
-        ):
-            bundles = execute_bundle_query(session, resolved)
-
-        self.assertEqual(len(bundles), 1)
-        self.assertEqual(
-            [phase.phase_id for phase in bundles[0].phases],
-            ["systemic", "radiotherapy", "adjuvant_durvalumab"],
-        )
-
-    def test_execute_bundle_query_filters_sig_phase_records_by_condition_when_available(self):
-        resolved = self.loaded_registry.resolve_hemonc_bundle("sequential_crt")
-        self.assertIsNotNone(resolved)
-        target_condition_cui = resolved.resolved_condition_cuis[0]
-
-        class FakeCondition:
-            def __init__(self, condition_cui):
-                self.condition_cui = condition_cui
-
-        class FakeSig:
-            def __init__(self, sig_id, component, condition_cuis, variant_cui=None):
-                self.sig_id = sig_id
-                self.component = component
-                self.variant_cui = variant_cui
-                self.condition_objects = [
-                    FakeCondition(condition_cui) for condition_cui in condition_cuis
-                ]
-
-        class FakeVariant:
-            def __init__(self, variant_cui, regimen, sig_ids):
-                self.variant_cui = variant_cui
-                self.regimen = regimen
-                self.component_sigs = [
-                    FakeSig(sig_id, "Cisplatin", [target_condition_cui], variant_cui=variant_cui)
-                    for sig_id in sig_ids
-                ]
-
-        class FakeResult:
-            def __init__(self, records):
-                self.records = records
-
-            def unique(self):
-                return self
-
-            def scalars(self):
-                return self
-
-            def all(self):
-                return list(self.records)
-
-        class FakeSession:
-            def __init__(self, records_by_stmt):
-                self.records_by_stmt = records_by_stmt
-
-            def execute(self, stmt):
-                return FakeResult(self.records_by_stmt[stmt])
-
-        session = FakeSession(
-            {
-                "systemic": [FakeVariant(101, "CRT backbone", [1, 2])],
-                "radiotherapy": [
-                    FakeSig(99, "External beam radiotherapy", [target_condition_cui]),
-                    FakeSig(100, "External beam radiotherapy", [999999]),
-                ],
-            }
-        )
-
-        with patch(
-            "scoop.utils.hemonc_bundle.build_bundle_phase_statement",
-            side_effect=lambda phase, models=None: phase.phase_id,
-        ):
-            bundles = execute_bundle_query(session, resolved)
-
-        self.assertEqual(len(bundles), 1)
-        self.assertEqual(
-            [phase.sig_ids for phase in bundles[0].phases if phase.phase_id == "radiotherapy"],
-            [[(None, 99, "External beam radiotherapy", None)]],
-        )
-
-    def test_composite_members_exist(self):
-        for entry_id, entry in self.entries.items():
-            resolver = entry["resolver"]
-            if resolver["type"] == "composite":
-                for member in resolver["members"]:
-                    self.assertIn(member, self.entries, f"{entry_id} -> {member}")
-
-    def test_public_and_internal_counts(self):
-        public_entries = [name for name, entry in self.entries.items() if entry["public"]]
-        internal_entries = [name for name, entry in self.entries.items() if not entry["public"]]
-        self.assertEqual(len(public_entries), 36)
-        self.assertEqual(len(internal_entries), 8)
-
-    def test_public_ids_match_expected_list(self):
-        expected = {
-            "sbrt",
-            "surgery_only",
-            "port",
-            "port_adjuvant_osimertinib",
-            "surgery_adjuvant_osimertinib",
-            "neoadjuvant_chemo_ici",
-            "adjuvant_pembrolizumab",
-            "adjuvant_atezolizumab_pembrolizumab",
-            "adjuvant_osimertinib",
-            "adjuvant_cisplatin_osimertinib",
-            "adjuvant_optchemo_alectinib",
-            "radiotherapy",
-            "sequential_crt",
-            "concurrent_crt",
-            "sequential_crt_adjuvant_osimertinib",
-            "concurrent_crt_adjuvant_osimertinib",
-            "sequential_crt_adjuvant_durvalumab",
-            "concurrent_crt_adjuvant_durvalumab",
-            "egfr_intervention",
-            "alk_intervention",
-            "ros1_intervention",
-            "braf_intervention",
-            "ret_intervention",
-            "erbb2_intervention",
-            "ntrk_intervention",
-            "met_intervention",
-            "best_supportive_care",
-            "platinum_doublet_3rd_gen_agent",
-            "platinum_doublet_nonsquamous",
-            "ici_w_chemo_nonsquamous",
-            "ici_w_chemo_squamous",
-            "ici_monotherapy",
-            "chemotherapy_or_atezolizumab_squamous",
-            "chemotherapy_or_atezolizumab_nonsquamous",
-            "ici_monotherapy_or_ici_with_chemotherapy_squamous",
-            "ici_monotherapy_or_ici_with_chemotherapy_nonsquamous",
-        }
-        public_entries = {name for name, entry in self.entries.items() if entry["public"]}
-        self.assertEqual(public_entries, expected)
-
     def test_stage_specific_graph_endpoints_are_covered(self):
         pattern = re.compile(r"^\s+treatment_episode\.([A-Za-z0-9_]+):", re.MULTILINE)
-        covered = set(self.entries)
+        covered = self.interventions
         for graph_name in STAGE_SPECIFIC_GRAPHS:
             text = (GRAPH_DIR / graph_name).read_text(encoding="utf-8")
             endpoints = set(pattern.findall(text))
@@ -765,7 +414,7 @@ class NSCLCRegistryTests(unittest.TestCase):
         )
         cases = [
             (
-                "neoadjuvant_chemo_ici",
+                "neoadjuvant_or_perioperative_ici_w_chemo",
                 {
                     "person.chemo_ici_eligible": "eligible",
                     "condition_occurrence.biomarker": "none",

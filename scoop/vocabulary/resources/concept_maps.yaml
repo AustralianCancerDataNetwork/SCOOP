@@ -1,0 +1,22 @@
+sex:                                      # -> person.gender_concept_id
+  male: 8507                              # MALE (Gender)
+  female: 8532                            # FEMALE (Gender)
+
+record_type:                              # CDM provenance/type concepts
+  condition_occurrence: 32817             # EHR (Type Concept)
+  measurement: 32817                      # EHR (Type Concept)
+  observation: 32817                      # EHR (Type Concept)
+  drug_exposure: 32818                    # EHR administration record
+  procedure_occurrence: 32817             # EHR (Type Concept)
+  derived: 32880                          # Standard algorithm
+  registry: 32879                         # Registry
+
+smoking_history:                          # -> observation.value_as_concept_id
+  never: 45879404                         # Never smoker (LOINC Answer)
+  former: 45883458                        # Former smoker (LOINC Answer)
+  current: 45881517                       # Current every day smoker (LOINC Answer)
+
+laterality:                               # -> measurement.value_as_concept_id
+  bilateral: 21498852                     # Bilateral (LOINC Answer)
+  left: 45883143                          # Left (LOINC Answer)
+  right: 45881626                         # Right (LOINC Answer)

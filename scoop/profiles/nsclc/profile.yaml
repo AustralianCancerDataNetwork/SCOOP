@@ -1,0 +1,34 @@
+profile:
+  profile_id: nsclc
+  default_graph: nsclc
+  entry_graph: nsclc
+  regimen_registry: nsclc_protocol_registry.yaml
+  interventions: nsclc_interventions.yaml
+  graphs:
+  - graph_id: nsclc
+    path: nsclc.yaml
+  - graph_id: nsclc_stg1
+    path: nsclc_stg1.yaml
+  - graph_id: nsclc_stg23_resectable
+    path: nsclc_stg23_resectable.yaml
+  - graph_id: nsclc_stg3_unresectable
+    path: nsclc_stg3_unresectable.yaml
+  - graph_id: nsclc_stg4_driver
+    path: nsclc_stg4_driver.yaml
+  - graph_id: nsclc_stg4_nodrivers
+    path: nsclc_stg4_nodrivers.yaml
+  pathways:
+  - pathway_id: nsclc_stage1
+    graph_id: nsclc_stg1
+  - pathway_id: nsclc_stage23_resectable
+    graph_id: nsclc_stg23_resectable
+  - pathway_id: nsclc_stage3_unresectable
+    graph_id: nsclc_stg3_unresectable
+  - pathway_id: nsclc_stage4_driver
+    graph_id: nsclc_stg4_driver
+  - pathway_id: nsclc_stage4_nodrivers
+    graph_id: nsclc_stg4_nodrivers
+  mappers:
+    concept_map: ../../vocabulary/resources/concept_maps.yaml
+    measurement_map: ../../vocabulary/resources/measurement_mappers.yaml
+    observation_map: ../../vocabulary/resources/observation_mappers.yaml

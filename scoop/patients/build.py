@@ -1,0 +1,420 @@
+# holding all these steps separately so that pydantic classes can build in the appropriate order
+from __future__ import annotations
+
+import logging
+import random
+from dataclasses import dataclass
+from datetime import timedelta
+from typing import Any
+
+from ..profiles.context import get_active_simulation_context
+from ..selection.interventions import (
+    Choice,
+    InterventionSpec,
+    NonHemOnc,
+    PhaseRef,
+    ProtocolRef,
+    Recipe,
+)
+from .condition_episode import Condition_Episode
+from .condition_occurrence import Condition_Occurrence
+from .contracts import PatientBuildInput, PatientBuildOutput
+from .episode_base import Episode_Base
+from .person import Person
+from .treatment_episode import Treatment_Episode, build_graph_outcome
+
+logger = logging.getLogger(__name__)
+
+
+MAX_GRAPH_SAMPLE_ATTEMPTS = 25
+
+
+@dataclass(frozen=True)
+class ScheduleBuildOptions:
+    gateway: Any
+    seed: int | None = None
+    start_offset_days: tuple[int, int] = (14, 42)
+
+
+def _attach_case_schedule(
+    treatment_episode: Treatment_Episode,
+    condition: Condition_Occurrence,
+    person: Person,
+    options: ScheduleBuildOptions | None,
+) -> None:
+    if options is None:
+        raise ValueError("schedule_options is required to build a schedule")
+    context = get_active_simulation_context()
+    registry = getattr(context, "registry_spec", None)
+    if registry is None:
+        raise ValueError("schedule_options requires a loaded profile registry")
+    if condition.condition_start_date is None:
+        raise ValueError("schedule_options requires a condition_start_date")
+    low, high = options.start_offset_days
+    if low < 0 or high < low:
+        raise ValueError("start_offset_days must be a non-negative ordered pair")
+    case_seed = options.seed if options.seed is not None else person.person_id
+    start_offset = random.Random(case_seed ^ 0x5C00_0001).randint(low, high)
+    from ..schedule.bridge import resolve_schedule_for_treatment
+    from ..schedule.rollout import UnresolvedScheduleError
+
+    try:
+        resolution = resolve_schedule_for_treatment(
+            treatment_episode,
+            registry,
+            options.gateway,
+            start_date=condition.condition_start_date + timedelta(days=start_offset),
+            seed=case_seed,
+        )
+    except UnresolvedScheduleError as exc:
+        exc.case_seed = case_seed
+        exc.regimen = treatment_episode.regimen_type
+        raise
+    treatment_episode.schedule_status = resolution.status
+    treatment_episode.schedule_reason = resolution.reason
+    treatment_episode.schedule_seed = case_seed
+    if resolution.schedule is not None:
+        treatment_episode.attach_schedule(resolution.schedule)
+
+
+def build_case(input: PatientBuildInput) -> PatientBuildOutput:
+    """Declare the explicit patient-build boundary without composing legacy stages yet."""
+
+    raise NotImplementedError(
+        "Explicit patient construction is intentionally deferred to Phase 8."
+    )
+
+
+@dataclass(frozen=True)
+class CaseBundle:
+    graph_sample: dict[str, Any]
+    person: Person
+    condition_occurrence: Condition_Occurrence
+    treatment_episode: Treatment_Episode | None
+
+
+def _active_profile_name() -> str:
+    context = get_active_simulation_context()
+    return getattr(context, "profile_name", "unknown_profile")
+
+
+def _active_profile_id() -> str:
+    context = get_active_simulation_context()
+    return getattr(context, "profile_id", "unknown_profile")
+
+
+def _sample_graph_state(require_regimen: bool = False, **overrides: Any) -> dict[str, Any]:
+    context = get_active_simulation_context()
+    if context is None or getattr(context, "graph", None) is None:
+        raise RuntimeError(
+            "No active simulation context is available. Load a profile before sampling."
+        )
+    intervention_catalog = (
+        getattr(context, "intervention_catalog", None) if require_regimen else None
+    )
+    last_error: Exception | None = None
+    last_sampled: dict[str, Any] | None = None
+
+    for _ in range(MAX_GRAPH_SAMPLE_ATTEMPTS if require_regimen else 1):
+        try:
+            sampled = context.graph.sample_one()
+            last_sampled = sampled
+            if overrides:
+                sampled.update(overrides)
+            if not require_regimen:
+                return sampled
+            build_graph_outcome(
+                graph_sample=sampled,
+                intervention_catalog=intervention_catalog,
+                source_profile=_active_profile_name(),
+            )
+            return sampled
+        except Exception as exc:
+            last_error = exc
+
+    if last_sampled is not None:
+        logger.debug(
+            "Falling back to the last sampled graph state without a registry-backed regimen endpoint: %s",
+            last_error,
+        )
+        return last_sampled
+
+    raise ValueError(
+        "Unable to sample a registry-backed treatment endpoint from the active profile graph."
+    ) from last_error
+
+
+def _build_person_fields(graph_sample: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sex": graph_sample.get("person.sex", "female"),
+        "age": graph_sample.get("person.age", 70),
+        "smoking_history": graph_sample.get("person.smoking_history", "never"),
+        "weight": graph_sample.get("person.weight", 75.0),
+        "graph_sample": graph_sample,
+    }
+
+
+def _build_condition_fields(graph_sample: dict[str, Any], person: Person) -> dict[str, Any]:
+    return {
+        "person_id": person.person_id,
+        "year_of_diagnosis": graph_sample.get("person.year_of_diagnosis"),
+        "years_since_diagnosis": graph_sample.get("person.years_since_diagnosis"),
+        "morphology": graph_sample.get("condition_occurrence.morphology", "neither"),
+        "laterality": graph_sample.get("condition_occurrence.laterality", "right"),
+        "topog": graph_sample.get("condition_occurrence.topog", "upper"),
+        "stage": graph_sample.get("condition_occurrence.cancer_stage", "stage_ii"),
+        "cancer_stage": graph_sample.get("condition_occurrence.cancer_stage"),
+        "biomarker": graph_sample.get("condition_occurrence.biomarker"),
+        "pdl1": graph_sample.get("condition_occurrence.pdl1"),
+        "pdl1_binary": graph_sample.get("condition_occurrence.pdl1_binary"),
+        "graph_sample": graph_sample,
+        "condition_domain": _active_profile_id(),
+        "source_profile": _active_profile_name(),
+    }
+
+
+def build_person(
+    graph_sample: dict[str, Any],
+    *,
+    attach_condition: bool = False,
+    **overrides: Any,
+) -> Person:
+    """Build a Person from an existing graph sample."""
+    person_fields = _build_person_fields(graph_sample)
+    person_fields["auto_create_condition"] = attach_condition
+    if overrides:
+        person_fields.update(overrides)
+    return Person(**person_fields)
+
+
+def build_condition_occurrence(
+    person: Person,
+    graph_sample: dict[str, Any],
+    *,
+    assign_treatment: bool = False,
+    **overrides: Any,
+) -> Condition_Occurrence:
+    """Build a Condition_Occurrence from an existing graph sample."""
+    condition_fields = _build_condition_fields(graph_sample, person)
+    condition_fields["auto_assign_regimen"] = assign_treatment
+    if overrides:
+        condition_fields.update(overrides)
+    return Condition_Occurrence(**condition_fields)
+
+
+def build_condition_episode(
+    condition_occurrence: Condition_Occurrence,
+    **overrides: Any,
+) -> Condition_Episode:
+    """Build one top-level OMOP Episode from an existing Condition_Occurrence."""
+    return Episode_Base.from_object(condition_occurrence, **overrides)
+
+
+def build_case_bundle(
+    graph_sample: dict[str, Any] | None = None,
+    *,
+    require_regimen_endpoint: bool = False,
+    include_treatment_episode: bool = False,
+    schedule_options: ScheduleBuildOptions | None = None,
+    person_overrides: dict[str, Any] | None = None,
+    condition_overrides: dict[str, Any] | None = None,
+    treatment_overrides: dict[str, Any] | None = None,
+) -> CaseBundle:
+    """Build a Person/Condition/Treatment bundle from one graph sample."""
+    sampled = graph_sample or _sample_graph_state(require_regimen=require_regimen_endpoint)
+    person = build_person(
+        sampled,
+        attach_condition=False,
+        **(person_overrides or {}),
+    )
+    condition = build_condition_occurrence(
+        person,
+        sampled,
+        assign_treatment=False,
+        **(condition_overrides or {}),
+    )
+    person.condition = condition
+
+    treatment_episode: Treatment_Episode | None = None
+    if include_treatment_episode or schedule_options is not None:
+        treatment_episode = assign_regimen(condition, **(treatment_overrides or {}))
+        condition.regimen = treatment_episode
+
+    if schedule_options is not None:
+        _attach_case_schedule(treatment_episode, condition, person, schedule_options)
+
+    return CaseBundle(
+        graph_sample=sampled,
+        person=person,
+        condition_occurrence=condition,
+        treatment_episode=treatment_episode,
+    )
+
+def person_from_config(**overrides) -> "Person":
+    """
+    Sample from the configuration and return a Person instance.
+    Optional keyword args override sampled values.
+    """
+    sampled = _sample_graph_state(require_regimen=False)
+    person_fields = _build_person_fields(sampled)
+    logger.debug(f"Person from graph sample [{person_fields}]")
+    if overrides:
+        person_fields.update(overrides)
+        logger.debug(f"Person with overrides [{person_fields}]")
+    return Person(**person_fields)
+
+
+def make_condition_occurrence(person: Person, graph_sample: dict[str, Any] | None = None, **overrides) -> "Condition_Occurrence":
+    """
+    Sample from the configuration and return a Condition_Occurrence instance.
+    Optional keyword args override sampled values.
+    """
+    sampled = graph_sample or _sample_graph_state(require_regimen=False)
+    condition_fields = _build_condition_fields(sampled, person)
+    logger.debug(f"Condition from graph sample [{condition_fields}]")
+    if overrides:
+        condition_fields.update(overrides)
+        logger.debug(f"Condition with overrides [{condition_fields}]")
+    return Condition_Occurrence(**condition_fields)
+
+
+def _choice_alternative_summary(member_spec: InterventionSpec) -> dict[str, Any]:
+    """One `bundle_phase_summary` entry for a `Choice` alternative.
+
+    Only handles a plain phase or protocol reference one level deep -- a
+    Choice made of Choices isn't supported here.
+    """
+
+    member_resolution = member_spec.resolution
+    if isinstance(member_resolution, PhaseRef):
+        return {"phase_id": member_resolution.phase_id, "source_type": "phaseref"}
+    if isinstance(member_resolution, ProtocolRef):
+        return {"protocol_id": member_resolution.protocol_id, "source_type": "protocolref"}
+    raise ValueError(
+        f"Choice member {member_spec.intervention_id!r} has an unsupported "
+        f"nested resolution {type(member_resolution).__name__}; only PhaseRef "
+        "and ProtocolRef choice members are currently supported."
+    )
+
+
+def assign_regimen(condition_occurrence: Condition_Occurrence, **overrides: Any) -> "Treatment_Episode":
+    """
+    Assign a relevant, clinically plausible regimen based on the Condition_Occurrence & Person parameters.
+    """
+    protocol_schedule = overrides.pop("protocol_schedule", None)
+
+    def finalize(episode: Treatment_Episode) -> Treatment_Episode:
+        if protocol_schedule is not None:
+            episode.attach_schedule(protocol_schedule)
+        return episode
+
+    graph_sample = condition_occurrence.graph_sample
+    if not graph_sample:
+        regimen_type = overrides.pop("regimen_type", "unresolved_treatment")
+        logger.debug(
+            "Assigning unresolved regimen for Condition[%s] because no graph sample was attached.",
+            condition_occurrence.condition_occurrence_id,
+        )
+        return finalize(Treatment_Episode(
+            regimen_type=regimen_type,
+            regimen_category_id=regimen_type,
+            condition_occurrence_id=condition_occurrence.condition_occurrence_id,
+            person_id=condition_occurrence.person_id,
+            source_profile=condition_occurrence.source_profile,
+            registry_resolver_type="none",
+            decision_context={},
+            **overrides,
+        ))
+
+    context = get_active_simulation_context()
+    intervention_catalog = getattr(context, "intervention_catalog", None)
+    try:
+        outcome = build_graph_outcome(
+            graph_sample=graph_sample,
+            intervention_catalog=intervention_catalog,
+            source_profile=condition_occurrence.source_profile or _active_profile_name(),
+        )
+        entry = intervention_catalog.specs[outcome.primary_category_id]
+    except ValueError as exc:
+        logger.debug(
+            "Unable to resolve graph sample to a canonical regimen for Condition[%s]: %s",
+            condition_occurrence.condition_occurrence_id,
+            exc,
+        )
+        return finalize(Treatment_Episode(
+            regimen_type="unresolved_treatment",
+            regimen_category_id="unresolved_treatment",
+            graph_endpoint=None,
+            graph_alias_used=None,
+            registry_resolver_type="none",
+            source_profile=condition_occurrence.source_profile or _active_profile_name(),
+            required_modifiers=[],
+            decision_context={
+                key: value
+                for key, value in graph_sample.items()
+                if value is not None and not key.startswith("treatment_episode.")
+            },
+            registry_notes=str(exc),
+            condition_occurrence_id=condition_occurrence.condition_occurrence_id,
+            person_id=condition_occurrence.person_id,
+            **overrides,
+        ))
+
+    logger.debug(
+        "Assigning regimen '%s' for Condition[%s] from graph endpoint '%s'",
+        outcome.primary_category_id,
+        condition_occurrence.condition_occurrence_id,
+        outcome.graph_endpoint,
+    )
+    resolution = entry.resolution
+    bundle_kwargs: dict[str, Any] = {}
+    if isinstance(resolution, Recipe):
+        bundle_kwargs = {
+            "bundle_recipe_id": outcome.primary_category_id,
+            "bundle_sequence_template": (
+                resolution.sequence_template.value
+                if resolution.sequence_template is not None
+                else None
+            ),
+            "bundle_phase_summary": [
+                {
+                    "phase_id": getattr(step.reference, "phase_id", None),
+                    "protocol_id": getattr(step.reference, "protocol_id", None),
+                    "timing": step.timing.value if step.timing is not None else None,
+                    "source_type": type(step.reference).__name__.lower(),
+                }
+                for step in resolution.steps
+            ],
+        }
+    elif isinstance(resolution, ProtocolRef):
+        bundle_kwargs = {"bundle_recipe_id": resolution.protocol_id}
+    elif isinstance(resolution, PhaseRef):
+        bundle_kwargs = {
+            "bundle_phase_summary": [
+                {"phase_id": resolution.phase_id, "source_type": "phaseref"}
+            ],
+        }
+    elif isinstance(resolution, Choice):
+        bundle_kwargs = {
+            "bundle_phase_summary": [
+                _choice_alternative_summary(intervention_catalog.specs[member_id])
+                for member_id in resolution.intervention_ids
+            ],
+        }
+    elif isinstance(resolution, NonHemOnc):
+        pass  # e.g. surgery -- nothing to schedule
+    return finalize(Treatment_Episode(
+        regimen_type=outcome.primary_category_id,
+        regimen_category_id=outcome.primary_category_id,
+        graph_endpoint=outcome.graph_endpoint,
+        graph_alias_used=outcome.graph_alias_used,
+        registry_resolver_type=outcome.resolver_type,
+        source_profile=outcome.source_profile,
+        required_modifiers=list(entry.requires),
+        decision_context=outcome.modifiers,
+        registry_notes=None,
+        condition_occurrence_id=condition_occurrence.condition_occurrence_id,
+        person_id=condition_occurrence.person_id,
+        **bundle_kwargs,
+        **overrides,
+    ))

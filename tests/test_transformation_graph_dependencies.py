@@ -1,7 +1,6 @@
-import random
 import unittest
 
-from scoop.configuration.transformation_graph import TransformationGraph
+from scoop.guidelines.graph import TransformationGraph
 
 
 class TransformationGraphDependencyTests(unittest.TestCase):
@@ -125,3 +124,7 @@ class TransformationGraphDependencyTests(unittest.TestCase):
 
         self.assertEqual(sampled["condition_occurrence.biomarker"], "egfr")
         self.assertEqual(sampled["treatment_episode.egfr_intervention"], "egfr_int")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,24 @@
+# Layer 4 of 4 in the legacy coalesce order (lowest precedence).
+#
+# The non-drug half of the legacy scoop.protocols.hemonc.models.COMPONENT_MAP
+# (CLS-12: non-drug components get a dedicated layer rather than being mixed
+# in with drug-level overrides). See component_overrides.yaml for the other
+# half and why the split is behavior-preserving.
+#
+# Matches the HemOnc `component` column exactly (case-sensitive, exact
+# string match) -- legacy behavior, not a new design choice.
+version: 1
+layer: non_drug_components
+rules:
+- key: External beam radiotherapy
+  category: radiotherapy
+  source: scoop.protocols.hemonc.models.COMPONENT_MAP
+  rationale: &legacy_rationale >-
+    Legacy behavior extracted from SCOOP. The original per-entry rationale
+    (from a pre-migration _temp/.../category_mappings.py, per
+    functional_specifications.md section 5.5) was lost before this codebase
+    was created and is not recoverable from source.
+- key: Surgery
+  category: surgery
+  source: scoop.protocols.hemonc.models.COMPONENT_MAP
+  rationale: *legacy_rationale

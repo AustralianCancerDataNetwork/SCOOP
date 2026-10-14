@@ -84,6 +84,7 @@ ipython_config.py
 
 # Dev docker compose
 docker-compose.override.yaml
+!docker-compose.override.yaml
 
 # data
 data/
@@ -213,3 +214,15 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .DS_Store
+.vscode/
+_design/
+source_guidelines/
+*.pdf
+_old/
+.devcontainer/
+!notebooks/
+notebooks/*
+!notebooks/07_nsclc_treatment_cohort_export.ipynb
+docker*
+.env*
+DOCKER*

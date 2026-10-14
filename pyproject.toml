@@ -3,17 +3,52 @@ name = "scoop"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
-    "omop-alchemy>=0.2.6",
-    "omop-graph>=0.1.3",
+    "hemonc-alchemy>=0.2.0,<1.0",
+    "omop-alchemy>=1.1.0,<2.0",
+    "omop-graph>=2.1.0,<3.0",
+    "oa-configurator>=1.0.0,<2.0.0",
     "pandas>=3.0.2",
-    "psycopg2-binary>=2.9.11",
+    "psycopg-binary>=2.9.11",
     "pydantic>=2.12.3",
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
 ]
+
+[project.optional-dependencies]
+authoring = [
+    "linkml>=1.9.6",
+    "linkml-runtime>=1.9.5",
+]
+# Everything needed to open and run notebooks/ without a second install step.
+# ipykernel and pandas are already core dependencies; these add the server, the
+# headless execution path (jupyter nbconvert --execute, nbclient, papermill),
+# and plotting.
+exploration = [
+    "jupyterlab>=4.4",
+    "nbclient>=0.10",
+    "nbconvert>=7.16",
+    "nbformat>=5.10",
+    "matplotlib>=3.9",
+]
+dev = [
+    "oa-configurator[dev,postgres]>=1.0.0,<2.0.0",
+    "pytest>=9.0.3",
+]
+
+[project.scripts]
+scoop-lint-nsclc-registry = "scoop.protocols.hemonc.registry_lint:main"
+scoop-lint-profile-components = "scoop.protocols.hemonc.component_lint:main"
+
+[tool.uv]
+# Prefer uv's own versioned interpreter installs over whatever an unversioned
+# system symlink such as /usr/local/bin/python3 currently points at. A macOS
+# python.org installer repoints that symlink on every release, which silently
+# breaks any venv built against it (the venv keeps lib/python3.13 while
+# bin/python starts resolving to 3.14). See also .python-version.
+python-preference = "managed"
 
 [build-system]
 requires = ["setuptools", "wheel"]
@@ -21,4 +56,28 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["scoop"]
+include = ["scoop*"]
+
+[tool.setuptools.package-data]
+# Operational profile and vocabulary YAML: runtime-relative resources loaded via
+# scoop.profiles.paths.CONFIG_ROOT, not just source-tree fixtures. These live under
+# plain data subdirectories (no __init__.py), so they must be declared explicitly;
+# setuptools does not infer them from packages.find.
+"scoop.profiles" = ["**/*.yaml"]
+"scoop.vocabulary" = ["resources/*.yaml"]
+"scoop.protocols.classification" = ["rules/*.yaml"]
+
+[tool.setuptools.data-files]
+"schema/linkml" = [
+    "schema/linkml/regimen_spec.yaml",
+    "schema/linkml/intervention_spec.yaml",
+    "schema/linkml/profile_manifest.yaml",
+    "schema/linkml/README.md",
+    "schema/linkml/validate.py",
+    "schema/linkml/examples/nsclc_registry.yaml",
+    "schema/linkml/examples/nsclc_interventions.yaml",
+    "schema/linkml/examples/nsclc_profile.yaml",
+]
+
+[project.entry-points."omop.config"]
+scoop = "scoop.config:ScoopConfig"

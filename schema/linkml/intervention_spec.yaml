@@ -1,0 +1,190 @@
+id: https://w3id.org/scoop/intervention-spec
+name: scoop_intervention_spec
+title: SCOOP intervention specification
+description: >-
+  The author-facing, canonical schema for declarative treatment-intervention
+  mappings. An intervention connects a graph decision to a phase, protocol,
+  choice, recipe, or non-HemOnc outcome.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  scoop: https://w3id.org/scoop/
+
+default_prefix: scoop
+default_range: string
+imports:
+  - linkml:types
+
+enums:
+  SequenceTemplate:
+    description: Observed bundle-level sequencing labels for a recipe.
+    permissible_values:
+      adjuvant: {}
+      postoperative: {}
+      concurrent: {}
+      sequential: {}
+
+  PhaseTiming:
+    description: Timing of one recipe step relative to the surrounding protocol.
+    permissible_values:
+      pre: {}
+      post: {}
+      concurrent: {}
+
+classes:
+  InterventionCatalog:
+    tree_root: true
+    description: A complete intervention catalog for one disease profile.
+    attributes:
+      profile_id:
+        description: Stable identifier for the disease profile.
+        identifier: true
+        required: true
+        range: string
+      version:
+        description: Authoring format version for this catalog.
+        required: true
+        range: integer
+      state_node_exemptions:
+        multivalued: true
+        range: string
+        description: Treatment-state nodes intentionally excluded from intervention coverage.
+      interventions:
+        description: Named intervention declarations in this catalog.
+        required: true
+        multivalued: true
+        inlined_as_list: true
+        range: InterventionSpec
+
+  InterventionSpec:
+    description: One named decision-to-treatment mapping.
+    attributes:
+      intervention_id:
+        description: Stable identifier for the intervention decision.
+        identifier: true
+        required: true
+        range: string
+      requires:
+        multivalued: true
+        range: string
+        description: Graph fields required to resolve this intervention.
+      internal:
+        range: boolean
+        description: Whether this declaration is an internal member of a Choice.
+      resolution:
+        description: The single phase, protocol, choice, recipe, or non-HemOnc outcome.
+        required: true
+        range: Resolution
+
+  Resolution:
+    description: Exactly one intervention resolution form.
+    exactly_one_of:
+      - slot_conditions:
+          phase:
+            required: true
+      - slot_conditions:
+          protocol:
+            required: true
+      - slot_conditions:
+          choice:
+            required: true
+      - slot_conditions:
+          recipe:
+            required: true
+      - slot_conditions:
+          non_hemonc:
+            required: true
+    attributes:
+      phase:
+        description: Phase resolved by this intervention.
+        inlined: true
+        range: PhaseReference
+      protocol:
+        description: Protocol resolved by this intervention.
+        range: string
+      choice:
+        description: Alternative intervention declarations to consider.
+        range: ChoiceReference
+      recipe:
+        description: Ordered treatment recipe resolved by this intervention.
+        range: Recipe
+      non_hemonc:
+        description: Non-HemOnc outcome resolved by this intervention.
+        range: NonHemOnc
+
+  PhaseReference:
+    description: A phase reference, optionally carrying a delivery technique.
+    attributes:
+      id:
+        description: Identifier of the referenced treatment phase.
+        identifier: true
+        required: true
+        range: string
+      technique:
+        description: Optional delivery technique associated with the phase.
+        range: string
+
+  ChoiceReference:
+    description: An explicit OR over at least two intervention identifiers.
+    attributes:
+      intervention_ids:
+        description: Intervention identifiers to consider as alternatives.
+        required: true
+        multivalued: true
+        range: string
+        minimum_cardinality: 2
+
+  Recipe:
+    description: An ordered recipe of phase or protocol references.
+    attributes:
+      sequence_template:
+        description: Coarse sequencing label for the recipe.
+        range: SequenceTemplate
+      steps:
+        description: Ordered references that make up the recipe.
+        required: true
+        multivalued: true
+        inlined_as_list: true
+        range: RecipeStep
+        minimum_cardinality: 1
+
+  RecipeStep:
+    description: One ordered phase or protocol reference in a recipe.
+    attributes:
+      ref:
+        description: The phase or protocol to resolve at this step.
+        required: true
+        range: RecipeReference
+      timing:
+        description: Relative timing of the referenced phase.
+        range: PhaseTiming
+
+  RecipeReference:
+    description: Exactly one phase or protocol reference in a recipe step.
+    exactly_one_of:
+      - slot_conditions:
+          phase:
+            required: true
+      - slot_conditions:
+          protocol:
+            required: true
+    attributes:
+      phase:
+        inlined: true
+        range: PhaseReference
+      protocol:
+        range: string
+
+  NonHemOnc:
+    description: An outcome outside the HemOnc regimen model.
+    attributes:
+      label:
+        description: Human-readable non-HemOnc outcome label.
+        required: true
+        range: string
+      concept_domain:
+        description: Optional concept domain for the non-HemOnc outcome.
+        range: string
+      concept_value:
+        description: Optional concept value for the non-HemOnc outcome.
+        range: string
