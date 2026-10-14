@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
+from live_db import LiveDatabaseTestCase
 from test_schedule_rollout import StubSignature
 
 from scoop.patients.treatment_episode import Treatment_Episode
@@ -11,8 +12,11 @@ from scoop.protocols.candidates import RegimenCandidate
 from scoop.protocols.hemonc.gateway import FakeHemOncGateway
 from scoop.protocols.spec import ProtocolSpec, RegistrySpec
 from scoop.schedule.bridge import resolve_schedule_for_treatment
-from scoop.schedule.rollout import ProtocolSchedule, ScheduleConfig, SystemicAdministration
-from scoop.vocabulary.database import get_omop_engine
+from scoop.schedule.rollout import (
+    ProtocolSchedule,
+    ScheduleConfig,
+    SystemicAdministration,
+)
 
 REGISTRY_PATH = (
     Path(__file__).resolve().parents[1]
@@ -80,8 +84,8 @@ def _run_nsclc_candidate(candidate, registry, phase_id, decision_context):
         seed=11,
         config=ScheduleConfig(max_cycles=3),
     )
-    if result is not None:
-        treatment.attach_schedule(result)
+    if result.schedule is not None:
+        treatment.attach_schedule(result.schedule)
     return result, treatment.roll_events(), gateway.calls
 
 
@@ -92,17 +96,23 @@ class ScheduleBridgeUnitTests(unittest.TestCase):
     def setUpClass(cls):
         cls.registry = RegistrySpec.from_path(REGISTRY_PATH)
 
-    def test_non_hemonc_resolution_returns_none_without_querying(self):
-        # No bundle_recipe_id, no bundle_phase_summary -- e.g. surgery_only.
-        treatment = _treatment_episode()
-        gateway = FakeHemOncGateway(candidates={})
-
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, gateway,
-            start_date=date(2021, 1, 1), seed=1,
+    def resolve(self, treatment, gateway):
+        return resolve_schedule_for_treatment(
+            treatment,
+            self.registry,
+            gateway,
+            start_date=date(2021, 1, 1),
+            seed=1,
         )
 
-        self.assertIsNone(result)
+    def test_non_hemonc_resolution_is_explicit_without_querying(self):
+        # No bundle_recipe_id, no bundle_phase_summary -- e.g. surgery_only.
+        treatment = _treatment_episode(registry_resolver_type="nonhemonc")
+        gateway = FakeHemOncGateway(candidates={})
+
+        result = self.resolve(treatment, gateway)
+
+        self.assertEqual(result.status, "non_hemonc")
         self.assertEqual(gateway.calls, [])
 
     def test_protocolref_with_full_coverage_produces_a_schedule(self):
@@ -114,53 +124,37 @@ class ScheduleBridgeUnitTests(unittest.TestCase):
             "port": [_candidate("PORT", phase="port", component="External beam radiotherapy")],
         })
 
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, gateway,
-            start_date=date(2021, 1, 1), seed=1,
-        )
+        result = self.resolve(treatment, gateway)
 
-        self.assertIsInstance(result, ProtocolSchedule)
+        self.assertIsInstance(result.schedule, ProtocolSchedule)
 
-    def test_protocolref_missing_registry_entry_returns_none(self):
-        treatment = _treatment_episode(bundle_recipe_id="not_a_real_protocol")
-        gateway = FakeHemOncGateway(candidates={})
-
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, gateway,
-            start_date=date(2021, 1, 1), seed=1,
-        )
-
-        self.assertIsNone(result)
-        self.assertEqual(gateway.calls, [])
-
-    def test_phaseref_with_coverage_produces_a_schedule(self):
-        # sbrt's resolution is `phase: {id: definitive_rt, technique: sbrt}`.
+    def test_phaseref_coverage_controls_schedule_resolution(self):
         treatment = _treatment_episode(
             bundle_phase_summary=[{"phase_id": "definitive_rt", "source_type": "phaseref"}],
         )
-        gateway = FakeHemOncGateway(candidates={
-            "definitive_rt": [_candidate("SBRT", phase="definitive_rt", component="External beam radiotherapy")],
-        })
-
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, gateway,
-            start_date=date(2021, 1, 1), seed=1,
+        scenarios = (
+            ("uncovered", {}, "no_candidates"),
+            (
+                "covered",
+                {
+                    "definitive_rt": [
+                        _candidate(
+                            "SBRT",
+                            phase="definitive_rt",
+                            component="External beam radiotherapy",
+                        )
+                    ]
+                },
+                "scheduled",
+            ),
         )
-
-        self.assertIsInstance(result, ProtocolSchedule)
-
-    def test_phaseref_with_no_coverage_returns_none(self):
-        treatment = _treatment_episode(
-            bundle_phase_summary=[{"phase_id": "definitive_rt", "source_type": "phaseref"}],
-        )
-        gateway = FakeHemOncGateway(candidates={})
-
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, gateway,
-            start_date=date(2021, 1, 1), seed=1,
-        )
-
-        self.assertIsNone(result)
+        for name, candidates, expected_status in scenarios:
+            with self.subTest(name=name):
+                result = self.resolve(
+                    treatment, FakeHemOncGateway(candidates=candidates)
+                )
+                self.assertEqual(result.status, expected_status)
+                self.assertEqual(result.schedule is not None, expected_status == "scheduled")
 
     def test_choice_falls_through_to_the_first_alternative_with_coverage(self):
         # ici_monotherapy_or_ici_with_chemotherapy_nonsquamous is a Choice
@@ -179,30 +173,36 @@ class ScheduleBridgeUnitTests(unittest.TestCase):
             ],
         })
 
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, gateway,
-            start_date=date(2021, 1, 1), seed=1,
-        )
+        result = self.resolve(treatment, gateway)
 
-        self.assertIsInstance(result, ProtocolSchedule)
+        self.assertIsInstance(result.schedule, ProtocolSchedule)
         self.assertIn("ici_monotherapy", gateway.calls)
         self.assertIn("ici_w_chemo_nonsquamous", gateway.calls)
 
-    def test_choice_with_no_alternative_covered_returns_none(self):
-        treatment = _treatment_episode(
-            bundle_phase_summary=[
-                {"phase_id": "ici_monotherapy", "source_type": "phaseref"},
-                {"phase_id": "ici_w_chemo_nonsquamous", "source_type": "phaseref"},
-            ],
+    def test_uncovered_protocol_references_report_no_candidates(self):
+        scenarios = (
+            (
+                "unknown protocol",
+                _treatment_episode(bundle_recipe_id="not_a_real_protocol"),
+                [],
+            ),
+            (
+                "uncovered choice",
+                _treatment_episode(
+                    bundle_phase_summary=[
+                        {"phase_id": "ici_monotherapy", "source_type": "phaseref"},
+                        {"phase_id": "ici_w_chemo_nonsquamous", "source_type": "phaseref"},
+                    ]
+                ),
+                ["ici_monotherapy", "ici_w_chemo_nonsquamous"],
+            ),
         )
-        gateway = FakeHemOncGateway(candidates={})
-
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, gateway,
-            start_date=date(2021, 1, 1), seed=1,
-        )
-
-        self.assertIsNone(result)
+        for name, treatment, expected_calls in scenarios:
+            with self.subTest(name=name):
+                gateway = FakeHemOncGateway(candidates={})
+                result = self.resolve(treatment, gateway)
+                self.assertEqual(result.status, "no_candidates")
+                self.assertEqual(gateway.calls, expected_calls)
 
 
 def test_schedule_bridge_returns_dated_events_for_a_source_day_choice():
@@ -227,13 +227,49 @@ def test_schedule_bridge_returns_dated_events_for_a_source_day_choice():
         config=ScheduleConfig(max_cycles=1),
     )
 
-    assert isinstance(result, ProtocolSchedule)
-    assert len(result.administrations) == 2
-    assert result.administrations[0].date == date(2026, 1, 1)
-    assert result.administrations[1].date in {date(2026, 1, 8), date(2026, 1, 9)}
+    assert isinstance(result.schedule, ProtocolSchedule)
+    assert len(result.schedule.administrations) == 2
+    assert result.schedule.administrations[0].date == date(2026, 1, 1)
+    assert result.schedule.administrations[1].date in {date(2026, 1, 8), date(2026, 1, 9)}
 
 
-class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
+def test_case_builder_attaches_explicit_schedule_outcome(monkeypatch):
+    import scoop.patients.build as builder
+
+    registry = RegistrySpec.from_path(REGISTRY_PATH)
+    person = SimpleNamespace(person_id=7, condition=None)
+    condition = SimpleNamespace(
+        person_id=7,
+        condition_occurrence_id=9,
+        condition_start_date=date(2026, 1, 1),
+        regimen=None,
+    )
+    treatment = _treatment_episode(registry_resolver_type="nonhemonc")
+    gateway = FakeHemOncGateway()
+    monkeypatch.setattr(builder, "build_person", lambda *args, **kwargs: person)
+    monkeypatch.setattr(
+        builder,
+        "build_condition_occurrence",
+        lambda *args, **kwargs: condition,
+    )
+    monkeypatch.setattr(builder, "assign_regimen", lambda *args, **kwargs: treatment)
+    monkeypatch.setattr(
+        builder,
+        "get_active_simulation_context",
+        lambda: SimpleNamespace(registry_spec=registry),
+    )
+
+    case = builder.build_case_bundle(
+        {"fixture": True},
+        schedule_options=builder.ScheduleBuildOptions(gateway=gateway, seed=19),
+    )
+
+    assert case.treatment_episode.schedule_status == "non_hemonc"
+    assert case.treatment_episode.schedule_seed == 19
+    assert gateway.calls == []
+
+
+class ScheduleBridgeLiveHemOncTests(LiveDatabaseTestCase):
     """Integration tests against the real HemOnc database.
 
     Skips cleanly (not a failure) when that database isn't reachable.
@@ -246,51 +282,10 @@ class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        try:
-            with get_omop_engine().connect():
-                pass
-        except Exception as exc:  # noqa: BLE001 - reported verbatim in the skip reason
-            raise unittest.SkipTest(
-                f"No database reachable ({type(exc).__name__}: {exc}); this "
-                "check needs both the OMOP vocabulary and HemOnc source "
-                "databases to be up."
-            )
-        try:
-            from sqlalchemy.orm import Session
-
-            from scoop.config import create_hemonc_engine, get_hemonc_context
-            from scoop.protocols.hemonc.gateway import SqlHemOncGateway
-
-            _, resolved = get_hemonc_context()
-            engine = create_hemonc_engine(resolved)
-            cls.session = Session(engine)
-            cls.gateway = SqlHemOncGateway(session=cls.session)
-        except Exception as exc:  # noqa: BLE001 - reported verbatim in the skip reason
-            raise unittest.SkipTest(
-                f"No HemOnc database reachable ({type(exc).__name__}: {exc})."
-            )
+        super().setUpClass()
         cls.registry = RegistrySpec.from_path(REGISTRY_PATH)
 
-    @classmethod
-    def tearDownClass(cls):
-        if hasattr(cls, "session"):
-            cls.session.close()
-
-    def test_non_hemonc_resolution_returns_none(self):
-        treatment = _treatment_episode()
-
-        result = resolve_schedule_for_treatment(
-            treatment, self.registry, self.gateway,
-            start_date=date(2021, 1, 1), seed=1,
-        )
-
-        self.assertIsNone(result)
-
-    def test_partial_hemonc_coverage_returns_none_without_raising(self):
-        # adjuvant_cisplatin_osimertinib needs both adjuvant_cisplatin_based
-        # (real HemOnc coverage, confirmed separately) and
-        # adjuvant_osimertinib (no candidates today) -- the whole protocol
-        # should come back as no schedule, not an exception.
+    def test_live_protocol_without_full_phase_coverage_has_no_candidates(self):
         treatment = _treatment_episode(bundle_recipe_id="adjuvant_cisplatin_osimertinib")
 
         result = resolve_schedule_for_treatment(
@@ -298,7 +293,8 @@ class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
             start_date=date(2021, 1, 1), seed=1,
         )
 
-        self.assertIsNone(result)
+        self.assertEqual(result.status, "no_candidates")
+        self.assertIsNone(result.schedule)
 
     def test_at_least_one_real_nsclc_phase_schedules_successfully(self):
         # HemOnc coverage per phase can drift, so try several rather than
@@ -318,8 +314,8 @@ class ScheduleBridgeLiveHemOncTests(unittest.TestCase):
                 treatment, self.registry, self.gateway,
                 start_date=date(2021, 1, 1), seed=1,
             )
-            if result is not None:
-                schedules.append((phase_id, result))
+            if result.schedule is not None:
+                schedules.append((phase_id, result.schedule))
 
         self.assertTrue(
             schedules,
@@ -375,18 +371,18 @@ def test_real_nsclc_candidate_snapshot_through_registry_bridge():
         seed=11,
         config=ScheduleConfig(max_cycles=3),
     )
-    assert result.selected_protocol.phases[0].regimen.variant_cui == 133537
-    assert [a.date for a in result.administrations] == [
+    assert result.schedule.selected_protocol.phases[0].regimen.variant_cui == 133537
+    assert [a.date for a in result.schedule.administrations] == [
         date(2026, 1, 1),
         date(2026, 1, 22),
         date(2026, 2, 12),
     ]
-    assert [a.cycle_number for a in result.administrations] == [1, 2, 3]
+    assert [a.cycle_number for a in result.schedule.administrations] == [1, 2, 3]
     assert all(
         isinstance(a, SystemicAdministration)
         and a.source_sig_id == 20450
         and a.dose == 200
-        for a in result.administrations
+        for a in result.schedule.administrations
     )
     assert gateway.calls == [phase_id]
 
@@ -418,9 +414,9 @@ def test_nsclc_selected_treatment_emits_reproducible_context_events():
         {"condition_occurrence.morphology": "nonsquamous"},
     )
     result, (drugs, procedures), gateway_calls = first
-    assert missing_context[0] is None
-    assert result is not None
-    selected_candidate = result.selected_protocol.phases[0].regimen
+    assert missing_context[0].status == "no_selection"
+    assert result.schedule is not None
+    selected_candidate = result.schedule.selected_protocol.phases[0].regimen
     signature = selected_candidate.sigs[0]
     assert first == second
     assert gateway_calls == [phase_id]

@@ -1,12 +1,16 @@
+from datetime import date
 from pathlib import Path
+
+import pytest
+import sqlalchemy as sa
+from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Synonym
 
 from scoop.vocabulary.gateway import (
     DefaultVocabularyGateway,
     FakeVocabularyGateway,
-    VocabularyMappers,
     VocabularyGateway,
+    VocabularyMappers,
 )
-
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = ROOT / "scoop"
@@ -87,6 +91,67 @@ def test_route_resolution_is_a_separate_vocabulary_source():
 
     assert gateway.resolve_route_concept("intravenous") == 4171047
     assert gateway.resolve_route_concept("ns") is None
+
+
+def test_gateway_synonym_fallback_uses_schema_map_and_rejects_ambiguity(monkeypatch):
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS omop")
+    routed = engine.execution_options(schema_translate_map={None: "omop"})
+    Concept.__table__.create(routed)
+    Concept_Synonym.__table__.create(routed)
+    with routed.begin() as connection:
+        connection.execute(
+            Concept.__table__.insert(),
+            [
+                {
+                    "concept_id": concept_id,
+                    "concept_name": f"Drug {concept_id}",
+                    "domain_id": "Drug",
+                    "vocabulary_id": "RxNorm",
+                    "concept_class_id": "Ingredient",
+                    "standard_concept": "S",
+                    "concept_code": str(concept_id),
+                    "valid_start_date": date(2000, 1, 1),
+                    "valid_end_date": date(2099, 12, 31),
+                    "invalid_reason": None,
+                }
+                for concept_id in (10, 11)
+            ],
+        )
+        connection.execute(
+            Concept_Synonym.__table__.insert(),
+            [
+                {
+                    "concept_id": concept_id,
+                    "concept_synonym_name": synonym,
+                    "language_concept_id": 4180186,
+                }
+                for concept_id, synonym in (
+                    (10, "Only synonym"),
+                    (10, "Shared synonym"),
+                    (11, "Shared synonym"),
+                )
+            ],
+        )
+
+    class NoNameMatch:
+        def lookup(self, _value):
+            return None
+
+    from omop_alchemy.toolkit.core import concepts
+
+    monkeypatch.setattr(
+        concepts,
+        "make_concept_resolver",
+        lambda *_args, **_kwargs: NoNameMatch(),
+    )
+    gateway = DefaultVocabularyGateway(engine_factory=lambda: routed)
+    assert gateway.resolve_component_concept("drug", "Only synonym") == 10
+    with pytest.raises(LookupError, match="is ambiguous"):
+        gateway.resolve_component_concept("drug", "Shared synonym")
+
+    engine.dispose()
 
 
 class _StubHemOncResolver:

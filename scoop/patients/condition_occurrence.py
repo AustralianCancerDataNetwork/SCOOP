@@ -171,10 +171,6 @@ class Condition_Occurrence(TransformableBase):
         self._assign_treatment()
         return self
 
-    def __post_init__(self) -> None:
-        if self.regimen:
-            drug_exposures, procedures = self.regimen.roll_events()
-
     def to_omop_row(self) -> "OmopConditionOccurrence":
         from omop_alchemy.cdm import model as omop_model
 

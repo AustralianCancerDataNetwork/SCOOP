@@ -2,28 +2,30 @@
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-import random
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from .database import get_omop_engine
+import sqlalchemy as sa
+
 from ..profiles.paths import (
-    CONDITION_MAP_FILENAME,
     CONCEPT_MAP_FILENAME,
+    CONDITION_MAP_FILENAME,
+    CONFIG_ROOT,
     EPISODE_MAP_FILENAME,
+    MAPPERS_DIRNAME,
     MEASUREMENT_MAP_FILENAME,
     MODIFIER_MAP_FILENAME,
     OBSERVATION_MAP_FILENAME,
-    CONFIG_ROOT,
-    MAPPERS_DIRNAME,
 )
+from .database import get_omop_engine
 
 if TYPE_CHECKING:
-    from .condition_map import ConditionMapper
     from .concept_map import ConceptMapper
+    from .condition_map import ConditionMapper
     from .episode_map import EpisodeMapper
     from .fields import MeasurementMapper, ObservationMapper
     from .modifier_map import ModifierMapper
@@ -155,8 +157,8 @@ class DefaultVocabularyGateway:
         if cached is not None:
             return cached
 
-        from .condition_map import ConditionMapper
         from .concept_map import ConceptMapper
+        from .condition_map import ConditionMapper
         from .episode_map import EpisodeMapper
         from .fields import MeasurementMapper, ObservationMapper
         from .modifier_map import ModifierMapper
@@ -244,11 +246,11 @@ class DefaultVocabularyGateway:
         if omop_domain is None or not value:
             return None
 
+        engine = self._get_engine()
+        if engine is None:
+            return None
         resolver = self._omop_resolvers.get(omop_domain)
         if resolver is None:
-            engine = self._get_engine()
-            if engine is None:
-                return None
             from omop_alchemy.toolkit.core.concepts import make_concept_resolver
             from sqlalchemy.orm import Session
 
@@ -258,11 +260,14 @@ class DefaultVocabularyGateway:
                     name=f"scoop.{omop_domain.lower()}.component",
                     domain_id=omop_domain,
                     unknown=None,
-                    include_synonyms=True,
+                    include_synonyms=False,
                     require_active=True,
                 )
             self._omop_resolvers[omop_domain] = resolver
-        return resolver.lookup(value)
+        resolved = resolver.lookup(value)
+        if resolved is not None:
+            return resolved
+        return _lookup_omop_synonym(engine, omop_domain, value)
 
     def resolve_route_concept(self, value: str | None) -> int | None:
         """Resolve an OMOP route using the released vocabulary hierarchy."""
@@ -365,6 +370,32 @@ def get_active_vocabulary_mappers() -> VocabularyMappers:
         if gateway is not None:
             return gateway.get_mappers()
     return get_default_vocabulary_gateway().get_mappers()
+
+
+def _lookup_omop_synonym(engine: Any, domain: str, value: str) -> int | None:
+    from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Synonym
+    from sqlalchemy.orm import Session
+
+    statement = (
+        sa.select(Concept_Synonym.concept_id)
+        .join(Concept, Concept.concept_id == Concept_Synonym.concept_id)
+        .where(
+            sa.func.lower(Concept_Synonym.concept_synonym_name) == value.lower(),
+            Concept.domain_id == domain,
+            Concept.standard_concept.in_(("S", "C")),
+            Concept.invalid_reason.is_(None),
+        )
+        .distinct()
+        .order_by(Concept_Synonym.concept_id)
+    )
+    with Session(engine) as session:
+        candidates = session.scalars(statement).all()
+    if len(candidates) > 1:
+        raise LookupError(
+            f"OMOP synonym {value!r} is ambiguous in the {domain!r} domain: "
+            f"{candidates}"
+        )
+    return int(candidates[0]) if candidates else None
 
 
 __all__ = [

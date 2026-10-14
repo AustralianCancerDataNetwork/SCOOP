@@ -35,6 +35,8 @@ class UnresolvedScheduleError(ValueError):
         self.sig_id = sig_id
         self.phase_id = phase_id
         self.reason = reason
+        self.case_seed: int | None = None
+        self.regimen: str | None = None
         super().__init__(
             f"Unresolved schedule for sig {sig_id!r} in phase {phase_id!r}: {reason}"
         )
@@ -98,6 +100,7 @@ class ProtocolSchedule:
     selected_protocol: SelectedProtocol | None = None
     skipped_phases: tuple[str, ...] = field(default_factory=tuple)
     phase_start_dates: dict[str, date] = field(default_factory=dict)
+    seed: int | None = None
 
 
 def schedule(
@@ -173,6 +176,7 @@ def schedule(
         selected_protocol=selected_protocol,
         skipped_phases=tuple(skipped_phases),
         phase_start_dates=phase_start_dates,
+        seed=seed,
     )
 
 

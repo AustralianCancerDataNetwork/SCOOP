@@ -12,6 +12,7 @@ from ..schedule.rollout import (
     SystemicAdministration,
 )
 from ..selection.interventions import InterventionCatalog, Recipe
+from .episode_base import Episode_Base
 from .transforms import TransformableBase
 
 
@@ -35,6 +36,9 @@ class Treatment_Episode(TransformableBase):
     drug_exposures: list[dict[str, Any]] = Field(default_factory=list)
     procedures: list[dict[str, Any]] = Field(default_factory=list)
     schedule_skipped_phases: list[str] = Field(default_factory=list)
+    schedule_status: str | None = None
+    schedule_reason: str | None = None
+    schedule_seed: int | None = None
 
     def roll_events(self):
         """Return event payloads explicitly produced by treatment resolution."""
@@ -104,6 +108,14 @@ class Treatment_Episode(TransformableBase):
         self.procedures = procedures
         self.schedule_skipped_phases = list(protocol_schedule.skipped_phases)
         return self
+
+
+class TreatmentEpisodeRecord(Episode_Base):
+    """OMOP Episode row and event links for one resolved treatment schedule."""
+
+    _episode_mapper_key = "treatment_episode"
+    _episode_label = "TreatmentEpisodeRecord"
+    _requires_object_concept_id = False
 
 
 NON_REGISTRY_TREATMENT_STATE_NODES = {"resection_margin"}

@@ -1,15 +1,13 @@
 # holding all these steps separately so that pydantic classes can build in the appropriate order
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Any
-import logging
 
-from .person import Person
-from .condition_occurrence import Condition_Occurrence
-from .condition_episode import Condition_Episode
-from .episode_base import Episode_Base
-from .treatment_episode import Treatment_Episode, build_graph_outcome
-from .contracts import PatientBuildInput, PatientBuildOutput
+import logging
+import random
+from dataclasses import dataclass
+from datetime import timedelta
+from typing import Any
+
+from ..profiles.context import get_active_simulation_context
 from ..selection.interventions import (
     Choice,
     InterventionSpec,
@@ -18,13 +16,65 @@ from ..selection.interventions import (
     ProtocolRef,
     Recipe,
 )
-
-from ..profiles.context import get_active_simulation_context
+from .condition_episode import Condition_Episode
+from .condition_occurrence import Condition_Occurrence
+from .contracts import PatientBuildInput, PatientBuildOutput
+from .episode_base import Episode_Base
+from .person import Person
+from .treatment_episode import Treatment_Episode, build_graph_outcome
 
 logger = logging.getLogger(__name__)
 
 
 MAX_GRAPH_SAMPLE_ATTEMPTS = 25
+
+
+@dataclass(frozen=True)
+class ScheduleBuildOptions:
+    gateway: Any
+    seed: int | None = None
+    start_offset_days: tuple[int, int] = (14, 42)
+
+
+def _attach_case_schedule(
+    treatment_episode: Treatment_Episode,
+    condition: Condition_Occurrence,
+    person: Person,
+    options: ScheduleBuildOptions | None,
+) -> None:
+    if options is None:
+        raise ValueError("schedule_options is required to build a schedule")
+    context = get_active_simulation_context()
+    registry = getattr(context, "registry_spec", None)
+    if registry is None:
+        raise ValueError("schedule_options requires a loaded profile registry")
+    if condition.condition_start_date is None:
+        raise ValueError("schedule_options requires a condition_start_date")
+    low, high = options.start_offset_days
+    if low < 0 or high < low:
+        raise ValueError("start_offset_days must be a non-negative ordered pair")
+    case_seed = options.seed if options.seed is not None else person.person_id
+    start_offset = random.Random(case_seed ^ 0x5C00_0001).randint(low, high)
+    from ..schedule.bridge import resolve_schedule_for_treatment
+    from ..schedule.rollout import UnresolvedScheduleError
+
+    try:
+        resolution = resolve_schedule_for_treatment(
+            treatment_episode,
+            registry,
+            options.gateway,
+            start_date=condition.condition_start_date + timedelta(days=start_offset),
+            seed=case_seed,
+        )
+    except UnresolvedScheduleError as exc:
+        exc.case_seed = case_seed
+        exc.regimen = treatment_episode.regimen_type
+        raise
+    treatment_episode.schedule_status = resolution.status
+    treatment_episode.schedule_reason = resolution.reason
+    treatment_episode.schedule_seed = case_seed
+    if resolution.schedule is not None:
+        treatment_episode.attach_schedule(resolution.schedule)
 
 
 def build_case(input: PatientBuildInput) -> PatientBuildOutput:
@@ -165,6 +215,7 @@ def build_case_bundle(
     *,
     require_regimen_endpoint: bool = False,
     include_treatment_episode: bool = False,
+    schedule_options: ScheduleBuildOptions | None = None,
     person_overrides: dict[str, Any] | None = None,
     condition_overrides: dict[str, Any] | None = None,
     treatment_overrides: dict[str, Any] | None = None,
@@ -185,9 +236,12 @@ def build_case_bundle(
     person.condition = condition
 
     treatment_episode: Treatment_Episode | None = None
-    if include_treatment_episode:
+    if include_treatment_episode or schedule_options is not None:
         treatment_episode = assign_regimen(condition, **(treatment_overrides or {}))
         condition.regimen = treatment_episode
+
+    if schedule_options is not None:
+        _attach_case_schedule(treatment_episode, condition, person, schedule_options)
 
     return CaseBundle(
         graph_sample=sampled,

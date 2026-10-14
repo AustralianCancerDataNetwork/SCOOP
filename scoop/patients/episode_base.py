@@ -6,9 +6,11 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, Field, model_validator
 
 from scoop.vocabulary.gateway import get_active_vocabulary_mappers
-from .ids import episode_id_seq
+
 from ..export.omop import OmopExportBundle, as_datetime
+from .ids import episode_id_seq
 from .transforms import TransformableBase
+
 
 def _source_value(source: Any, *names: str) -> Any:
     if source is None:
@@ -137,8 +139,8 @@ class Episode_Base(TransformableBase):
 
     @classmethod
     def from_object(cls, source_object: Any, **kwargs: Any) -> "Episode_Base":
-        from .condition_occurrence import Condition_Occurrence
         from .condition_episode import Condition_Episode
+        from .condition_occurrence import Condition_Occurrence
 
         if isinstance(source_object, Condition_Occurrence):
             return Condition_Episode(

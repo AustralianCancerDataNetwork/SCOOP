@@ -8,8 +8,10 @@ instead of reversing it.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any
+import logging
+from typing import TYPE_CHECKING, Literal
 
 from ..protocols.candidates import assemble
 from ..protocols.hemonc.gateway import HemOncGateway
@@ -19,6 +21,16 @@ from .rollout import ProtocolSchedule, ScheduleConfig, schedule
 
 if TYPE_CHECKING:
     from ..patients.treatment_episode import Treatment_Episode
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ScheduleResolution:
+    schedule: ProtocolSchedule | None
+    status: Literal["scheduled", "non_hemonc", "no_selection", "no_candidates"]
+    reason: str | None = None
 
 
 def _single_phase_spec(phase_id: str, registry: RegistrySpec) -> ProtocolSpec | None:
@@ -78,21 +90,54 @@ def resolve_schedule_for_treatment(
     start_date: date,
     seed: int,
     config: ScheduleConfig | None = None,
-) -> ProtocolSchedule | None:
+) -> ScheduleResolution:
     """Turn an assigned regimen into dated administrations.
 
-    Returns `None` -- not an error -- when there's nothing to schedule
-    (a non-HemOnc intervention like surgery) or no HemOnc coverage for any
-    candidate. Check `treatment_episode.registry_resolver_type` yourself if
-    you need to tell those two cases apart.
+    The status distinguishes intentional non-HemOnc treatment from coverage gaps.
     """
 
     schedule_config = config or ScheduleConfig()
-    for spec in _protocol_specs_to_try(treatment_episode, registry):
+    specs = _protocol_specs_to_try(treatment_episode, registry)
+    if not specs:
+        status = (
+            "non_hemonc"
+            if treatment_episode.registry_resolver_type in {"nonhemonc", "non_hemonc"}
+            else "no_candidates"
+        )
+        reason = (
+            None
+            if status == "non_hemonc"
+            else "No registry protocol matched the treatment"
+        )
+        return ScheduleResolution(None, status, reason)
+
+    had_candidates = False
+    reasons: list[str] = []
+    for spec in specs:
         candidates = assemble(spec, gateway)
+        had_candidates |= any(
+            phase.options
+            for candidate in candidates
+            for phase in candidate.phases
+        )
         context = PatientContext(values=treatment_episode.decision_context)
         selected = select(candidates, context, seed=seed)
         if isinstance(selected, NoSelection):
+            logger.info(
+                "No schedule selected for %s: %s",
+                spec.protocol_id,
+                selected.reason,
+            )
+            reasons.append(selected.reason)
             continue
-        return schedule(selected, start_date, seed, schedule_config)
-    return None
+        return ScheduleResolution(
+            schedule(selected, start_date, seed, schedule_config), "scheduled"
+        )
+    if not had_candidates:
+        return ScheduleResolution(
+            None,
+            "no_candidates",
+            "No HemOnc candidates matched the registry phases",
+        )
+    reason = "; ".join(dict.fromkeys(reasons)) or "No candidate passed selection"
+    return ScheduleResolution(None, "no_selection", reason)
