@@ -23,6 +23,31 @@ When HemOnc gives alternative days, SCOOP picks one option using the schedule se
 
 This seeded choice is a simulation policy; it does not mean the source prefers that day. The selected alternative is retained as a dated event, rather than representing all alternatives as administrations.
 
+## Adding a schedule to a generated case
+
+Schedule generation is opt-in when building a `CaseBundle`:
+
+```python
+from scoop.patients.build import ScheduleBuildOptions, build_case_bundle
+
+case = build_case_bundle(
+    graph_sample,
+    include_schedule=True,
+    schedule_options=ScheduleBuildOptions(
+        gateway=context.vocabulary_gateway,
+        seed=sample_seed,
+    ),
+)
+```
+
+The schedule start date is the condition start date plus a deterministic offset from the schedule seed (14 to 42 days by default). `Treatment_Episode` records the outcome as `scheduled`, `no_selection`, `non_hemonc`, or `no_candidates`, along with a reason where available. Unresolved timing raises `UnresolvedScheduleError`; handle it as a per-case rejection when building a cohort.
+
+## Exporting cases and cohorts to OMOP
+
+`export_case(case, gateway)` combines the person, condition, treatment episode, drug exposures, procedure occurrences, and episode links into one `OmopExportBundle`. Treatment `Episode` rows link each exported drug or procedure row through `episode_event`; the condition episode separately links to its `condition_occurrence`. Seeded exports reserve a deterministic event-ID range for each seed, so rebuilding the same seed produces the same event rows and different seeds receive separate ranges. An unseeded, manually assembled schedule continues to use process-wide sequences.
+
+Use `export_cohort(count, build_case, gateway)` when an individual case can be rejected. It returns successful bundles and per-seed rejection records for unresolved schedules or components that cannot map to OMOP. Do not persist a rejected partial case. Before persistence, the exporters check that required OMOP columns are populated. A missing drug or procedure mapping raises `UnmappableComponentError` with the source name and HemOnc CUI so it can be reported or reviewed.
+
 ## Repeated and optional treatment
 
 Numeric repeat markers use the interval recorded in the source. Letter markers such as `(+c)` or `(+n21)` in `timing_sequence` have no numeric cycle interval, so SCOOP repeats them at one-cycle intervals; for `(+n21)`, the 21-day marker does not cap this cycle-level repeat. The usual cycle-block and component survival probabilities sample a geometric continuation tail. `max_cycles` caps the highest cycle included. When both continuation probabilities are `1`, `max_cycles` is required.
