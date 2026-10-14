@@ -13,6 +13,10 @@ Profiles live in `scoop/profiles/<profile_id>/`:
 | `*_protocol_registry.yaml` | Defines HemOnc-backed treatment phases and protocols. |
 | `*_interventions.yaml` | Connects treatment decision endpoints to phases, protocols, alternatives, recipes, or non-HemOnc outcomes. |
 
+## Update an existing profile
+
+Keep the graph and pathway identifiers when their clinical meaning is unchanged. Move treatment candidate requirements into the protocol registry, then map graph treatment endpoints in the intervention catalog. The registry describes which HemOnc candidates can represent a phase or protocol; the intervention catalog describes how a sampled endpoint resolves to that phase, protocol, an explicit alternative, a recipe, or a non-HemOnc outcome. Register both files in `profile.yaml`, along with the graph and vocabulary map paths, and validate the profile before running it.
+
 For a working example, open the [NSCLC profile folder](../scoop/profiles/nsclc/). The [treatment matching guide](hemonc_grouping_model.md) explains how its registry and intervention catalog fit together.
 
 ## A practical authoring sequence

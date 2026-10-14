@@ -8,6 +8,7 @@ from datetime import timedelta
 from typing import Any
 
 from ..profiles.context import get_active_simulation_context
+from ..schedule.rollout import ScheduleConfig
 from ..selection.interventions import (
     Choice,
     InterventionSpec,
@@ -34,9 +35,10 @@ class ScheduleBuildOptions:
     gateway: Any
     seed: int | None = None
     start_offset_days: tuple[int, int] = (14, 42)
+    config: ScheduleConfig | None = None
 
 
-def _attach_case_schedule(
+def attach_case_schedule(
     treatment_episode: Treatment_Episode,
     condition: Condition_Occurrence,
     person: Person,
@@ -65,6 +67,7 @@ def _attach_case_schedule(
             options.gateway,
             start_date=condition.condition_start_date + timedelta(days=start_offset),
             seed=case_seed,
+            config=options.config,
         )
     except UnresolvedScheduleError as exc:
         exc.case_seed = case_seed
@@ -75,6 +78,9 @@ def _attach_case_schedule(
     treatment_episode.schedule_seed = case_seed
     if resolution.schedule is not None:
         treatment_episode.attach_schedule(resolution.schedule)
+
+
+_attach_case_schedule = attach_case_schedule
 
 
 def build_case(input: PatientBuildInput) -> PatientBuildOutput:
