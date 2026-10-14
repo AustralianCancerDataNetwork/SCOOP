@@ -1,0 +1,16 @@
+name: Release Update
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  draft:
+    if: github.event.pull_request.merged == true
+    uses: AustralianCancerDataNetwork/cava-devops/.github/workflows/release-drafter.yml@main
+    secrets: inherit
