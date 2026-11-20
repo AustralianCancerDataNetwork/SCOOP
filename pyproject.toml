@@ -6,9 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.1.0",
-    "hemonc-alchemy>=0.2.0,<1.0",
-    "omop-alchemy>=1.1.0,<2.0",
-    "oa-configurator>=1.0.0,<2.0.0",
+    "hemonc-alchemy[duckdb,omop]>=0.6.2,<0.7",
+    "omop-alchemy>=3.0.0,<4.0",
+    "oa-configurator[duckdb]>=2.1.0,<3.0.0",
     "pandas>=3.0.2",
     "psycopg-binary>=2.9.11",
     "pydantic>=2.12.3",
@@ -33,7 +33,7 @@ exploration = [
     "matplotlib>=3.9",
 ]
 dev = [
-    "oa-configurator[dev,postgres]>=1.0.0,<2.0.0",
+    "oa-configurator[dev,postgres,duckdb]>=2.1.0,<3.0.0",
     "pytest>=9.0.3",
 ]
 

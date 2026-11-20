@@ -97,7 +97,7 @@ def test_gateway_synonym_fallback_uses_schema_map_and_rejects_ambiguity(monkeypa
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS omop")
-    routed = engine.execution_options(schema_translate_map={None: "omop"})
+    routed = engine.execution_options(schema_translate_map={"vocab": "omop"})
     Concept.__table__.create(routed)
     Concept_Synonym.__table__.create(routed)
     with routed.begin() as connection:

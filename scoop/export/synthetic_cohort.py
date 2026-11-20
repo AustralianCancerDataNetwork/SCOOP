@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import sqlalchemy as sa
-from omop_alchemy.maintenance.cli_schema_tables import create_missing_tables
 from sqlalchemy import MetaData, Table, select
 from sqlalchemy.orm import Session
 
@@ -34,7 +33,12 @@ from ..profiles.manifest import load_routed_profile
 from ..protocols.hemonc.gateway import SqlHemOncGateway
 from ..schedule.rollout import ScheduleConfig, UnresolvedScheduleError
 from ..vocabulary.gateway import DefaultVocabularyGateway
-from .omop import OmopExportConfig, UnmappableComponentError, export_case
+from .omop import (
+    OmopExportConfig,
+    UnmappableComponentError,
+    create_cdm_sqlite_engine,
+    export_case,
+)
 
 _BUNDLE_FIELDS = (
     "condition_occurrences",
@@ -761,8 +765,7 @@ def _generate_staging_database(
         target.close()
 
     root = options.profile_root or Path(__file__).resolve().parents[1]
-    target_engine = sa.create_engine(f"sqlite:///{staging}")
-    create_missing_tables(target_engine)
+    target_engine = create_cdm_sqlite_engine(staging)
     _create_export_tables(target_engine)
     vocabulary_gateway = DefaultVocabularyGateway(
         root,
