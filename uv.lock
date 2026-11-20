@@ -2116,7 +2116,6 @@ wheels = [
 
 [[package]]
 name = "onco-scoop"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "hemonc-alchemy", extra = ["duckdb", "omop"] },
@@ -2158,7 +2157,7 @@ requires-dist = [
     { name = "nbclient", marker = "extra == 'exploration'", specifier = ">=0.10" },
     { name = "nbconvert", marker = "extra == 'exploration'", specifier = ">=7.16" },
     { name = "nbformat", marker = "extra == 'exploration'", specifier = ">=5.10" },
-    { name = "oa-configurator", extras = ["dev", "postgres", "duckdb"], marker = "extra == 'dev'", specifier = ">=2.1.0,<3.0.0" },
+    { name = "oa-configurator", extras = ["dev", "duckdb", "postgres"], marker = "extra == 'dev'", specifier = ">=2.1.0,<3.0.0" },
     { name = "oa-configurator", extras = ["duckdb"], specifier = ">=2.1.0,<3.0.0" },
     { name = "omop-alchemy", specifier = ">=3.0.0,<4.0" },
     { name = "pandas", specifier = ">=3.0.2" },
