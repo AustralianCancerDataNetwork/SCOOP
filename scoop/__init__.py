@@ -5,7 +5,7 @@ import os
 
 __all__ = ["Person", "Condition_Occurrence", "Treatment_Episode"]
 try:
-    __version__ = importlib_metadata.version(__name__)
+    __version__ = importlib_metadata.version("onco-scoop")
 except importlib_metadata.PackageNotFoundError:
     __version__ = "0.0.0"
 _LOGLEVEL = os.getenv("SCOOP_LOGLEVEL", "INFO").upper()

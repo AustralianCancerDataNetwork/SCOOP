@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import sqlalchemy as sa
-from omop_alchemy.maintenance.cli_schema_tables import create_missing_tables
 from sqlalchemy import MetaData, Table, select
 from sqlalchemy.orm import Session
 
@@ -34,7 +33,12 @@ from ..profiles.manifest import load_routed_profile
 from ..protocols.hemonc.gateway import SqlHemOncGateway
 from ..schedule.rollout import ScheduleConfig, UnresolvedScheduleError
 from ..vocabulary.gateway import DefaultVocabularyGateway
-from .omop import OmopExportConfig, UnmappableComponentError, export_case
+from .omop import (
+    OmopExportConfig,
+    UnmappableComponentError,
+    create_cdm_sqlite_engine,
+    export_case,
+)
 
 _BUNDLE_FIELDS = (
     "condition_occurrences",
@@ -52,7 +56,6 @@ _BATCH_SIZE_DEFAULT = 200
 class SyntheticCohortOptions:
     """Inputs for a reproducible routed-profile SQLite export."""
 
-    database_url: str
     hemonc_snapshot: Path
     output: Path
     profile_id: str = "nsclc"
@@ -60,7 +63,6 @@ class SyntheticCohortOptions:
     seed: int = 0
     max_cycles: int = 35
     batch_size: int = _BATCH_SIZE_DEFAULT
-    connect_options: str | None = "-csearch_path=public,omop"
     profile_root: Path | None = None
     progress_callback: Callable[[int, int], None] | None = None
 
@@ -78,7 +80,8 @@ class _CaseBuildContext:
 
 @dataclass
 class _GenerationContext:
-    source_engine: sa.Engine
+    hemonc_engine: sa.Engine
+    vocabulary_engine: sa.Engine
     target_engine: sa.Engine
     runtime: Any
     vocabulary_gateway: DefaultVocabularyGateway
@@ -161,13 +164,33 @@ def _mapped_concept_ids(row: Any) -> set[int]:
     }
 
 
-def _source_sig(session: Session, sig_id: int | None, cache: dict[int, dict]) -> dict:
+def _qualified_name(connection: sa.Connection, schema: str | None, table: str) -> str:
+    preparer = connection.dialect.identifier_preparer
+    name = preparer.quote(table)
+    if schema:
+        name = f"{preparer.quote_schema(schema)}.{name}"
+    return name
+
+
+def _routed_schema(connection: sa.Connection, role: str) -> str | None:
+    return connection.get_execution_options().get("schema_translate_map", {}).get(role)
+
+
+def _source_sig(
+    session: Session,
+    sig_id: int | None,
+    cache: dict[int, dict],
+) -> dict:
     if sig_id is None:
         return {}
     if sig_id not in cache:
+        connection = session.connection()
+        table = _qualified_name(
+            connection, _routed_schema(connection, "primary"), "sigs"
+        )
         statement = sa.text(
             "select id, component, component_cui, cyclesigs, timing_sequence, "
-            "regimen_cui, variant_cui from sigs where id=:id"
+            f"regimen_cui, variant_cui from {table} where id=:id"
         )
         row = session.execute(statement, {"id": sig_id}).mappings().one_or_none()
         cache[sig_id] = dict(row) if row else {}
@@ -241,7 +264,11 @@ def _source_rows(
 ) -> list[dict]:
     if not ids:
         return []
-    statement = sa.text(f'select * from "{table}" where "{key}" in :ids {where}')
+    table_name = _qualified_name(
+        connection, _routed_schema(connection, "vocab"), table
+    )
+    key_name = connection.dialect.identifier_preparer.quote(key)
+    statement = sa.text(f"select * from {table_name} where {key_name} in :ids {where}")
     statement = statement.bindparams(sa.bindparam("ids", expanding=True))
     return [
         dict(row)
@@ -285,6 +312,7 @@ def _read_referenced_concepts(
     hemonc_codes: set[str],
 ) -> tuple[list[dict], list[dict]]:
     with source_engine.connect() as source:
+        vocabulary_schema = _routed_schema(source, "vocab")
         source_hemonc = _source_rows(
             source,
             "concept",
@@ -295,9 +323,10 @@ def _read_referenced_concepts(
         source_ids = {row["concept_id"] for row in source_hemonc}
         relationships = []
         if source_ids:
+            table = _qualified_name(source, vocabulary_schema, "concept_relationship")
             statement = sa.text(
                 "select concept_id_1, concept_id_2, relationship_id, valid_start_date, "
-                "valid_end_date, invalid_reason from concept_relationship "
+                f"valid_end_date, invalid_reason from {table} "
                 "where concept_id_1 in :ids and relationship_id='Maps to' "
                 "and invalid_reason is null"
             ).bindparams(sa.bindparam("ids", expanding=True))
@@ -320,7 +349,12 @@ def _read_referenced_concepts(
             )
         concepts.append(
             dict(
-                source.execute(sa.text("select * from concept where concept_id=0"))
+                source.execute(
+                    sa.text(
+                        f"select * from {_qualified_name(source, vocabulary_schema, 'concept')} "
+                        "where concept_id=0"
+                    )
+                )
                 .mappings()
                 .one()
             )
@@ -336,7 +370,9 @@ def _close_metadata_dependencies(
     with source_engine.connect() as source, target_engine.begin() as target:
         for _ in range(10):
             rows = _fetch_metadata_rows(source, target, tables)
-            if not _insert_metadata_rows(source, target, tables, rows):
+            if not _insert_metadata_rows(
+                source, target, tables, rows
+            ):
                 return
     raise RuntimeError("OMOP vocabulary metadata closure did not converge")
 
@@ -355,7 +391,10 @@ def _fetch_metadata_rows(
             {row["vocabulary_id"] for row in concepts},
         ),
         "domain": _source_rows(
-            source, "domain", "domain_id", {row["domain_id"] for row in concepts}
+            source,
+            "domain",
+            "domain_id",
+            {row["domain_id"] for row in concepts},
         ),
         "concept_class": _source_rows(
             source,
@@ -426,15 +465,19 @@ def _insert_metadata_rows(
     return additions
 
 
-def _episode_type_override(source_engine: sa.Engine) -> int | None:
+def _episode_type_override(
+    source_engine: sa.Engine,
+) -> int | None:
     with source_engine.connect() as connection:
+        vocabulary_schema = _routed_schema(connection, "vocab")
+        concept = _qualified_name(connection, vocabulary_schema, "concept")
         if connection.execute(
-            sa.text("select 1 from concept where concept_id=32545")
+            sa.text(f"select 1 from {concept} where concept_id=32545")
         ).first():
             return None
         result = connection.execute(
             sa.text(
-                "select concept_id from concept where concept_name='EHR episode record' "
+                f"select concept_id from {concept} where concept_name='EHR episode record' "
                 "and vocabulary_id='Type Concept' and invalid_reason is null "
                 "order by concept_id limit 1"
             )
@@ -493,7 +536,9 @@ def _source_evidence(
     payloads = [*drug_events, *procedure_events]
     sigs = [
         _source_sig(
-            context.source_session, event.get("source_sig_id"), context.sig_cache
+            context.source_session,
+            event.get("source_sig_id"),
+            context.sig_cache,
         )
         for event in payloads
     ]
@@ -718,16 +763,28 @@ def export_synthetic_cohort(options: SyntheticCohortOptions) -> dict[str, Any]:
     if staging.exists():
         raise FileExistsError(f"Refusing to overwrite staging database: {staging}")
 
-    source_args = (
-        {"connect_args": {"options": options.connect_options}}
-        if options.connect_options
-        else {}
-    )
-    source_engine = sa.create_engine(options.database_url, **source_args)
+    from omop_alchemy.config import create_cdm_engines, get_cdm_context
+
+    from ..config import create_hemonc_engine, get_hemonc_context
+
+    _, hemonc_database = get_hemonc_context()
+    _, cdm_database = get_cdm_context()
+    vocab_connection = cdm_database.vocab_connection
+    if not (
+        hemonc_database.connection.name == vocab_connection.name
+        or hemonc_database.connection.addresses_same_database_as(vocab_connection)
+    ):
+        raise RuntimeError(
+            "HemOnc and OMOP vocabulary must use the same physical database; "
+            "configure both schemas on the combined HemOnc/OMOP source."
+        )
+    hemonc_engine = create_hemonc_engine(hemonc_database)
+    _, vocabulary_engine = create_cdm_engines(cdm_database, register_claims=False)
     target_engine: sa.Engine | None = None
     try:
         _generate_staging_database(
-            source_engine,
+            hemonc_engine,
+            vocabulary_engine,
             options,
             staging,
         )
@@ -735,20 +792,23 @@ def export_synthetic_cohort(options: SyntheticCohortOptions) -> dict[str, Any]:
         _finish_database(target_engine, options, snapshot)
         target_engine.dispose()
         target_engine = None
-        source_engine.dispose()
+        hemonc_engine.dispose()
+        vocabulary_engine.dispose()
         staging.replace(destination)
         return _summarize_database(destination)
     except BaseException:
         if target_engine is not None:
             target_engine.dispose()
-        source_engine.dispose()
+        hemonc_engine.dispose()
+        vocabulary_engine.dispose()
         if staging.exists():
             staging.unlink()
         raise
 
 
 def _generate_staging_database(
-    source_engine: sa.Engine,
+    hemonc_engine: sa.Engine,
+    vocabulary_engine: sa.Engine,
     options: SyntheticCohortOptions,
     staging: Path,
 ) -> None:
@@ -761,12 +821,11 @@ def _generate_staging_database(
         target.close()
 
     root = options.profile_root or Path(__file__).resolve().parents[1]
-    target_engine = sa.create_engine(f"sqlite:///{staging}")
-    create_missing_tables(target_engine)
+    target_engine = create_cdm_sqlite_engine(staging)
     _create_export_tables(target_engine)
     vocabulary_gateway = DefaultVocabularyGateway(
         root,
-        engine_factory=lambda: source_engine,
+        engine_factory=lambda: vocabulary_engine,
     )
     runtime = load_routed_profile(
         options.profile_id,
@@ -774,15 +833,21 @@ def _generate_staging_database(
         vocabulary_gateway=vocabulary_gateway,
     )
     context = _GenerationContext(
-        source_engine,
+        hemonc_engine,
+        vocabulary_engine,
         target_engine,
         runtime,
         vocabulary_gateway,
-        _episode_type_override(source_engine),
+        _episode_type_override(vocabulary_engine),
     )
     concept_ids, hemonc_codes = _write_cases(context, options)
     try:
-        _copy_omop_references(source_engine, target_engine, concept_ids, hemonc_codes)
+        _copy_omop_references(
+            vocabulary_engine,
+            target_engine,
+            concept_ids,
+            hemonc_codes,
+        )
     finally:
         target_engine.dispose()
 
@@ -799,7 +864,7 @@ def _write_cases(
     sig_cache: dict[int, dict] = {}
     _reset_sequences()
 
-    with Session(generation.source_engine) as source_session:
+    with Session(generation.hemonc_engine) as source_session:
         hemonc_gateway = SqlHemOncGateway(session=source_session)
         context = _CaseBuildContext(
             generation.runtime,

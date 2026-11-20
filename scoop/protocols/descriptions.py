@@ -8,7 +8,7 @@ def repr_cannonical_iv(comp_sigs):
     lines.append(variant_header(**comp_sigs[0].__dict__))
     for component_obj in comp_sigs:
         lines.append(sig_component_obj(**component_obj.__dict__))
-    return f"\n".join(lines)
+    return "\n".join(lines)
 
 
 def sig_component_obj(*, doseminnum, dosemaxnum, doseunit,
@@ -29,7 +29,16 @@ def sig_component_obj(*, doseminnum, dosemaxnum, doseunit,
         per_cycle = f"{dose_size} {doseunit}{dose_cap} {route}{duration} in divided doses on day(s) {alldays}"
     else:
         per_cycle = f"{dose_size} {doseunit}{dose_cap} {route}{duration} on day(s) {alldays}"
-    return f"{component}: {per_cycle} in cycle(s) {timing_sequence}. {phase} {sequencing}SigID: {id}"
+    timing = kwargs.get("timing")
+    inparens = kwargs.get("inparens")
+    details = [f"Timing: {timing}"] if timing else []
+    if inparens:
+        details.append(inparens)
+    detail_text = f" Details: {'; '.join(details)}." if details else ""
+    return (
+        f"{component}: {per_cycle} in cycle(s) {timing_sequence}. {phase} "
+        f"{sequencing}SigID: {id}.{detail_text}"
+    )
 
 
 def variant_header(regimen, variant, variant_cui, regimen_cui, cyclesigs, **kwargs):
@@ -72,7 +81,10 @@ def sig_sequencing(sequence, seqrel_items, seqrelwhen_items, seqrelwhenunit_item
     if seqrelwhenunit_items:
         sequencing += f"{seqrelwhenunit_items[0].seqrelwhenunit}(s) "
     if seqrel_items:
-        sequencing += f"{seqrel_items[0].seqrel} {seqrelwhat}. "
+        target = (seqrelwhat or "").strip()
+        if target == "-":
+            target = ""
+        sequencing += f"{seqrel_items[0].seqrel} {target}".rstrip() + ". "
     return sequencing
 
 

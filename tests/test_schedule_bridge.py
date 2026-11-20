@@ -285,7 +285,7 @@ class ScheduleBridgeLiveHemOncTests(LiveDatabaseTestCase):
         super().setUpClass()
         cls.registry = RegistrySpec.from_path(REGISTRY_PATH)
 
-    def test_live_protocol_without_full_phase_coverage_has_no_candidates(self):
+    def test_live_protocol_has_candidates_after_study_token_resolution(self):
         treatment = _treatment_episode(bundle_recipe_id="adjuvant_cisplatin_osimertinib")
 
         result = resolve_schedule_for_treatment(
@@ -293,8 +293,12 @@ class ScheduleBridgeLiveHemOncTests(LiveDatabaseTestCase):
             start_date=date(2021, 1, 1), seed=1,
         )
 
-        self.assertEqual(result.status, "no_candidates")
-        self.assertIsNone(result.schedule)
+        self.assertEqual(result.status, "scheduled")
+        self.assertIsNotNone(result.schedule)
+        self.assertEqual(
+            len(result.schedule.selected_protocol.phases),
+            2,
+        )
 
     def test_at_least_one_real_nsclc_phase_schedules_successfully(self):
         # HemOnc coverage per phase can drift, so try several rather than

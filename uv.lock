@@ -752,6 +752,36 @@ wheels = [
 ]
 
 [[package]]
+name = "duckdb"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/7c/dfdf5e9cebefd032f57f09b224993e861ecb55f61e36c709544b04b44f70/duckdb-2.0.0.tar.gz", hash = "sha256:09de511ef0dc76a5213e8d3d87a8b89bb4d3e8a6fe73a9f60dc001269946b44f", size = 16771077, upload-time = "2026-10-21T12:51:13.908Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/41/28/1fb52f9ea10205a55a07c32e37cd4fd68fa9d1dc2520a12405ec9bb59cac/duckdb-2.0.0-cp312-abi3-macosx_10_15_universal2.whl", hash = "sha256:cb1cc30318397c3bcffa6b683196293698052588de3c1ba1e144ba0c72560ce9", size = 37003294, upload-time = "2026-10-21T12:50:56.489Z" },
+    { url = "https://files.pythonhosted.org/packages/07/5b/fbe92644709fb9162cc51753f92f892b1f333658079d1f11efaed43341d2/duckdb-2.0.0-cp312-abi3-macosx_10_15_x86_64.whl", hash = "sha256:46c7a299ff5f45be9068cfc0ceecb3fd574af9535de8cb6908ae8b52d2846cbd", size = 19689207, upload-time = "2026-10-21T12:50:59.331Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/a3/4d23938223626980cdcf18fd6b0dbf040823b5cf15beabbf4ab7ee276631/duckdb-2.0.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:b5d758b53751c930e09d371230241005ea5203c8edc65a1e1fafca83fcc906ef", size = 17597612, upload-time = "2026-10-21T12:51:01.818Z" },
+    { url = "https://files.pythonhosted.org/packages/92/4a/985fb9d93d7f9f8e82092ddfe05ec8c9a1d0df7bdb0f562a10ced30e3e8f/duckdb-2.0.0-cp312-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e38daf0acbad9de7ce892d402b68409519291ee16af3c2cba85ace3b085c7eaa", size = 21655920, upload-time = "2026-10-21T12:51:04.36Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/33/01ad2535ee897db2bad70cbc800655167c53afd0b955eed84f0759c2f417/duckdb-2.0.0-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ab51ec57d329d6f3df37c0287b55d71c3fc07bb54b61d1afed09104f953b1431", size = 24371005, upload-time = "2026-10-21T12:51:06.86Z" },
+    { url = "https://files.pythonhosted.org/packages/09/d3/9e8ca1242b98f04041bef09686ecfe098b41f820aa23240f63f360b64eaf/duckdb-2.0.0-cp312-abi3-win_amd64.whl", hash = "sha256:f61c96547ed432f54dae42a717fd88563eda55cb47549715fac9f61f770c205a", size = 15368860, upload-time = "2026-10-21T12:51:09.395Z" },
+    { url = "https://files.pythonhosted.org/packages/37/81/6ea5dc1050f86ec4dd038a2774766b42247ba6104e7785f13a0c600e2b33/duckdb-2.0.0-cp312-abi3-win_arm64.whl", hash = "sha256:c5e6708efaa8647e0914a16f1914354419e529a1925929950e7d610418e45873", size = 15726489, upload-time = "2026-10-21T12:51:11.643Z" },
+]
+
+[[package]]
+name = "duckdb-sqlalchemy"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "packaging" },
+    { name = "pytz" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/25/8b1667a153e2efcd93e1bf7e524235868bb45268797dcdb9aa6346d3a9f2/duckdb_sqlalchemy-2.0.0.tar.gz", hash = "sha256:a1a64dcc61b318db4bbb684140df99b4885d7612ac44311c10da5e68100a0b14", size = 225516, upload-time = "2026-11-17T20:03:20.592Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/03/637cd6dba61b3caa8a7936e9984bcaf05306748a4a8fe67961f9806e83c4/duckdb_sqlalchemy-2.0.0-py3-none-any.whl", hash = "sha256:ac4826749114b2067d3e820ba69f2b43ba455041d0839c432a92b9350b43ffc1", size = 89053, upload-time = "2026-11-17T20:03:19.089Z" },
+]
+
+[[package]]
 name = "editorconfig"
 version = "0.17.1"
 source = { registry = "https://pypi.org/simple" }
@@ -942,19 +972,29 @@ wheels = [
 
 [[package]]
 name = "hemonc-alchemy"
-version = "0.2.0"
+version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
     { name = "orm-loader" },
     { name = "pandas" },
+    { name = "pyyaml" },
     { name = "rich" },
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/9b/61738c22dfbd84d5f389fff8df476b7b096a5a40ba4123b6ff6e1d840e99/hemonc_alchemy-0.2.0.tar.gz", hash = "sha256:231ac706831310c12b08ac81586b19e8410d07c4f43642cce16b599005e5fce2", size = 424228, upload-time = "2026-10-07T03:42:30.217Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/92/2f93156ed5f0433c81a0bfcf8bc605def05bd993d031408a9b0731f34f54/hemonc_alchemy-0.6.2.tar.gz", hash = "sha256:124f5a11e18a6c023ee5c1ba0182d3c28635c5d53e162fd52f13ed15c1d43381", size = 491091, upload-time = "2026-11-20T00:52:49.399Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/cb/f6254fa447db76c3a4f01beecad047dcdfcae326d25574d1c42b16e532fd/hemonc_alchemy-0.2.0-py3-none-any.whl", hash = "sha256:5d7117b247d5f0d9c8a1617022faee68f4ee4ebaf64ddd99bdd67ebf69a01ebe", size = 174235, upload-time = "2026-10-07T03:42:28.434Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/7e/aff9158adf335e30fd356648a75ee571a5b9a1be0bbb57973ea4bcaaf79d/hemonc_alchemy-0.6.2-py3-none-any.whl", hash = "sha256:48279eb705397f83053197035f0951745dc731a6bc3c2bc378073840dbfe72bd", size = 199864, upload-time = "2026-11-20T00:52:47.781Z" },
+]
+
+[package.optional-dependencies]
+duckdb = [
+    { name = "oa-configurator", extra = ["duckdb"] },
+    { name = "orm-loader", extra = ["duckdb"] },
+]
+omop = [
+    { name = "omop-alchemy" },
 ]
 
 [[package]]
@@ -2019,7 +2059,7 @@ wheels = [
 
 [[package]]
 name = "oa-configurator"
-version = "1.1.0"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2028,10 +2068,11 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tomli-w" },
     { name = "typer" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/16/a5/d06e75e97281952981c75d31f3befc314f39c08c74e51952b7f363f36de0/oa_configurator-1.1.0.tar.gz", hash = "sha256:251986a616e698e3b0b273f2a9428652af79fd3975dc4dd19898f96d89bf34ad", size = 173410, upload-time = "2026-08-13T07:49:11.365Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/5a/e1061864a6f9abc9c49e26ab84a51dfc8f40616906c853e01ccbc022b477/oa_configurator-2.1.0.tar.gz", hash = "sha256:89e33ab58bd428081b1c1c8ce1b4ad7d4a7d4b4627bcbc20d8cd6502811f627c", size = 298778, upload-time = "2026-10-26T21:01:07.87Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/5b/f3b600f3e2b6acc7c74271b12eb31cfe83d223ed28f80efa6edfd5e99d0f/oa_configurator-1.1.0-py3-none-any.whl", hash = "sha256:6af25c970338460677c4426b2ae84e870c202b758f71562440f98def227d39ef", size = 60691, upload-time = "2026-08-13T07:49:10.105Z" },
+    { url = "https://files.pythonhosted.org/packages/59/44/38cdd910fe7544b118d7a5fc741417f1be0a4a95fdb754d8d5f3a016b9f9/oa_configurator-2.1.0-py3-none-any.whl", hash = "sha256:44c2fc43cf01398e598fc4d0fd4b17f9a3090cc35b6a378cdaf8e40fbfab0a0a", size = 126679, upload-time = "2026-10-26T21:01:05.893Z" },
 ]
 
 [package.optional-dependencies]
@@ -2047,13 +2088,16 @@ dev = [
     { name = "ruff" },
     { name = "ty" },
 ]
+duckdb = [
+    { name = "duckdb-sqlalchemy" },
+]
 postgres = [
     { name = "psycopg", extra = ["binary"] },
 ]
 
 [[package]]
 name = "omop-alchemy"
-version = "1.1.0"
+version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
@@ -2063,23 +2107,22 @@ dependencies = [
     { name = "rich" },
     { name = "sqlalchemy" },
     { name = "typer" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/b6/315c72cba081c4cb5fed6737155047667e9057b92307579200551953e248/omop_alchemy-1.1.0.tar.gz", hash = "sha256:d78905132ad0f8933d8d6fceccbac903f497d40a54634ec9193023b237bb5afb", size = 395165, upload-time = "2026-08-24T06:19:41.929Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/a4/330e86e324759626cbb48b6faeaa7bd903a480b4687515e486bdcdfaa3e2/omop_alchemy-3.0.0.tar.gz", hash = "sha256:084a873a84aa378614ad75b7791de6d5fa8dfdc7800484a6c0713d9f36f01c01", size = 757452, upload-time = "2026-11-05T06:16:28.04Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/2c/c51519b2c1ff3b71b1117ca5e829451cbbe0d77d404d3ff8b485bd3e989c/omop_alchemy-1.1.0-py3-none-any.whl", hash = "sha256:31b64099145a6183fb71d6d89ecd662a506b5e9f9ab74b0b117860e1085991eb", size = 233776, upload-time = "2026-08-24T06:19:40.288Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/b9/674e2dfac874a5c078f30e2cb63453c3bb40b78bbeea52bfbbaa7e139864/omop_alchemy-3.0.0-py3-none-any.whl", hash = "sha256:d369a452456364b4d679741cd2e6f2151aa4a070274714566ca56df019a9eeae", size = 307688, upload-time = "2026-11-05T06:16:26.131Z" },
 ]
 
 [[package]]
 name = "onco-scoop"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "hemonc-alchemy" },
-    { name = "ipykernel" },
-    { name = "oa-configurator" },
+    { name = "hemonc-alchemy", extra = ["duckdb", "omop"] },
+    { name = "oa-configurator", extra = ["duckdb"] },
     { name = "omop-alchemy" },
     { name = "pandas" },
-    { name = "psycopg-binary" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
@@ -2091,10 +2134,11 @@ authoring = [
     { name = "linkml-runtime" },
 ]
 dev = [
-    { name = "oa-configurator", extra = ["dev", "postgres"] },
+    { name = "oa-configurator", extra = ["dev", "duckdb", "postgres"] },
     { name = "pytest" },
 ]
 exploration = [
+    { name = "ipykernel" },
     { name = "jupyterlab" },
     { name = "matplotlib" },
     { name = "nbclient" },
@@ -2104,8 +2148,8 @@ exploration = [
 
 [package.metadata]
 requires-dist = [
-    { name = "hemonc-alchemy", specifier = ">=0.2.0,<1.0" },
-    { name = "ipykernel", specifier = ">=7.1.0" },
+    { name = "hemonc-alchemy", extras = ["duckdb", "omop"], specifier = ">=0.6.2,<0.7" },
+    { name = "ipykernel", marker = "extra == 'exploration'", specifier = ">=7.1.0" },
     { name = "jupyterlab", marker = "extra == 'exploration'", specifier = ">=4.4" },
     { name = "linkml", marker = "extra == 'authoring'", specifier = ">=1.9.6" },
     { name = "linkml-runtime", marker = "extra == 'authoring'", specifier = ">=1.9.5" },
@@ -2113,11 +2157,11 @@ requires-dist = [
     { name = "nbclient", marker = "extra == 'exploration'", specifier = ">=0.10" },
     { name = "nbconvert", marker = "extra == 'exploration'", specifier = ">=7.16" },
     { name = "nbformat", marker = "extra == 'exploration'", specifier = ">=5.10" },
-    { name = "oa-configurator", specifier = ">=1.0.0,<2.0.0" },
-    { name = "oa-configurator", extras = ["dev", "postgres"], marker = "extra == 'dev'", specifier = ">=1.0.0,<2.0.0" },
-    { name = "omop-alchemy", specifier = ">=1.1.0,<2.0" },
+    { name = "oa-configurator", extras = ["dev", "duckdb", "postgres"], marker = "extra == 'dev'", specifier = ">=2.1.0,<3.0.0" },
+    { name = "oa-configurator", extras = ["duckdb"], specifier = ">=2.1.0,<3.0.0" },
+    { name = "omop-alchemy", specifier = ">=3.0.0,<4.0" },
     { name = "pandas", specifier = ">=3.0.2" },
-    { name = "psycopg-binary", specifier = ">=2.9.11" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
@@ -2139,18 +2183,22 @@ wheels = [
 
 [[package]]
 name = "orm-loader"
-version = "1.2.0"
+version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chardet" },
     { name = "oa-configurator" },
-    { name = "pandas" },
     { name = "pyarrow" },
     { name = "sqlalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/42/093713d63ac7af5b29d94fd33f1888f4d192b38c867b16349caa53c1c0af/orm_loader-1.2.0.tar.gz", hash = "sha256:a000527daab1aeaaeb460e135984330805d2243f5d603c8c649b7d0e2cf75ae4", size = 158420, upload-time = "2026-09-02T06:22:56.506Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/e4/3535ecb78ba058de22308d1b2abd6d143586c22a39e15526486cdabb845b/orm_loader-3.0.0.tar.gz", hash = "sha256:865d14bf853a312acb6f43c6d63825f73436f41d219aae7caae086da915eb5cd", size = 223323, upload-time = "2026-11-05T04:55:59.646Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/65/96fe27564dbb9b74fc1991a5ef3d057bf1cfa227f65bd742e83b2328cef0/orm_loader-1.2.0-py3-none-any.whl", hash = "sha256:068ab02e4f2767047aae02908bf50ef63f3951905da5b841a3ee6b931926ae8b", size = 69661, upload-time = "2026-09-02T06:22:55.183Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/96/22b96702ab51b867994839589408509a0e4173d0d5b27d4d7cf1c8d89ed6/orm_loader-3.0.0-py3-none-any.whl", hash = "sha256:0f91ce37c1bc930113d9476130521cb74b755010705173c281cf1d6262a1a4ef", size = 96094, upload-time = "2026-11-05T04:55:57.896Z" },
+]
+
+[package.optional-dependencies]
+duckdb = [
+    { name = "duckdb-sqlalchemy" },
 ]
 
 [[package]]
@@ -2808,6 +2856,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/21/25/5473e46b179f8e8b4ad3aeeb36773d1701b7770eaf5e5bc2025c7303b598/python_json_logger-4.2.0.tar.gz", hash = "sha256:e371ebe22ec01e289850102091a2b1f6fc9e655c7f1f5f29073936756c290afa", size = 18211, upload-time = "2026-08-15T11:36:38.232Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/55/6467fde553886cb293e41538f3a8b4e4fd4688c6df242cf982162d8367fb/python_json_logger-4.2.0-py3-none-any.whl", hash = "sha256:158a52126fcd6869e09574d2b66272666f3dc8f468c62637ef9a1fa883719cb9", size = 14988, upload-time = "2026-08-15T11:36:36.821Z" },
+]
+
+[[package]]
+name = "pytz"
+version = "2026.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/b0/168030b0bfcc334cf09fa3313afdb888d892c8a0027324683d1de0ec277e/pytz-2026.6.tar.gz", hash = "sha256:3b0fc2727707663d6e517936f444fd8a8b240f1fc32f4bf7ee03274245945284", size = 318520, upload-time = "2026-10-29T09:05:47.011Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/25/564f3fc5b70c1398d706c51f2b1470d0ea0b1b2f96fee67877b6f5bdf3b6/pytz-2026.6-py2.py3-none-any.whl", hash = "sha256:7fed3fee8fd6bd4a2b7b75a8d56021d0624127bf69bd5691f115db929ac570b3", size = 506321, upload-time = "2026-10-29T09:05:45.14Z" },
 ]
 
 [[package]]

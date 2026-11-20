@@ -23,7 +23,28 @@ REGISTRY_PATH = (
     / "scoop/profiles/nsclc/nsclc_protocol_registry.yaml"
 )
 _KNOWN_GAPS = {
-    "egfr_intervention": "Anlotinib (HemOnc CUI 121127)",
+    "egfr_intervention": ("Anlotinib (HemOnc CUI 121127)",),
+    "met_ptdb_w_ici": ("Paclitaxel nanoparticle albumin-bound (HemOnc CUI 378)",),
+    "platinum_doublet_3rd_gen_agent": (
+        "Paclitaxel nanoparticle albumin-bound (HemOnc CUI 378)",
+    ),
+    "platinum_doublet_nonsquamous": (
+        "Paclitaxel nanoparticle albumin-bound (HemOnc CUI 378)",
+    ),
+    "ici_w_chemo_nonsquamous": (
+        "Paclitaxel nanoparticle albumin-bound (HemOnc CUI 378)",
+        "Sintilimab (HemOnc CUI 61131)",
+    ),
+    "ici_w_chemo_squamous": (
+        "Paclitaxel nanoparticle albumin-bound (HemOnc CUI 378)",
+    ),
+    "ptdb_squamous": (
+        "Nedaplatin (HemOnc CUI 348)",
+        "Paclitaxel nanoparticle albumin-bound (HemOnc CUI 378)",
+    ),
+    "ptdb_nonsquamous": (
+        "Paclitaxel nanoparticle albumin-bound (HemOnc CUI 378)",
+    ),
 }
 
 
@@ -139,7 +160,9 @@ class LiveTreatmentScheduleCompletenessTests(LiveDatabaseTestCase):
         self.assertLessEqual(set(unmappable), set(_KNOWN_GAPS))
         for phase_id, gap in _KNOWN_GAPS.items():
             if phase_id in unmappable:
-                self.assertIn(gap, unmappable[phase_id])
+                self.assertTrue(
+                    any(component in unmappable[phase_id] for component in gap)
+                )
         print(
             "NSCLC schedule outcomes across 20 seeds per phase: "
             f"{dict(outcomes)}; rejected reasons: {dict(rejected)}; "

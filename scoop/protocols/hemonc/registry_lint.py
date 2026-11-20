@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Sequence
 
 import sqlalchemy as sa
 import yaml
-from sqlalchemy.orm import Session
-
 from hemonc_alchemy.model import (
     Drugs,
     Sigs,
@@ -21,6 +19,8 @@ from hemonc_alchemy.model import (
     drugs_Canmed_minor_classMap,
     sigs_StudyMap,
 )
+from hemonc_alchemy.model.relationships import join_study_references
+from sqlalchemy.orm import Session
 
 from scoop.config import create_hemonc_engine, get_hemonc_context
 from scoop.profiles.paths import PROFILES_ROOT
@@ -73,11 +73,12 @@ def _component_rows(session: Session, condition_cuis: set[int] | None = None):
         .select_from(Sigs)
     )
     if condition_cuis is not None:
-        statement = (
-            statement.join(sigs_StudyMap, sigs_StudyMap.parent_id == Sigs.id)
-            .join(Studies, Studies.study == sigs_StudyMap.study)
-            .where(Studies.condition_cui.in_(condition_cuis))
+        statement = statement.join(
+            sigs_StudyMap, sigs_StudyMap.parent_id == Sigs.id
         )
+        statement = join_study_references(
+            statement, sigs_StudyMap.study
+        ).where(Studies.condition_cui.in_(condition_cuis))
     statement = statement.outerjoin(Drugs, Drugs.drug_cui == Sigs.component_cui)
     statement = statement.outerjoin(
         drugs_Canmed_major_classMap,

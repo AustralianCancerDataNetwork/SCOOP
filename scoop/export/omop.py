@@ -27,6 +27,27 @@ def as_datetime(value: date | datetime | None) -> datetime | None:
     return datetime.combine(value, time.min)
 
 
+def create_cdm_sqlite_engine(path: Any) -> sa.Engine:
+    """Create a SQLite engine for path with every OMOP CDM and vocabulary table."""
+
+    from omop_alchemy.cdm import model  # noqa: F401
+    from orm_loader.helpers import Base
+
+    engine = sa.create_engine(
+        f"sqlite:///{path}",
+        execution_options={
+            "schema_translate_map": {"primary": None, "vocab": None, "results": None}
+        },
+    )
+    tables = list(dict.fromkeys(
+        mapper.local_table
+        for mapper in Base.registry.mappers
+        if mapper.class_.__module__.startswith("omop_alchemy.")
+    ))
+    Base.metadata.create_all(engine, tables=tables)
+    return engine
+
+
 def require_populated_columns[OmopRow](row: OmopRow) -> OmopRow:
     """Raise if any NOT-NULL column on this ORM row is unset.
 

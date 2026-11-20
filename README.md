@@ -48,11 +48,42 @@ Profiles are YAML files under [`scoop/profiles/`](scoop/profiles/). NSCLC is the
 
 `onco-scoop export-synthetic-cohort` samples a routed profile and writes a new, self-contained SQLite file with OMOP rows, the HemOnc snapshot, source-event links, and run metadata. It retains patients whose schedule cannot be resolved. Repeating courses use a finite cycle limit; fixed courses keep their source-defined end.
 
-Set the source OMOP/HemOnc database URL and the HemOnc SQLite snapshot, then run:
+The source HemOnc and OMOP vocabulary tables are found through an [oa-configurator](https://pypi.org/project/oa-configurator/) config file. Both must live in the same physical database (one DuckDB file, or one PostgreSQL database). A DuckDB config looks like this; keep the path absolute:
+
+```toml
+[connections.hemonc_stack]
+dialect = "duckdb"
+database_name = "/absolute/path/to/scoop/data/hemonc-stack.duckdb"
+
+[databases.hemonc_db]
+kind = "generic"
+connection = "hemonc_stack"
+schema_name = "hemonc"
+
+[databases.cdm_db]
+kind = "cdm"
+connection = "hemonc_stack"
+cdm_schema = "cdm"
+vocab_schema = "omop"
+
+[tools.scoop]
+hemonc_db = "hemonc_db"
+
+[tools.hemonc_alchemy]
+hemonc_db = "hemonc_db"
+omop_db = "cdm_db"
+
+[tools.omop_alchemy]
+cdm_db = "cdm_db"
+```
+
+Install the locked runtime dependencies, point `OA_CONFIG_PATH` at the local
+DuckDB config, set the HemOnc SQLite snapshot, then run:
 
 ```bash
-export SCOOP_DATABASE_URL='postgresql+psycopg://hemonc:hemonc@localhost:5432/hemonc_alchemy'
-export HEMONC_SNAPSHOT='../hemonc-alchemy/data/local_load_audit.sqlite'
+uv sync --locked
+export OA_CONFIG_PATH="$PWD/data/scoop.duckdb.toml"
+export HEMONC_SNAPSHOT="$PWD/data/hemonc-snapshot.sqlite"
 uv run onco-scoop export-synthetic-cohort \
   --profile nsclc \
   --count 10000 \
@@ -61,7 +92,7 @@ uv run onco-scoop export-synthetic-cohort \
   --output data/synthetic_nsclc_from_cli.sqlite
 ```
 
-The default PostgreSQL connect option sets `search_path=public,omop`. The output must not already exist; the command builds a temporary file, checks SQLite integrity and foreign keys, then renames it into place. Use `--help` for all options.
+For PostgreSQL, point the connection at a `postgresql` database instead; the psycopg driver is a core dependency. The output must not already exist; the command builds a temporary file, checks SQLite integrity and foreign keys, then renames it into place. Use `--help` for all options.
 
 Add `--quiet` to show only an in-place progress bar instead of progress messages and the JSON summary.
 

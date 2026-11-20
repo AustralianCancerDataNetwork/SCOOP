@@ -1,32 +1,36 @@
 import logging
+from functools import cached_property
+from typing import Any
+
 import pandas as pd
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from functools import cached_property
-from typing import Any
 from hemonc_alchemy.model import (
     Drugs,
     Sigs,
     Studies,
-    StudyResults,
     drugs_Canmed_major_classMap,
     drugs_Canmed_minor_classMap,
-    sigs_StudyMap,
 )
 from hemonc_alchemy.model.enums import (
     Sigs_PhaseEnum,
     Studies_IntentEnum,
     StudyResults_IntentEnum,
 )
+from hemonc_alchemy.model.relationships import join_study_references
 from hemonc_alchemy.toolkit.core.sigs import SigSelectionSpec, sig_search_statement
-from scoop.protocols.hemonc.models import ( 
-    _load_hemonc_models, HemOncModels, 
-    condition_cuis_by_names, search_substring, _component_search_expressions,
-    join_not_distinct, COMPONENT_CLASS_MAPS
-    )
-from scoop.protocols.hemonc.filters import query_rt_inc_study_ids
-from scoop.protocols.spec import ComponentCui, ComponentTerm
 
+from scoop.protocols.hemonc.filters import query_rt_inc_study_ids
+from scoop.protocols.hemonc.models import (
+    COMPONENT_CLASS_MAPS,
+    HemOncModels,
+    _component_search_expressions,
+    _load_hemonc_models,
+    condition_cuis_by_names,
+    join_not_distinct,
+    search_substring,
+)
+from scoop.protocols.spec import ComponentCui, ComponentTerm
 
 logger = logging.getLogger(__name__)
 
@@ -133,9 +137,19 @@ def omop_vocabulary_tables(session: so.Session) -> tuple[sa.Table, sa.Table]:
     bind = session.get_bind()
     metadata = sa.MetaData()
     try:
-        concept = sa.Table("concept", metadata, schema="omop", autoload_with=bind)
+        schema_map = bind.get_execution_options().get("schema_translate_map", {})
+        vocab_schema = schema_map.get("vocab")
+        if vocab_schema is None:
+            from omop_alchemy.config import get_cdm_context
+
+            _, cdm_database = get_cdm_context()
+            vocab_schema = cdm_database.vocab_schema
+        concept = sa.Table("concept", metadata, schema=vocab_schema, autoload_with=bind)
         relation = sa.Table(
-            "concept_relationship", metadata, schema="omop", autoload_with=bind
+            "concept_relationship",
+            metadata,
+            schema=vocab_schema,
+            autoload_with=bind,
         )
     except sa.exc.NoSuchTableError as exc:
         raise RuntimeError("The OMOP vocabulary tables are unavailable.") from exc
@@ -175,10 +189,42 @@ def get_sig_component_stmt(
         Drugs.main_class,
         drugs_Canmed_major_classMap.canmed_major_class,
         drugs_Canmed_minor_classMap.canmed_minor_class,
-        Studies.study.label("study"),
+        Studies.id.label("study_id"),
+        _study_token(Studies).label("study"),
         Sigs.phase,
         maintain_column_froms=True,
-    ).where(Studies.study.in_(context_studies))
+    ).where(Studies.id.in_(context_studies))
+
+
+def _study_token(studies):
+    """Return the canonical display token for a study/substudy row."""
+    if hasattr(studies, "substudy"):
+        return sa.case(
+            (studies.substudy.is_not(None), studies.study + "--" + studies.substudy),
+            else_=studies.study,
+        )
+    return studies.study
+
+
+def _study_reference_join(statement, study_column, studies):
+    """Resolve mapped bare or study--substudy tokens to study rows.
+
+    Production queries use HemOnc's helper. Lightweight test models use the
+    equivalent join built from their own ``Studies`` table.
+    """
+    if studies is Studies:
+        return join_study_references(statement, study_column)
+    if not hasattr(studies, "substudy"):
+        return statement.join(studies, studies.study == study_column)
+    study_keys = sa.union_all(
+        sa.select(studies.id.label("study_id"), studies.study.label("study_key")),
+        sa.select(studies.id, studies.study + "--" + studies.substudy).where(
+            studies.substudy.is_not(None)
+        ),
+    ).subquery("study_keys")
+    return statement.join(study_keys, study_keys.c.study_key == study_column).join(
+        studies, studies.id == study_keys.c.study_id
+    )
 
 
 def _intent_predicates(studies, results, intent_map, non_curative):
@@ -210,23 +256,15 @@ def _intent_predicates(studies, results, intent_map, non_curative):
         )
         .correlate(studies)
     )
-    result_intent_match = sa.exists(
-        sa.select(1)
-        .select_from(results)
-        .where(
-            results.study == studies.study,
-            results.intent == target_result_intent,
-        )
-        .correlate(studies)
+    result_intent_match = studies.id.in_(
+        _study_reference_join(
+            sa.select(studies.id).select_from(results), results.study, studies
+        ).where(results.intent == target_result_intent)
     )
-    has_result_intent = sa.exists(
-        sa.select(1)
-        .select_from(results)
-        .where(
-            results.study == studies.study,
-            results.intent != StudyResults_IntentEnum.UNSPECIFIED_INTENT,
-        )
-        .correlate(studies)
+    has_result_intent = studies.id.in_(
+        _study_reference_join(
+            sa.select(studies.id).select_from(results), results.study, studies
+        ).where(results.intent != StudyResults_IntentEnum.UNSPECIFIED_INTENT)
     )
     classified_match = sa.or_(
         study_intent_match,
@@ -244,14 +282,16 @@ def _unknown_intent_predicate(
         phase = Sigs_PhaseEnum(phase_type)
         sigs = models.Sigs
         sig_studies = models.sigs_StudyMap
-        phase_studies = (
-            sa.select(sig_studies.study)
-            .join(sigs, sig_studies.parent_id == sigs.id)
-            .where(sigs.phase == phase)
-        )
+        phase_studies = _study_reference_join(
+            sa.select(studies.id)
+            .select_from(sig_studies)
+            .join(sigs, sig_studies.parent_id == sigs.id),
+            sig_studies.study,
+            studies,
+        ).where(sigs.phase == phase)
         return sa.and_(
             sa.not_(has_any_intent),
-            studies.study.in_(phase_studies),
+            studies.id.in_(phase_studies),
         )
     return sa.false()
 
@@ -277,7 +317,7 @@ def get_stmt_studies_by_curative_context(
         phase_type,
     )
     return (
-        sa.select(studies.study)
+        sa.select(studies.id)
         .where(
             sa.and_(
                 studies.condition_cui.in_(condition_cuis),
@@ -305,6 +345,7 @@ def categorise_components(components: Any) -> Any:
     return (
         sa.select(
             components.c.variant_cui,
+            components.c.study_id,
             components.c.canmed_major_class,
             components.c.canmed_minor_class,
             components.c.main_class,
@@ -336,16 +377,30 @@ class ComponentSubquery:
     def variant_query(self):
         # this query isn't particularly useful since sigs has variant_cui
         # but I wanted to know I could attach the variant model consistently
-        return ( sa.select(
-        self.models.Variants.variant_cui,
-        self.sigs_query)
-        .join(self.models.Variants, self.sigs_query.c.variant_cui == self.models.Variants.variant_cui)
-        # without below you can get variants from other conditions
-        # which use the same sigs (I learnt this through experience)
-        .join(self.models.variants_StudyMap)
-        .join(self.models.Studies, self.models.variants_StudyMap.study == self.models.Studies.study)
-        .where(self.models.Variants.study_items.any(self.models.Studies.condition_cui.in_(self.condition_cuis)))
-        ).subquery()
+        statement = (
+            sa.select(self.models.Variants.variant_cui, self.sigs_query)
+            .join(
+                self.models.Variants,
+                self.sigs_query.c.variant_cui == self.models.Variants.variant_cui,
+            )
+            .join(
+                self.models.variants_StudyMap,
+                self.models.variants_StudyMap.parent_id == self.models.Variants.id,
+            )
+        )
+        statement = _study_reference_join(
+            statement,
+            self.models.variants_StudyMap.study,
+            self.models.Studies,
+        )
+        return (
+            statement.where(
+                self.models.Studies.id == self.sigs_query.c.study_id,
+                self.models.Studies.condition_cui.in_(self.condition_cuis),
+            )
+            .distinct()
+            .subquery()
+        )
 
 
     def get_dataframe(self, session: so.Session, subquery_name="sigs_query", categorise = False):
@@ -391,8 +446,16 @@ def build_category_expressions(category_restrictions, categorised_components):
     """
     expressions = []
     for category, restriction in category_restrictions.items():
-        category_count = sa.func.sum(
-            sa.case((categorised_components.c.broad_category == category, 1), else_=0)
+        category_count = sa.func.count(
+            sa.distinct(
+                sa.case(
+                    (
+                        categorised_components.c.broad_category == category,
+                        categorised_components.c.component_cui,
+                    ),
+                    else_=None,
+                )
+            )
         )
         if restriction.type == "exact":
             expressions.append(category_count == restriction.amount)
@@ -443,10 +506,30 @@ def phase_spec_to_sigdict(
         models=models,
     )
     phase_filtered = subset_df_on_phase(base_df, phase_spec.type)
-    sig_deduped = phase_filtered.drop_duplicates(subset=["id"])
+    sig_deduped = _one_row_per_sig(phase_filtered)
     if sig_deduped.empty:
         return {}
     return get_sigdict(sig_deduped)
+
+
+def _one_row_per_sig(df):
+    """Keep each sig once, preferring its largest matched group, then study name."""
+    if df.empty:
+        return df
+    group_size = df.groupby(
+        ["single_study", "matched_phase", "matched_variant_cui"], dropna=False
+    )["id"].transform("nunique")
+    return (
+        df.assign(_group_size=group_size)
+        .sort_values(
+            ["id", "_group_size", "single_study", "study"],
+            ascending=[True, False, True, True],
+            na_position="last",
+            kind="stable",
+        )
+        .drop_duplicates(subset=["id"])
+        .drop(columns="_group_size")
+    )
 
 
 def get_sigdict(df):
@@ -463,12 +546,18 @@ def get_siggroup_identifying_subquery(component_requirements, categorised, model
     del models
     return (
     sa.select(
+        categorised.c.study_id.label("study_id"),
         categorised.c.study.label('single_study'),
         categorised.c.phase.label('matched_phase'),
         categorised.c.variant_cui.label('matched_variant_cui')
     )
     .select_from(categorised)
-    .group_by(categorised.c.study, categorised.c.phase, categorised.c.variant_cui)
+    .group_by(
+        categorised.c.study_id,
+        categorised.c.study,
+        categorised.c.phase,
+        categorised.c.variant_cui,
+    )
     .having(sa.and_(*build_component_requirement_expressions(component_requirements, categorised)))
     .subquery()
 )
@@ -478,27 +567,43 @@ def subquery_sigs_valid_groups(valid_groups_subquery, models):
     """
     Subquery which attaches sig info to selected sig groupings.
     """
-    return (
+    models = models or _load_hemonc_models()
+    statement = (
     sa.select(
         valid_groups_subquery.c.single_study,
         valid_groups_subquery.c.matched_phase,
         valid_groups_subquery.c.matched_variant_cui,
-        Sigs.variant_cui,
-        Sigs.phase,
-        sigs_StudyMap.study.label("study"),
-        Sigs.component,
-        Sigs.id,
-        Sigs.regimen,
-        Sigs.variant,
+        models.Sigs.variant_cui,
+        models.Sigs.phase,
+        models.sigs_StudyMap.study.label("study"),
+        models.Sigs.component,
+        models.Sigs.id,
+        models.Sigs.regimen,
+        models.Sigs.variant,
     )
-    .select_from(Sigs)
-    .join(sigs_StudyMap, sigs_StudyMap.parent_id == Sigs.id)
-    .join(valid_groups_subquery, sa.and_(
-        join_not_distinct(Sigs.phase, valid_groups_subquery.c.matched_phase),
-        join_not_distinct(Sigs.variant_cui, valid_groups_subquery.c.matched_variant_cui),
-        sigs_StudyMap.study == valid_groups_subquery.c.single_study,
-    ))
-).subquery()
+    .select_from(models.Sigs)
+    .join(
+        models.sigs_StudyMap,
+        models.sigs_StudyMap.parent_id == models.Sigs.id,
+    )
+    )
+    statement = _study_reference_join(
+        statement, models.sigs_StudyMap.study, models.Studies
+    )
+    return statement.join(
+        valid_groups_subquery,
+        sa.and_(
+            models.Studies.id == valid_groups_subquery.c.study_id,
+            join_not_distinct(
+                models.Sigs.phase,
+                valid_groups_subquery.c.matched_phase,
+            ),
+            join_not_distinct(
+                models.Sigs.variant_cui,
+                valid_groups_subquery.c.matched_variant_cui,
+            ),
+        ),
+    ).subquery()
 
 
 def get_base_sigs_df(
