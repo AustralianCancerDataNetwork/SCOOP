@@ -5,7 +5,6 @@ description = "Generate synthetic oncology cohorts with HemOnc-guided treatment 
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "ipykernel>=7.1.0",
     "hemonc-alchemy[duckdb,omop]>=0.6.2,<0.7",
     "omop-alchemy>=3.0.0,<4.0",
     "oa-configurator[duckdb]>=2.1.0,<3.0.0",
@@ -22,10 +21,11 @@ authoring = [
     "linkml-runtime>=1.9.5",
 ]
 # Everything needed to open and run notebooks/ without a second install step.
-# ipykernel and pandas are already core dependencies; these add the server, the
+# pandas is already a core dependency; these add the kernel, the server, the
 # headless execution path (jupyter nbconvert --execute, nbclient, papermill),
 # and plotting.
 exploration = [
+    "ipykernel>=7.1.0",
     "jupyterlab>=4.4",
     "nbclient>=0.10",
     "nbconvert>=7.16",

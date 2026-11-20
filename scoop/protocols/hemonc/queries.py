@@ -1,14 +1,14 @@
 import logging
+from functools import cached_property
+from typing import Any
+
 import pandas as pd
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from functools import cached_property
-from typing import Any
 from hemonc_alchemy.model import (
     Drugs,
     Sigs,
     Studies,
-    StudyResults,
     drugs_Canmed_major_classMap,
     drugs_Canmed_minor_classMap,
     sigs_StudyMap,
@@ -19,14 +19,18 @@ from hemonc_alchemy.model.enums import (
     StudyResults_IntentEnum,
 )
 from hemonc_alchemy.toolkit.core.sigs import SigSelectionSpec, sig_search_statement
-from scoop.protocols.hemonc.models import ( 
-    _load_hemonc_models, HemOncModels, 
-    condition_cuis_by_names, search_substring, _component_search_expressions,
-    join_not_distinct, COMPONENT_CLASS_MAPS
-    )
-from scoop.protocols.hemonc.filters import query_rt_inc_study_ids
-from scoop.protocols.spec import ComponentCui, ComponentTerm
 
+from scoop.protocols.hemonc.filters import query_rt_inc_study_ids
+from scoop.protocols.hemonc.models import (
+    COMPONENT_CLASS_MAPS,
+    HemOncModels,
+    _component_search_expressions,
+    _load_hemonc_models,
+    condition_cuis_by_names,
+    join_not_distinct,
+    search_substring,
+)
+from scoop.protocols.spec import ComponentCui, ComponentTerm
 
 logger = logging.getLogger(__name__)
 
@@ -133,9 +137,19 @@ def omop_vocabulary_tables(session: so.Session) -> tuple[sa.Table, sa.Table]:
     bind = session.get_bind()
     metadata = sa.MetaData()
     try:
-        concept = sa.Table("concept", metadata, schema="omop", autoload_with=bind)
+        schema_map = bind.get_execution_options().get("schema_translate_map", {})
+        vocab_schema = schema_map.get("vocab")
+        if vocab_schema is None:
+            from omop_alchemy.config import get_cdm_context
+
+            _, cdm_database = get_cdm_context()
+            vocab_schema = cdm_database.vocab_schema
+        concept = sa.Table("concept", metadata, schema=vocab_schema, autoload_with=bind)
         relation = sa.Table(
-            "concept_relationship", metadata, schema="omop", autoload_with=bind
+            "concept_relationship",
+            metadata,
+            schema=vocab_schema,
+            autoload_with=bind,
         )
     except sa.exc.NoSuchTableError as exc:
         raise RuntimeError("The OMOP vocabulary tables are unavailable.") from exc

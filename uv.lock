@@ -2120,7 +2120,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "hemonc-alchemy", extra = ["duckdb", "omop"] },
-    { name = "ipykernel" },
     { name = "oa-configurator", extra = ["duckdb"] },
     { name = "omop-alchemy" },
     { name = "pandas" },
@@ -2140,6 +2139,7 @@ dev = [
     { name = "pytest" },
 ]
 exploration = [
+    { name = "ipykernel" },
     { name = "jupyterlab" },
     { name = "matplotlib" },
     { name = "nbclient" },
@@ -2150,7 +2150,7 @@ exploration = [
 [package.metadata]
 requires-dist = [
     { name = "hemonc-alchemy", extras = ["duckdb", "omop"], specifier = ">=0.6.2,<0.7" },
-    { name = "ipykernel", specifier = ">=7.1.0" },
+    { name = "ipykernel", marker = "extra == 'exploration'", specifier = ">=7.1.0" },
     { name = "jupyterlab", marker = "extra == 'exploration'", specifier = ">=4.4" },
     { name = "linkml", marker = "extra == 'authoring'", specifier = ">=1.9.6" },
     { name = "linkml-runtime", marker = "extra == 'authoring'", specifier = ">=1.9.5" },

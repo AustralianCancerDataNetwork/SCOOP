@@ -71,18 +71,6 @@ def _parser() -> argparse.ArgumentParser:
         help="HemOnc SQLite snapshot to copy into the export (or HEMONC_SNAPSHOT)",
     )
     cohort.add_argument(
-        "--database-url",
-        default=os.environ.get("SCOOP_DATABASE_URL"),
-        help="OMOP/HemOnc source database URL (or SCOOP_DATABASE_URL)",
-    )
-    cohort.add_argument(
-        "--connect-options",
-        default=os.environ.get(
-            "SCOOP_DATABASE_CONNECT_OPTIONS", "-csearch_path=public,omop"
-        ),
-        help="SQLAlchemy driver connect options (default: PostgreSQL public,omop search path)",
-    )
-    cohort.add_argument(
         "--quiet",
         action="store_true",
         help="show only an in-place progress bar",
@@ -93,8 +81,6 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    if not args.database_url:
-        parser.error("set SCOOP_DATABASE_URL or pass --database-url")
     if args.hemonc_snapshot is None:
         parser.error("set HEMONC_SNAPSHOT or pass --hemonc-snapshot")
     progress = _ProgressBar() if args.quiet else None
@@ -103,7 +89,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = export_synthetic_cohort(
             SyntheticCohortOptions(
-                database_url=args.database_url,
                 hemonc_snapshot=args.hemonc_snapshot,
                 output=args.output,
                 profile_id=args.profile,
@@ -111,7 +96,6 @@ def main(argv: list[str] | None = None) -> int:
                 seed=args.seed,
                 max_cycles=args.max_cycles,
                 batch_size=args.batch_size,
-                connect_options=args.connect_options,
                 progress_callback=progress.update if progress is not None else None,
             )
         )
