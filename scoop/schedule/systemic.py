@@ -17,14 +17,14 @@ sig.alldays.
 
 import random
 import re
+import warnings
 from collections import defaultdict
 from typing import Any
-import warnings
+
 import pandas as pd
-from pydantic import BaseModel, ValidationError, computed_field, PrivateAttr
 from hemonc_alchemy.toolkit.analytics.treatment.scheduling import resolve_all_days
 from hemonc_alchemy.toolkit.analytics.treatment.scheduling.tokens import Indefinite
-
+from pydantic import BaseModel, PrivateAttr, ValidationError, computed_field
 
 NEOADJ_WEEKS_TO_SURGERY = 4 # https://doi.org/10.21037/tlcr-24-781
 ADJ_WEEKS_FROM_SURGERY = 4
@@ -316,6 +316,8 @@ class OtherSigInfo(BaseModel):
     in_parens: str | None
     tail: str | None
     temp: str | None
+    timing: str | None
+    cyclesigs_note: str | None
     sig_id: int | None
     date_added: Any
     @classmethod
@@ -324,6 +326,8 @@ class OtherSigInfo(BaseModel):
             in_parens=getattr(sig, "inparens", None),
             tail=getattr(sig, "tail", None),
             temp=getattr(sig, "temp", None),
+            timing=getattr(sig, "timing", None),
+            cyclesigs_note=getattr(sig, "cyclesigs_note", None),
             sig_id=getattr(sig, "id", None),
             date_added=getattr(sig, "date_added", None),
         )
@@ -374,16 +378,11 @@ class OriginalContext(BaseModel):
     @classmethod
     def from_sig(cls, sig):
         return cls(
-            phase=getattr(sig, "phase", None),
-            study=getattr(sig, "study", None),
-            regimen=getattr(sig, "regimen", None),
-            regimen_cui=getattr(sig, "regimen_cui", None),
-            variant=getattr(sig, "variant", None),
-            variant_cui=getattr(sig, "variant_cui", None),
-            branch=getattr(sig, "branch", None),
-            branch_type=getattr(sig, "branch_type", None),
+            **{
+                field: getattr(sig, field, None)
+                for field in cls.model_fields
+            }
         )
-
 
 class CycleSet(BaseRandomSampler):
     """

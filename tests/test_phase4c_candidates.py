@@ -20,6 +20,7 @@ from scoop.protocols.spec import (
     PhaseSpec,
     ProtocolSpec,
 )
+from scoop.schedule.systemic import OtherSigInfo
 
 
 def candidate(
@@ -49,20 +50,30 @@ def phase(phase_id: str) -> PhaseSpec:
 
 
 def _fake_sig(**overrides) -> SimpleNamespace:
-    """A minimal stand-in for a real HemOnc sig row.
+    """A minimal stand-in that also covers legacy rows missing newer scalars."""
 
-    Omits `seqrelwhat` on purpose -- real sig rows never carry it either.
-    """
-
-    fields = dict(
-        doseminnum=1, dosemaxnum=1, doseunit="mg",
-        dosecapnum=None, dosecapunit=None,
-        durationunit=None, durationmaxnum=None, durationminnum=None,
-        route="oral", frequency=None, alldays=[1], timing_sequence=None,
-        component="cisplatin",
-        seqrel_items=[], seqrelwhen_items=[], seqrelwhenunit_items=[],
-        sequence=None, id=1, phase="phase-1", divided=False,
-    )
+    fields = {
+        "doseminnum": 1,
+        "dosemaxnum": 1,
+        "doseunit": "mg",
+        "dosecapnum": None,
+        "dosecapunit": None,
+        "durationunit": None,
+        "durationmaxnum": None,
+        "durationminnum": None,
+        "route": "oral",
+        "frequency": None,
+        "alldays": [1],
+        "timing_sequence": None,
+        "component": "cisplatin",
+        "seqrel_items": [],
+        "seqrelwhen_items": [],
+        "seqrelwhenunit_items": [],
+        "sequence": None,
+        "id": 1,
+        "phase": "phase-1",
+        "divided": False,
+    }
     fields.update(overrides)
     return SimpleNamespace(**fields)
 
@@ -72,6 +83,45 @@ def test_regimen_candidate_repr_does_not_require_legacy_seqrelwhat_field():
 
     assert "cisplatin" in repr(regimen_candidate)
     assert "cisplatin" in regimen_candidate._repr_html_()
+
+
+def test_candidate_description_uses_populated_scalar_sig_fields():
+    regimen_candidate = candidate(
+        "test",
+        phase="phase-1",
+        sigs=[
+            _fake_sig(
+                seqrel_items=[SimpleNamespace(seqrel="prior")],
+                seqrelwhat="Paclitaxel",
+                timing="Cycle 2 onwards",
+                inparens="(with food)",
+            )
+        ],
+    )
+
+    description = repr(regimen_candidate)
+
+    assert "prior Paclitaxel." in description
+    assert "Timing: Cycle 2 onwards" in description
+    assert "(with food)" in description
+    assert "prior None" not in description
+
+
+def test_other_sig_info_preserves_new_scalar_cycle_notes():
+    info = OtherSigInfo.from_sig(
+        SimpleNamespace(
+            id=42,
+            inparens="(dose note)",
+            tail=None,
+            temp=None,
+            timing="Cycle 1",
+            cyclesigs_note="Retreatment was allowed.",
+        )
+    )
+
+    assert info.in_parens == "(dose note)"
+    assert info.timing == "Cycle 1"
+    assert info.cyclesigs_note == "Retreatment was allowed."
 
 
 def test_assembly_groups_rows_by_candidate_identity():

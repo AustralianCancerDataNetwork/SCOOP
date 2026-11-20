@@ -1,13 +1,19 @@
 from types import SimpleNamespace
 
+import pandas as pd
 import sqlalchemy as sa
-
 from hemonc_alchemy.model.enums import (
     Sigs_PhaseEnum,
     Studies_IntentEnum,
     StudyResults_IntentEnum,
 )
-from scoop.protocols.hemonc.queries import get_stmt_studies_by_curative_context
+
+from scoop.protocols.hemonc.queries import (
+    _one_row_per_sig,
+    build_category_expressions,
+    get_stmt_studies_by_curative_context,
+)
+from scoop.protocols.spec import BroadCategory, CategoryRule, CategoryRuleType
 
 
 def _context_models():
@@ -17,6 +23,7 @@ def _context_models():
         __tablename__ = "studies"
         id = sa.Column(sa.Integer, primary_key=True)
         study = sa.Column(sa.String, nullable=False)
+        substudy = sa.Column(sa.String, nullable=True)
         condition_cui = sa.Column(sa.Integer, nullable=False)
 
     class StudiesIntentMap(base):
@@ -46,17 +53,19 @@ def _context_models():
         connection.execute(
             Studies.__table__.insert(),
             [
-                {"id": 1, "study": "primary-curative", "condition_cui": 101},
-                {"id": 2, "study": "result-curative", "condition_cui": 101},
-                {"id": 3, "study": "result-non-curative", "condition_cui": 101},
-                {"id": 4, "study": "no-intent", "condition_cui": 101},
-                {"id": 5, "study": "unspecified-primary", "condition_cui": 101},
-                {"id": 6, "study": "preventive-primary", "condition_cui": 101},
-                {"id": 7, "study": "unspecified-only", "condition_cui": 101},
-                {"id": 8, "study": "unspecified-result", "condition_cui": 101},
-                {"id": 9, "study": "phase-match", "condition_cui": 101},
-                {"id": 10, "study": "phase-mismatch", "condition_cui": 101},
-                {"id": 11, "study": "other-condition", "condition_cui": 202},
+                {"id": 1, "study": "primary-curative", "substudy": None, "condition_cui": 101},
+                {"id": 2, "study": "result-curative", "substudy": None, "condition_cui": 101},
+                {"id": 3, "study": "result-non-curative", "substudy": None, "condition_cui": 101},
+                {"id": 4, "study": "no-intent", "substudy": None, "condition_cui": 101},
+                {"id": 5, "study": "unspecified-primary", "substudy": None, "condition_cui": 101},
+                {"id": 6, "study": "preventive-primary", "substudy": None, "condition_cui": 101},
+                {"id": 7, "study": "unspecified-only", "substudy": None, "condition_cui": 101},
+                {"id": 8, "study": "unspecified-result", "substudy": None, "condition_cui": 101},
+                {"id": 9, "study": "phase-match", "substudy": None, "condition_cui": 101},
+                {"id": 10, "study": "phase-mismatch", "substudy": None, "condition_cui": 101},
+                {"id": 11, "study": "other-condition", "substudy": None, "condition_cui": 202},
+                {"id": 12, "study": "result-substudy", "substudy": "arm-a", "condition_cui": 101},
+                {"id": 13, "study": "phase-substudy", "substudy": "arm-b", "condition_cui": 101},
             ],
         )
         connection.execute(
@@ -96,6 +105,11 @@ def _context_models():
                     "study": "unspecified-result",
                     "intent": StudyResults_IntentEnum.UNSPECIFIED_INTENT,
                 },
+                {
+                    "id": 6,
+                    "study": "result-substudy--arm-a",
+                    "intent": StudyResults_IntentEnum.CURATIVE_INTENT,
+                },
             ],
         )
         connection.execute(
@@ -110,6 +124,7 @@ def _context_models():
             [
                 {"parent_id": 1, "study": "phase-match"},
                 {"parent_id": 2, "study": "phase-mismatch"},
+                {"parent_id": 1, "study": "phase-substudy--arm-b"},
             ],
         )
     models = SimpleNamespace(
@@ -130,13 +145,9 @@ def _studies(connection, models, **kwargs):
 def test_study_intent_is_primary_and_result_intent_is_fallback():
     engine, models = _context_models()
     with engine.connect() as connection:
-        assert _studies(connection, models) == {
-            "primary-curative",
-            "result-curative",
-            "unspecified-primary",
-        }
+        assert _studies(connection, models) == {1, 2, 5, 12}
         assert _studies(connection, models, non_curative=True) == {
-            "result-non-curative"
+            3
         }
     engine.dispose()
 
@@ -145,24 +156,77 @@ def test_unknown_policy_requires_absent_or_unspecified_intent():
     engine, models = _context_models()
     with engine.connect() as connection:
         assert _studies(connection, models, unknown_context_policy="include") == {
-            "primary-curative",
-            "result-curative",
-            "unspecified-primary",
-            "no-intent",
-            "unspecified-only",
-            "unspecified-result",
-            "phase-match",
-            "phase-mismatch",
+            1, 2, 4, 5, 7, 8, 9, 10, 12, 13
         }
         assert _studies(
             connection,
             models,
             unknown_context_policy="phase_type",
             phase_type="adjuvant",
-        ) == {
-            "primary-curative",
-            "result-curative",
-            "unspecified-primary",
-            "phase-match",
-        }
+        ) == {1, 2, 5, 9, 12, 13}
     engine.dispose()
+
+
+def test_canmed_map_multiplicity_does_not_inflate_category_counts():
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    components = sa.Table(
+        "components",
+        metadata,
+        sa.Column("component_cui", sa.Integer),
+        sa.Column("broad_category", sa.String),
+    )
+    metadata.create_all(engine)
+    requirement = {
+        BroadCategory.CHEMOTHERAPY: CategoryRule(
+            type=CategoryRuleType.EXACT,
+            amount=1,
+        )
+    }
+    expression = build_category_expressions(requirement, components)[0]
+
+    with engine.begin() as connection:
+        connection.execute(
+            components.insert(),
+            [
+                {"component_cui": 123, "broad_category": "chemotherapy"}
+                for _ in range(12)
+            ],
+        )
+    statement = (
+        sa.select(sa.literal(1))
+        .select_from(components)
+        .group_by(sa.literal(1))
+        .having(expression)
+    )
+    with engine.connect() as connection:
+        assert connection.execute(statement).first() is not None
+
+    with engine.begin() as connection:
+        connection.execute(
+            components.insert(),
+            {"component_cui": 456, "broad_category": "chemotherapy"},
+        )
+    with engine.connect() as connection:
+        assert connection.execute(statement).first() is None
+    engine.dispose()
+
+
+def test_shared_sig_keeps_the_same_study_whatever_the_row_order():
+    rows = pd.DataFrame(
+        [
+            {"id": 1, "single_study": "B", "study": "B", "matched_phase": None, "matched_variant_cui": 7},
+            {"id": 1, "single_study": "A", "study": "A", "matched_phase": None, "matched_variant_cui": 7},
+            {"id": 2, "single_study": "A", "study": "A", "matched_phase": None, "matched_variant_cui": 7},
+            {"id": 1, "single_study": "C", "study": "C", "matched_phase": None, "matched_variant_cui": 7},
+            {"id": 3, "single_study": "C", "study": "C", "matched_phase": None, "matched_variant_cui": 7},
+        ]
+    )
+
+    picks = {
+        tuple(_one_row_per_sig(rows.sample(frac=1, random_state=seed))[["id", "study"]].itertuples(index=False))
+        for seed in range(20)
+    }
+
+    # Sig 1 joins a two-sig group; A beats C on name.
+    assert picks == {((1, "A"), (2, "A"), (3, "C"))}
