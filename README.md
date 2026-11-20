@@ -92,7 +92,7 @@ uv run onco-scoop export-synthetic-cohort \
   --output data/synthetic_nsclc_from_cli.sqlite
 ```
 
-For PostgreSQL, point the connection at a `postgresql` database instead; the driver is already installed. The output must not already exist; the command builds a temporary file, checks SQLite integrity and foreign keys, then renames it into place. Use `--help` for all options.
+For PostgreSQL, point the connection at a `postgresql` database instead; the psycopg driver is a core dependency. The output must not already exist; the command builds a temporary file, checks SQLite integrity and foreign keys, then renames it into place. Use `--help` for all options.
 
 Add `--quiet` to show only an in-place progress bar instead of progress messages and the JSON summary.
 
