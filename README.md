@@ -77,10 +77,12 @@ omop_db = "cdm_db"
 cdm_db = "cdm_db"
 ```
 
-Point `OA_CONFIG_PATH` at that file, set the HemOnc SQLite snapshot, then run:
+Install the locked runtime dependencies, point `OA_CONFIG_PATH` at the local
+DuckDB config, set the HemOnc SQLite snapshot, then run:
 
 ```bash
-export OA_CONFIG_PATH="$HOME/.config/omop/scoop.duckdb.toml"
+uv sync --locked
+export OA_CONFIG_PATH="$PWD/data/scoop.duckdb.toml"
 export HEMONC_SNAPSHOT="$PWD/data/hemonc-snapshot.sqlite"
 uv run onco-scoop export-synthetic-cohort \
   --profile nsclc \
